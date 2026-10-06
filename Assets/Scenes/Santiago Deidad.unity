@@ -453,7 +453,7 @@ GameObject:
   - component: {fileID: 249197259}
   - component: {fileID: 249197258}
   m_Layer: 0
-  m_Name: Cube
+  m_Name: Muros prueba 2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -561,7 +561,7 @@ GameObject:
   - component: {fileID: 768192695}
   - component: {fileID: 768192694}
   m_Layer: 0
-  m_Name: Cube (1)
+  m_Name: Muros prueba 3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -790,7 +790,7 @@ GameObject:
   - component: {fileID: 962380409}
   - component: {fileID: 962380408}
   m_Layer: 0
-  m_Name: Brayan el gay
+  m_Name: Muros prueba 1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
