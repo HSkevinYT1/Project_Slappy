@@ -44,8 +44,8 @@ public class MouseLook : MonoBehaviour
 
         xRotation = Mathf.Clamp(xRotation - mouseY, -80f, 80f);
 
-        float peekInput = (Input.GetKey(KeyCode.E) ? 1f : 0f)
-                        - (Input.GetKey(KeyCode.Q) ? 1f : 0f);
+        float peekInput = (Input.GetKey("e") ? 1f : 0f)
+                        - (Input.GetKey("q") ? 1f : 0f);
         float blend = 1f - Mathf.Exp(-peekSmooth * Time.deltaTime);
         peekLean = Mathf.Lerp(peekLean, peekInput, blend);
 
