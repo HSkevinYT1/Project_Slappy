@@ -23,6 +23,7 @@ public class GraspObject : MonoBehaviour
         // Comprueba si actualmente hay un objeto agarrado.
         if (picketObject != null)
         {
+            // picketObject.transform.position = HandPoint.transform.position;
             // Comprueba si el jugador está presionando la tecla R.
             if (Input.GetKey("r"))
             {
@@ -31,6 +32,9 @@ public class GraspObject : MonoBehaviour
 
                 // Reactiva las fisicas del objeto agarrado.
                 picketObject.GetComponent<Rigidbody>().isKinematic = false;
+
+                // Vuelve a activar las colisiones.
+                picketObject.GetComponent<Collider>().enabled = true;
 
                 // El objeto deja de ser hijo del HandPoint.
                 picketObject.gameObject.transform.SetParent(null);
@@ -63,12 +67,15 @@ public class GraspObject : MonoBehaviour
                 // Desactiva las fisicar del objeto que se va a agarrar.
                 other.GetComponent<Rigidbody>().isKinematic = true;
 
+                // Desactiva las colisiones mientras el objeto está agarrado.
+                other.GetComponent<Collider>().enabled = false;
+
                 // Mueve el objeto hasta la posición del HandPoint.
                 other.transform.position = HandPoint.transform.position;
 
                 // Convierte el objeto en hijo del HandPoint,
                 // haciendo que se mueva junto con él.
-                other.gameObject.transform.SetParent(HandPoint.gameObject.transform);
+                 other.gameObject.transform.SetParent(HandPoint.gameObject.transform);
 
                 // Guarda el objeto agarrado dentro de picketObject.
                 picketObject = other.gameObject;
