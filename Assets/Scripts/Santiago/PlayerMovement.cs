@@ -30,7 +30,7 @@ public class PlayerMovement : MonoBehaviour
     }
     void FixedUpdate()
     {
-        // Multiplicala la direccin del jugador con la velocidad base que se tiene.
+        // Multiplicala la direccion del jugador con la velocidad base que se tiene.
         Vector3 velocity = movement * speed;
 
         // Modifica la velocidad del Rididbody
