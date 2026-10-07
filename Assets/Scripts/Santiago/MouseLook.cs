@@ -1,54 +1,72 @@
 using UnityEngine;
 
-// Clase encargada del movimieno de la camara
+// este script controla la camara y el movimiento de la cabeza del jugador, incluyendo la inclinacion al mirar hacia los lados (peeking)
 public class MouseLook : MonoBehaviour
 {
-    // sensibilidad de la camara
+    [Header("Look")]
     public float mouseSensitivity = 100f;
-    // referencia del Transform del Player 
-    // Ayuda con el movimiento de izquierda a derecha
     public Transform playerBody;
-    private Rigidbody playerRb;
 
-    // Guarda la rotación vertial de la camara en grados 
-    private float xRotation = 0f;
+    [Header("Peeking")]
+    [SerializeField] private float peekDistance = 0.25f;
+    [SerializeField] private float peekRollAngle = 10f;
+    [SerializeField] private float peekSmooth = 8f;
+
+    private Rigidbody playerRb;
+    private float xRotation;
+    private float pendingYaw;
+    private float playerYaw;
+    private float peekLean;
+    private Vector3 startLocalPosition;
 
     void Start()
     {
-        // Bloquea el cursos en el centro de la pantalla
         Cursor.lockState = CursorLockMode.Locked;
-        // Hace invisible el Mouse
         Cursor.visible = false;
-        playerRb = playerBody.GetComponent<Rigidbody>();
 
-   //Esto es para que el personaje no empiece mirando al suelo
-        Vector3 playerEuler = playerBody.eulerAngles;
-        playerBody.rotation = Quaternion.Euler(0f, playerEuler.y, 0f);
+        if (playerBody != null)
+        {
+            playerRb = playerBody.GetComponent<Rigidbody>();
+            Vector3 bodyEuler = playerBody.eulerAngles;
+            playerYaw = bodyEuler.y;
+            playerBody.rotation = Quaternion.Euler(0f, playerYaw, 0f);
+        }
 
-        transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+        startLocalPosition = transform.localPosition;
+        transform.localRotation = Quaternion.identity;
     }
 
     void Update()
     {
-        // Movimiento horizontal del mouse
-        float mouseX = Input.GetAxis("Mouse X")
-           * mouseSensitivity * Time.deltaTime;
+        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
+        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
+        pendingYaw += mouseX;
 
-        // Movimiento vertical del mouse
-        float mouseY = Input.GetAxis("Mouse Y")
-            * mouseSensitivity * Time.deltaTime;
+        xRotation = Mathf.Clamp(xRotation - mouseY, -80f, 80f);
 
-       //Modifica la rotación vertical según el movimiento del mouse
-        xRotation -= mouseY;
+        float peekInput = (Input.GetKey("e") ? 1f : 0f)
+                        - (Input.GetKey("q") ? 1f : 0f);
+        float blend = 1f - Mathf.Exp(-peekSmooth * Time.deltaTime);
+        peekLean = Mathf.Lerp(peekLean, peekInput, blend);
 
-        // Limitar el movimiento vertical del personaje haciendo que no de una vuelta cuando mira hacia arriba o abajo
-        xRotation = Mathf.Clamp(xRotation, -80f, 80f);
+        // aplica la rotacion de la camara y la inclinacion al mirar hacia los lados (peeking)
+        transform.localRotation = Quaternion.Euler(xRotation, 0f, -peekRollAngle * peekLean);
 
-        // Aplica la rotación vertical de la camara solo afecta a X
-        transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        // controla la posicion de la camara al mirar hacia los lados (peeking)
+        float targetX = startLocalPosition.x + peekDistance * peekLean;
+        float currentX = Mathf.Lerp(transform.localPosition.x, targetX, blend);
+        transform.localPosition = new Vector3(currentX, transform.localPosition.y, startLocalPosition.z);
+    }
 
-        //te agregue esto porque tenias problemas en la fisica
-        Quaternion deltaRotation = Quaternion.Euler(0f, mouseX, 0f);
-        playerRb.MoveRotation(playerRb.rotation * deltaRotation);
+    void FixedUpdate()
+    {
+        if (playerRb == null)
+            return;
+
+        // aplica la rotacion del cuerpo del jugador
+        playerYaw = Mathf.Repeat(playerYaw + pendingYaw, 360f);
+        pendingYaw = 0f;
+        playerRb.angularVelocity = Vector3.zero;
+        playerRb.MoveRotation(Quaternion.Euler(0f, playerYaw, 0f));
     }
 }
