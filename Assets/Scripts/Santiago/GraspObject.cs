@@ -59,7 +59,7 @@ public class GraspObject : MonoBehaviour
         {
             // Comprueba si se está presionando E
             // y si actualmente no tenemos ningún objeto agarrado.
-            if (Input.GetKey("e") && picketObject==null)
+            if (Input.GetKey("t") && picketObject==null)
             {
                 // Desactiva la gravedad del objeto que se va a agarrar.
                 other.GetComponent<Rigidbody>().useGravity = false;
