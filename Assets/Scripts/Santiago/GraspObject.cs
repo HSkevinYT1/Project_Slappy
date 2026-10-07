@@ -23,7 +23,7 @@ public class GraspObject : MonoBehaviour
         // Comprueba si actualmente hay un objeto agarrado.
         if (picketObject != null)
         {
-            // picketObject.transform.position = HandPoint.transform.position;
+
             // Comprueba si el jugador está presionando la tecla R.
             if (Input.GetKey("r"))
             {
