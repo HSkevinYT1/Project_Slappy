@@ -1,78 +1,56 @@
 using UnityEngine;
 
-// Clase encargada del movimiento de la camara entre pasos.
+// Este script se encargar de el Shake de la camara al caminar
 public class HeadBob : MonoBehaviour
 {
-    // El intevalo de tiempo en el que se realiza la animación.
     public float stepInterval = 0.45f;
-    // La cantidad de distancia que baja la camara.
     public float bobHeight = 0.10f;
-    // Velocidad a la que la camara vuelve a la posición original.
     public float returnSpeed = 8f;
 
-    // Guarda la posición original de la camara.
     private Vector3 startPosition;
-    // Guarda una referecia del Player y para comprobar si se esta moviendo.
     private Rigidbody playerRb;
-    // Contador que registra el tiempo que ha pasado en el paso.
-    private float stepTimer = 0f;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        // Guarda la posición origina de la camara.
-        startPosition = transform.localPosition;
+    private float stepTimer;
 
-        // Busca el Rigidbody en el objeto padre.
+    private void Start()
+    {
+        startPosition = transform.localPosition;
         playerRb = GetComponentInParent<Rigidbody>();
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
-        // Crea un Vector3 con la velocidad horizontal del jugador.
-        // Pone la Y en valor 0 para que la gravedad no afecte.
-        Vector3 horizontalVelocity = new Vector3(
-            playerRb.linearVelocity.x,
-            0f,
-            playerRb.linearVelocity.z
-        );
+        if (playerRb == null)
+        {
+            float blend = 1f - Mathf.Exp(-Mathf.Max(0f, returnSpeed) * Time.deltaTime);
+            SetVerticalPosition(Mathf.Lerp(transform.localPosition.y, startPosition.y, blend));
+            return;
+        }
 
-        // Comprueba si el jugador se está moviendo.
+        float safeStepInterval = Mathf.Max(0.01f, stepInterval);
+        Vector3 horizontalVelocity = new Vector3(playerRb.linearVelocity.x, 0f, playerRb.linearVelocity.z);
         bool isMoving = horizontalVelocity.magnitude > 0.1f;
 
         if (isMoving)
         {
-            // Aumenta el contador usando el tiempo real transcurrido.
             stepTimer += Time.deltaTime;
+            if (stepTimer >= safeStepInterval)
+                stepTimer %= safeStepInterval;
 
-            // Cuando el contador alcanza la duración de un paso, vuelve a comenzar desde cero.
-            if (stepTimer >= stepInterval)
-            {
-                stepTimer = 0f;
-            }
-
-            // Calcula qué tan avanzado está el paso actual, el intervalo es entre 0 a 1.
-            float stepProgress = stepTimer / stepInterval;
-
-            // Usa el movimiento de la onda del seno.
-            float bob =
-                Mathf.Sin(stepProgress * Mathf.PI) * bobHeight;
-
-            // Mueve la cámara hacia abajo desde su posición inicial.
-            transform.localPosition =
-                startPosition + Vector3.down * bob;
+            float stepProgress = stepTimer / safeStepInterval;
+            float bob = Mathf.Sin(stepProgress * Mathf.PI) * bobHeight;
+            SetVerticalPosition(startPosition.y - bob);
         }
         else
         {
-            // Reinicia el contador de pasos.
             stepTimer = 0f;
-
-            // Devuelve suavemente la cámara a su posición original.
-            transform.localPosition = Vector3.Lerp(
-                transform.localPosition,
-                startPosition,
-                Time.deltaTime * returnSpeed
-            );
+            float blend = 1f - Mathf.Exp(-Mathf.Max(0f, returnSpeed) * Time.deltaTime);
+            SetVerticalPosition(Mathf.Lerp(transform.localPosition.y, startPosition.y, blend));
         }
+    }
+
+    private void SetVerticalPosition(float y)
+    {
+        //mantiene la posicion en x y z, solo cambia la posicion en y
+        transform.localPosition = new Vector3(transform.localPosition.x, y, startPosition.z);
     }
 }
