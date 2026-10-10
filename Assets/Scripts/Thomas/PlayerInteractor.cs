@@ -27,8 +27,17 @@ public class PlayerInteractor : MonoBehaviour
 
     void Update()
     {
+        // Mientras hay un dialogo abierto, no se detecta ni se interactua con nada
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsActive)
+        {
+            Current = null;
+            return;
+        }
+
+        // Busca el objeto al que apunta la camara
         Current = FindInteractable();
 
+        // Si hay uno y se presiona la tecla, se interactua con el
         if (Current != null && Input.GetKeyDown(interactKey))
             Current.Interact(this);
     }
