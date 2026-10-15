@@ -11,7 +11,7 @@ public class PlayerInteractor : MonoBehaviour
     // Capas que bloquean/permiten el rayo. Se deja en "Everything" a proposito:
     // asi una pared entre el jugador y el objeto impide la interaccion.
     public LayerMask raycastLayers = ~0;
-    public KeyCode interactKey = KeyCode.E;
+    public KeyCode interactKey = KeyCode.F;
 
     // Objeto al que se esta apuntando ahora mismo (null si no hay ninguno)
     public IInteractable Current { get; private set; }

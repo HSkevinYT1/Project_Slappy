@@ -433,7 +433,7 @@ MonoBehaviour:
   raycastLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  interactKey: 101
+  interactKey: 102
 --- !u!1 &332850780
 GameObject:
   m_ObjectHideFlags: 0
@@ -561,7 +561,7 @@ MonoBehaviour:
   raycastLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  interactKey: 101
+  interactKey: 102
 --- !u!1 &391933802
 GameObject:
   m_ObjectHideFlags: 0
@@ -750,7 +750,7 @@ MonoBehaviour:
   raycastLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  interactKey: 101
+  interactKey: 102
 --- !u!1 &395949311
 GameObject:
   m_ObjectHideFlags: 0
@@ -1166,6 +1166,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 5845614872589232874, guid: 1716b09c8f6d1534990fa943e09e72af, type: 3}
+    - {fileID: 8352749372551605484, guid: 1716b09c8f6d1534990fa943e09e72af, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:

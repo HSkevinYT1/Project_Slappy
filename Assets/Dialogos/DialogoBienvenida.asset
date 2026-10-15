@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd970b3a1adab647bb4b75a0e2bcfb0, type: 3}
   m_Name: DialogoBienvenida
   m_EditorClassIdentifier: 
+  modo: 0
   lineas:
-  - "Bienvenido al juego, para avanzar los di\xE1logos y skipearlos dale al espacio."
-  - Para agarrar objetos utilizas la tecla E y para mirar el inventario utilizas
-    el TAB
-  - "Por \xFAltimo si tienes muchos clientes y necesitas correr, utiliza el Shift
-    Left para ir mas r\xE1pido por la tienda.  "
+  - "Bienvenido al juego, para avanzar los di\xE1logos pulsa la tecla [SPACE]"
+  - 'Para interactuar con objetos pulsa la tecla F. Si necesitas recordar algo mas
+    ven a buscarme cuando lo necesites '
+  segundosPorLinea: 3
