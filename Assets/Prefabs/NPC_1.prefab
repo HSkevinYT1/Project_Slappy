@@ -13,7 +13,6 @@ GameObject:
   - component: {fileID: 2111341256744403189}
   - component: {fileID: 1909361270326417488}
   - component: {fileID: 8352749372551605484}
-  - component: {fileID: 5845614872589232874}
   m_Layer: 0
   m_Name: NPC_1
   m_TagString: Untagged
@@ -134,21 +133,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1.9813054, y: 2, z: 0.9606743}
   m_Center: {x: -0.06976715, y: 0, z: -0.16338158}
---- !u!114 &5845614872589232874
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1513068382020975869}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 61790dfee01431c49b04323368e601ec, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  dialogueData: {fileID: 11400000, guid: a9b717b6a931fdf49a89587d78ca3360, type: 2}
-  marca_dialogo: {fileID: 8273092615615219231}
-  startKey: 101
 --- !u!1 &8273092615615219231
 GameObject:
   m_ObjectHideFlags: 0
