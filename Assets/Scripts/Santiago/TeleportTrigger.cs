@@ -1,11 +1,14 @@
 using UnityEngine;
 
 // Clase encargada de teletransportar al jugador
-// hacia otro punto del mapa.
+// hacia otro punto del mapa y activar el modo entidad del reloj.
 public class TeleportTrigger : MonoBehaviour
 {
     // Punto al que será enviado el jugador.
     public Transform teleportDestination;
+
+    // Referencia al reloj del jugador.
+    public ClockController clock;
 
     // Evita que el teletransporte ocurra varias veces.
     private bool activated = false;
@@ -28,6 +31,9 @@ public class TeleportTrigger : MonoBehaviour
 
                 // Elimina la velocidad que llevaba antes del TP.
                 playerRb.linearVelocity = Vector3.zero;
+
+                // Activa el modo detector de entidad del reloj.
+                clock.ActivateEntityMode();
             }
 
             // Guarda que el evento ya ocurrió.

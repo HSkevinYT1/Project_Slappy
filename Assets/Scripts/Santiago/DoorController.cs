@@ -1,28 +1,27 @@
 using UnityEngine;
 
-// Controla la apertura y cierre de la puerta.
+// Controla la apertura y cierre de cualquier puerta.
 public class DoorController : MonoBehaviour
 {
-    // Velocidad de rotación de la puerta.
-    public float rotationSpeed = 200f;
+    // Velocidad con la que gira la puerta.
+    public float rotationSpeed = 120f;
 
-    // Rotación que tendrá cuando esté cerrada.
-    public Vector3 closedRotation = new Vector3(0f, 0f, 0f);
+    // Rotación de la puerta cuando está abierta.
+    public Vector3 openRotation;
 
-    // Guarda la rotación inicial abierta.
-    private Quaternion openRotation;
+    // Rotación de la puerta cuando está cerrada.
+    public Vector3 closedRotation;
 
     // Rotación hacia la que queremos mover la puerta.
     private Quaternion targetRotation;
 
+
     void Start()
     {
-        // Guarda la posición inicial como posición abierta.
-        openRotation = transform.localRotation;
-
-        // Al comenzar, la puerta permanece abierta.
-        targetRotation = openRotation;
+        // La puerta empieza en la rotación que tenga actualmente.
+        targetRotation = transform.localRotation;
     }
+
 
     void Update()
     {
@@ -34,15 +33,17 @@ public class DoorController : MonoBehaviour
         );
     }
 
-    // Cierra la puerta.
+
+    // Ordena abrir la puerta.
+    public void OpenDoor()
+    {
+        targetRotation = Quaternion.Euler(openRotation);
+    }
+
+
+    // Ordena cerrar la puerta.
     public void CloseDoor()
     {
         targetRotation = Quaternion.Euler(closedRotation);
-    }
-
-    // Abre nuevamente la puerta.
-    public void OpenDoor()
-    {
-        targetRotation = openRotation;
     }
 }
