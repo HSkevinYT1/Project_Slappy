@@ -24,6 +24,13 @@ Shader "Slappy/Fog Volume"
 
         [IntRange] _Steps ("Quality (steps)", Range(4, 32)) = 12
 
+        // Limite de vision: oscurece todo lo que este lejos de la camara (End = 0 lo desactiva)
+        _VisionColor ("Vision Color", Color) = (0, 0, 0, 1)
+        _VisionStart ("Vision Start (meters)", Float) = 2
+        _VisionEnd ("Vision End (meters)", Float) = 0
+        // Cuanto atraviesan la oscuridad las zonas iluminadas por luces adicionales (linterna, antorchas)
+        _LightReveal ("Light Reveal", Range(0, 20)) = 4
+
         // Lo controla FogVolume para las transiciones
         [HideInInspector] _Fade ("Fade", Range(0, 1)) = 1
     }
@@ -77,6 +84,10 @@ Shader "Slappy/Fog Volume"
                 half _PointLightStrength;
                 half _MaxBrightness;
                 float _Steps;
+                half4 _VisionColor;
+                float _VisionStart;
+                float _VisionEnd;
+                half _LightReveal;
                 half _Fade;
             CBUFFER_END
 
@@ -143,7 +154,8 @@ Shader "Slappy/Fog Volume"
                 float2 screenUV = GetNormalizedScreenSpaceUV(input.positionCS);
                 float sceneEyeDepth = LinearEyeDepth(SampleSceneDepth(screenUV), _ZBufferParams);
                 float3 cameraForward = -UNITY_MATRIX_V[2].xyz;
-                tExit = min(tExit, sceneEyeDepth / max(dot(rayWS, cameraForward), 0.0001));
+                float sceneDistance = sceneEyeDepth / max(dot(rayWS, cameraForward), 0.0001);
+                tExit = min(tExit, sceneDistance);
                 clip(tExit - tEnter - 0.001);
 
                 float4x4 objectToWorld = GetObjectToWorldMatrix();
@@ -156,6 +168,7 @@ Shader "Slappy/Fog Volume"
 
                 half3 scattered = 0.0;
                 half transmittance = 1.0;
+                if (_Density > 0.0)
                 [loop] for (int s = 0; s < steps; s++)
                 {
                     float t = tEnter + (s + jitter) * stepLength;
@@ -176,6 +189,24 @@ Shader "Slappy/Fog Volume"
                 // Niebla de distancia de la escena (Lighting > Fog) a mitad del tramo
                 float3 middleWS = cameraWS + rayWS * (0.5 * (tEnter + tExit));
                 color = MixFogColor(color, unity_FogColor.rgb * alpha, ComputeFogFactor(TransformWorldToHClip(middleWS).z));
+
+                // Limite de vision: lo que esta mas lejos que _VisionEnd queda del todo tapado (el cielo tambien)
+                if (_VisionEnd > 0.0)
+                {
+                    half vision = smoothstep(_VisionStart, _VisionEnd, sceneDistance) * _Fade;
+
+                    // Lo que ilumina la linterna (o una antorcha) se ve aunque este lejos
+                    if (_LightReveal > 0.0 && vision > 0.0)
+                    {
+                        float3 surfaceWS = cameraWS + rayWS * sceneDistance;
+                        half3 surfaceLight = FogAdditionalLights(surfaceWS, screenUV, 1.0);
+                        half lit = max(surfaceLight.r, max(surfaceLight.g, surfaceLight.b));
+                        vision *= 1.0 - saturate(lit * _LightReveal);
+                    }
+
+                    color = lerp(color, _VisionColor.rgb, vision);
+                    alpha = lerp(alpha, 1.0, vision);
+                }
                 return half4(color, alpha);
             }
             ENDHLSL

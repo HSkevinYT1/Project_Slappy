@@ -18,6 +18,16 @@ public class FogVolume : MonoBehaviour
     [Range(0f, 1f)] public float glow = 0.25f;
     [Range(0f, 8f)] public float pointLights = 0.7f;
 
+    // Limite de vision del jugador: si se asigna, la caja sigue a este objeto (la camara del jugador)
+    public Transform followTarget;
+    public Color visionColor = Color.black;
+    // Metros que el jugador ve sin oscuridad
+    public float visionStart = 2f;
+    // Metros a partir de los cuales todo es negro, 0 = sin limite de vision
+    public float visionEnd = 0f;
+    // Cuanto atraviesan la oscuridad las zonas iluminadas (linterna, antorchas). 0 = nada
+    [Range(0f, 20f)] public float lightReveal = 4f;
+
     // Si esta desmarcado empieza apagada hasta llamar a Activate()
     public bool activeOnStart = true;
     // Segundos que tarda en aparecer o desaparecer
@@ -38,6 +48,10 @@ public class FogVolume : MonoBehaviour
     private static readonly int HeightFadeId = Shader.PropertyToID("_HeightFade");
     private static readonly int NoiseAmountId = Shader.PropertyToID("_NoiseAmount");
     private static readonly int PointLightsId = Shader.PropertyToID("_PointLightStrength");
+    private static readonly int VisionColorId = Shader.PropertyToID("_VisionColor");
+    private static readonly int VisionStartId = Shader.PropertyToID("_VisionStart");
+    private static readonly int VisionEndId = Shader.PropertyToID("_VisionEnd");
+    private static readonly int LightRevealId = Shader.PropertyToID("_LightReveal");
     private static readonly int FadeId = Shader.PropertyToID("_Fade");
 
     // Hace aparecer la niebla con transicion (se puede llamar desde un UnityEvent u otro script)
@@ -57,6 +71,14 @@ public class FogVolume : MonoBehaviour
         wanted = !wanted;
     }
 
+    // Cambia cuanto ve el jugador (por ejemplo mas lejos con la linterna encendida)
+    public void SetVision(float start, float end)
+    {
+        visionStart = Mathf.Max(0f, start);
+        visionEnd = Mathf.Max(0f, end);
+        ApplyProperties();
+    }
+
     private void OnEnable()
     {
         // En el editor siempre se ve, para poder colocarla
@@ -69,7 +91,18 @@ public class FogVolume : MonoBehaviour
     {
         edgeSoftness = Mathf.Max(0.01f, edgeSoftness);
         fadeDuration = Mathf.Max(0f, fadeDuration);
+        visionStart = Mathf.Max(0f, visionStart);
+        visionEnd = Mathf.Max(0f, visionEnd);
         ApplyProperties();
+    }
+
+    private void LateUpdate()
+    {
+        if (followTarget == null) return;
+
+        // La caja rodea al jugador y es lo bastante grande para que el negro llegue antes que sus paredes
+        transform.SetPositionAndRotation(followTarget.position, Quaternion.identity);
+        if (visionEnd > 0f) transform.localScale = Vector3.one * (visionEnd + 1f) * 2f;
     }
 
     private void Update()
@@ -97,6 +130,10 @@ public class FogVolume : MonoBehaviour
         block.SetFloat(HeightFadeId, heightFade);
         block.SetFloat(NoiseAmountId, noiseAmount);
         block.SetFloat(PointLightsId, pointLights);
+        block.SetColor(VisionColorId, visionColor);
+        block.SetFloat(VisionStartId, visionStart);
+        block.SetFloat(VisionEndId, visionEnd);
+        block.SetFloat(LightRevealId, lightReveal);
         block.SetFloat(FadeId, Weight);
         meshRenderer.SetPropertyBlock(block);
 

@@ -1,3 +1,4 @@
+
 using UnityEngine;
 
 public class Flashlight : MonoBehaviour
@@ -6,6 +7,8 @@ public class Flashlight : MonoBehaviour
     public AudioClip lightSound;
     private AudioSource source;
 
+    public float battery = 100f;
+
     void Start()
     {
         source = GetComponent<AudioSource>();
@@ -13,13 +16,44 @@ public class Flashlight : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(1)) LightManager();
+        if (Input.GetMouseButtonDown(1))
+        {
+            LightManager();
+        }
+
+        // Descargar bateria
+        if (lightObject.activeSelf)
+        {
+            battery -= 2f * Time.deltaTime;
+
+            if (battery <= 0)
+            {
+                battery = 0;
+                lightObject.SetActive(false);
+            }
+        }
     }
 
     void LightManager()
     {
-        lightObject.SetActive(!lightObject.activeSelf);
-        source.PlayOneShot(lightSound);
-    }
+        if (lightObject.activeSelf)
+        {
+            lightObject.SetActive(false);
+        }
+        else
+        {
+            if (battery > 0)
+            {
+                lightObject.SetActive(true);
+            }
+        }
 
+        if (source != null)
+        {
+            if (lightSound != null)
+            {
+                source.PlayOneShot(lightSound);
+            }
+        }
+    }
 }

@@ -99,12 +99,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: abf334fc7b934cc7be6de23c4603ef7b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  color: {r: 0.75, g: 0.74, b: 0.72, a: 1}
-  density: 0.35
-  edgeSoftness: 1.5
+  color: {r: 0.75, g: 0.74, b: 0.72, a: 0}
+  density: 0.19
+  edgeSoftness: 0.01
   heightFade: 0.6
   noiseAmount: 0.6
   glow: 0.25
   pointLights: 0.7
+  followTarget: {fileID: 0}
+  visionColor: {r: 0, g: 0, b: 0, a: 1}
+  visionStart: 20
+  visionEnd: 35
   activeOnStart: 1
   fadeDuration: 2
