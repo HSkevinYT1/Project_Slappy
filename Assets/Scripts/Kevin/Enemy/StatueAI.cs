@@ -2,31 +2,19 @@ using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Events;
 
-//Enemigo tipo estatua: si el jugador lo mira se queda quieto, si no lo mira avanza hacia el
-//No usa animacion: se mueve a saltitos, actualizando su posicion cada cierta cantidad de frames
-//Por si acaso deben Bakear un NavMesh Surface para que sirva :v
 [RequireComponent(typeof(NavMeshAgent))]
 public class EstatuaAI : MonoBehaviour
 {
     public enum State { Frozen, Moving, Caught }
 
-    // Si se deja vacio, busca automaticamente al objeto con la etiqueta Player
     public Transform player;
-    // Camara del jugador. Si se deja vacia usa Camera.main
     public Camera playerCamera;
-
-    // Velocidad real con la que el agente recorre el camino (entre saltos)
     public float moveSpeed = 3.5f;
-    // Cada cuantos frames se actualiza la posicion visible del enemigo
     public int stepFrames = 5;
 
-    // Capas que bloquean la vision (paredes, muebles...)
     public LayerMask obstacleMask = ~0;
-    // Margen extra del borde de la pantalla (0.1 = lo considera visto un poco antes de entrar del todo)
     public float screenMargin = 0.05f;
-    // Distancia maxima a la que el jugador "lo ve". 0 = sin limite
     public float maxSeenDistance = 0f;
-    // Si es true, el enemigo se gira hacia el jugador en cada salto
     public bool faceTargetWhenMoving = true;
 
     public float catchDistance = 1.2f;
@@ -77,7 +65,6 @@ public class EstatuaAI : MonoBehaviour
             return;
         }
 
-        // El agente calcula el camino por su cuenta, pero nosotros movemos el transform a saltos
         agent.updatePosition = false;
         agent.updateRotation = false;
         agent.speed = moveSpeed;
@@ -95,7 +82,7 @@ public class EstatuaAI : MonoBehaviour
         else if (!seen && CurrentState != State.Moving) EnterState(State.Moving);
 
         if (CurrentState == State.Moving) UpdateMoving();
-        else agent.nextPosition = transform.position; // Quieto: evita que el agente se adelante
+        else agent.nextPosition = transform.position; 
     }
 
     void EnterState(State next)
@@ -133,7 +120,7 @@ public class EstatuaAI : MonoBehaviour
             return;
         }
 
-        // Solo aplica la posicion cada X frames, asi se ve que "salta" sin animacion
+       // en vez de usar animacion usamos 5 frames randoms
         frameCounter++;
         if (frameCounter < stepFrames) return;
         frameCounter = 0;
@@ -151,14 +138,12 @@ public class EstatuaAI : MonoBehaviour
     }
 
 
-    // Devuelve true si el jugador tiene al enemigo en pantalla y sin nada en medio
     bool IsSeenByPlayer()
     {
         Vector3 camPos = playerCamera.transform.position;
 
         if (maxSeenDistance > 0f && Vector3.Distance(camPos, transform.position) > maxSeenDistance) return false;
 
-        // Revisa varios puntos del cuerpo: si cualquiera se ve, cuenta como visto
         foreach (Vector3 point in GetCheckPoints())
         {
             Vector3 vp = playerCamera.WorldToViewportPoint(point);
@@ -202,7 +187,6 @@ public class EstatuaAI : MonoBehaviour
         var hits = Physics.RaycastAll(from, dir.normalized, distance, obstacleMask, QueryTriggerInteraction.Ignore);
         foreach (var hit in hits)
         {
-            // Ignora al propio enemigo y al jugador, solo cuentan las paredes y demas
             if (hit.collider.transform.IsChildOf(transform)) continue;
             if (hit.collider.transform.IsChildOf(player) || player.IsChildOf(hit.collider.transform)) continue;
             return false;
