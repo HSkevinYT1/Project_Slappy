@@ -54,11 +54,10 @@ half3 FogAddLight(Light light, half strength)
     return light.color * (light.distanceAttenuation * light.shadowAttenuation * strength);
 }
 
-// Luz que llega a un punto de la niebla. No usa normal: la niebla dispersa la luz en todas direcciones
-half3 FogLighting(float3 positionWS, float2 screenUV, half ambientStrength, half mainLightStrength, half pointLightStrength, half maxBrightness)
+// Luz de las luces adicionales (antorchas, linterna) que llega a un punto
+half3 FogAdditionalLights(float3 positionWS, float2 screenUV, half pointLightStrength)
 {
-    half3 lighting = max(half3(0, 0, 0), half3(unity_SHAr.w, unity_SHAg.w, unity_SHAb.w)) * ambientStrength;
-    lighting += FogAddLight(GetMainLight(TransformWorldToShadowCoord(positionWS)), mainLightStrength);
+    half3 lighting = 0.0;
 
     #if defined(_ADDITIONAL_LIGHTS) || defined(_ADDITIONAL_LIGHTS_VERTEX)
     // LIGHT_LOOP_BEGIN usa "inputData" para buscar las luces del cluster en Forward+
@@ -80,6 +79,16 @@ half3 FogLighting(float3 positionWS, float2 screenUV, half ambientStrength, half
         lighting += FogAddLight(GetAdditionalLight(lightIndex, positionWS, shadowMask), pointLightStrength);
     LIGHT_LOOP_END
     #endif
+
+    return lighting;
+}
+
+// Luz que llega a un punto de la niebla. No usa normal: la niebla dispersa la luz en todas direcciones
+half3 FogLighting(float3 positionWS, float2 screenUV, half ambientStrength, half mainLightStrength, half pointLightStrength, half maxBrightness)
+{
+    half3 lighting = max(half3(0, 0, 0), half3(unity_SHAr.w, unity_SHAg.w, unity_SHAb.w)) * ambientStrength;
+    lighting += FogAddLight(GetMainLight(TransformWorldToShadowCoord(positionWS)), mainLightStrength);
+    lighting += FogAdditionalLights(positionWS, screenUV, pointLightStrength);
 
     // Recorta el brillo sin cambiar el tono (junto a la antorcha sigue siendo naranja y no se quema)
     half peak = max(lighting.r, max(lighting.g, lighting.b));

@@ -28,6 +28,8 @@ Shader "Slappy/Fog Volume"
         _VisionColor ("Vision Color", Color) = (0, 0, 0, 1)
         _VisionStart ("Vision Start (meters)", Float) = 2
         _VisionEnd ("Vision End (meters)", Float) = 0
+        // Cuanto atraviesan la oscuridad las zonas iluminadas por luces adicionales (linterna, antorchas)
+        _LightReveal ("Light Reveal", Range(0, 20)) = 4
 
         // Lo controla FogVolume para las transiciones
         [HideInInspector] _Fade ("Fade", Range(0, 1)) = 1
@@ -85,6 +87,7 @@ Shader "Slappy/Fog Volume"
                 half4 _VisionColor;
                 float _VisionStart;
                 float _VisionEnd;
+                half _LightReveal;
                 half _Fade;
             CBUFFER_END
 
@@ -191,6 +194,16 @@ Shader "Slappy/Fog Volume"
                 if (_VisionEnd > 0.0)
                 {
                     half vision = smoothstep(_VisionStart, _VisionEnd, sceneDistance) * _Fade;
+
+                    // Lo que ilumina la linterna (o una antorcha) se ve aunque este lejos
+                    if (_LightReveal > 0.0 && vision > 0.0)
+                    {
+                        float3 surfaceWS = cameraWS + rayWS * sceneDistance;
+                        half3 surfaceLight = FogAdditionalLights(surfaceWS, screenUV, 1.0);
+                        half lit = max(surfaceLight.r, max(surfaceLight.g, surfaceLight.b));
+                        vision *= 1.0 - saturate(lit * _LightReveal);
+                    }
+
                     color = lerp(color, _VisionColor.rgb, vision);
                     alpha = lerp(alpha, 1.0, vision);
                 }

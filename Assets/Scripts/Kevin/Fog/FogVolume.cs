@@ -25,6 +25,8 @@ public class FogVolume : MonoBehaviour
     public float visionStart = 2f;
     // Metros a partir de los cuales todo es negro, 0 = sin limite de vision
     public float visionEnd = 0f;
+    // Cuanto atraviesan la oscuridad las zonas iluminadas (linterna, antorchas). 0 = nada
+    [Range(0f, 20f)] public float lightReveal = 4f;
 
     // Si esta desmarcado empieza apagada hasta llamar a Activate()
     public bool activeOnStart = true;
@@ -49,6 +51,7 @@ public class FogVolume : MonoBehaviour
     private static readonly int VisionColorId = Shader.PropertyToID("_VisionColor");
     private static readonly int VisionStartId = Shader.PropertyToID("_VisionStart");
     private static readonly int VisionEndId = Shader.PropertyToID("_VisionEnd");
+    private static readonly int LightRevealId = Shader.PropertyToID("_LightReveal");
     private static readonly int FadeId = Shader.PropertyToID("_Fade");
 
     // Hace aparecer la niebla con transicion (se puede llamar desde un UnityEvent u otro script)
@@ -130,6 +133,7 @@ public class FogVolume : MonoBehaviour
         block.SetColor(VisionColorId, visionColor);
         block.SetFloat(VisionStartId, visionStart);
         block.SetFloat(VisionEndId, visionEnd);
+        block.SetFloat(LightRevealId, lightReveal);
         block.SetFloat(FadeId, Weight);
         meshRenderer.SetPropertyBlock(block);
 
