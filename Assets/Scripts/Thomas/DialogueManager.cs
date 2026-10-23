@@ -19,11 +19,16 @@ public class DialogueManager : MonoBehaviour
     // Tecla para completar la linea y pasar a la siguiente
     [SerializeField] private KeyCode nextKey = KeyCode.Space;
 
+    [Header("Jugador")]
+    [Tooltip("Opcional. Si se deja vacio se busca solo el PlayerMovement de la escena.")]
+    [SerializeField] private PlayerMovement playerMovement;
+    private Rigidbody playerRb;
+
     // Estado de lectura para otros scripts
     public bool IsActive { get; private set; }
     public DialogueData CurrentData { get; private set; }
 
-    // Eventos para que otros sistemas reaccionen (ej: bloquear al jugador mientras habla)
+    // Eventos para que otros sistemas reaccionen (ej: musica, camara, misiones)
     // CurrentData ya tiene el dialogo cuando se lanza OnDialogueStarted.
     public event Action OnDialogueStarted;
     public event Action OnDialogueEnded;
@@ -44,6 +49,16 @@ public class DialogueManager : MonoBehaviour
 
         Instance = this;
         dialoguePanel.SetActive(false);
+    }
+
+    void Start()
+    {
+        if (playerMovement == null) playerMovement = FindFirstObjectByType<PlayerMovement>();
+
+        if (playerMovement != null)
+            playerRb = playerMovement.GetComponent<Rigidbody>();
+        else
+            Debug.LogWarning("DialogueManager: no hay un PlayerMovement en la escena, no se bloqueara al jugador.");
     }
 
     void OnDestroy()
@@ -78,6 +93,7 @@ public class DialogueManager : MonoBehaviour
         startFrame = Time.frameCount;
 
         dialoguePanel.SetActive(true);
+        LockPlayer();
         OnDialogueStarted?.Invoke();
 
         typingCoroutine = StartCoroutine(ShowLine());
@@ -95,8 +111,30 @@ public class DialogueManager : MonoBehaviour
         IsActive = false;
         CurrentData = null;
         dialoguePanel.SetActive(false);
+        UnlockPlayer();
 
         OnDialogueEnded?.Invoke();
+    }
+
+    // Bloquea al jugador mientras dura una Conversacion (en Examinar puede seguir moviendose)
+    private void LockPlayer()
+    {
+        if (CurrentData.modo == DialogueMode.Examinar) return;
+
+        if (playerMovement != null) playerMovement.enabled = false;
+
+        // Al desactivar PlayerMovement, el Rigidbody conservaria su ultima velocidad
+        // y el jugador seguiria deslizandose: se frena en seco (se conserva la Y por la gravedad).
+        if (playerRb != null)
+        {
+            playerRb.linearVelocity = new Vector3(0f, playerRb.linearVelocity.y, 0f);
+            playerRb.angularVelocity = Vector3.zero;
+        }
+    }
+
+    private void UnlockPlayer()
+    {
+        if (playerMovement != null) playerMovement.enabled = true;
     }
 
     private void NextLine()
