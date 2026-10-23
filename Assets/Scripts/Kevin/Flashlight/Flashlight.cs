@@ -9,14 +9,20 @@ public class Flashlight : MonoBehaviour
 
     public float battery = 100f;
 
+    private GrabInteractable grab;
+    private PlayerInteractor interactor;
+
     void Start()
     {
         source = GetComponent<AudioSource>();
+        grab = GetComponentInParent<GrabInteractable>();
+        interactor = FindFirstObjectByType<PlayerInteractor>();
     }
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(1))
+        // Solo se puede prender/apagar si el jugador la tiene en la mano
+        if (Input.GetMouseButtonDown(1) && IsHeld())
         {
             LightManager();
         }
@@ -32,6 +38,13 @@ public class Flashlight : MonoBehaviour
                 lightObject.SetActive(false);
             }
         }
+    }
+
+    bool IsHeld()
+    {
+        // Si la linterna no se puede agarrar, se asume que siempre esta en la mano
+        if (grab == null) return true;
+        return interactor != null && interactor.Held == grab;
     }
 
     void LightManager()

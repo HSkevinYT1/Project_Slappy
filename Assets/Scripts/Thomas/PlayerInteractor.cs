@@ -12,10 +12,15 @@ public class PlayerInteractor : MonoBehaviour
     // asi una pared entre el jugador y el objeto impide la interaccion.
     public LayerMask raycastLayers = ~0;
     public KeyCode interactKey = KeyCode.F;
+    // Ayuda para apuntar a objetos pequenos: si el rayo pega cerca de uno (ej: en el suelo
+    // junto a la linterna), se detecta el objeto mas cercano dentro de este radio
+    public float aimAssistRadius = 0.3f;
 
     [Header("Agarrar")]
     // Punto donde se coloca el objeto agarrado (ej: el HandPoint del Player)
     public Transform handPoint;
+    // Hueso de la muneca de los brazos. Si existe, el HandPoint se coloca en el centro del puno
+    public string wristBoneName = "wrist.R";
 
     // Objeto al que se esta apuntando ahora mismo (null si no hay ninguno)
     public IInteractable Current { get; private set; }
@@ -30,6 +35,42 @@ public class PlayerInteractor : MonoBehaviour
     {
         cam = GetComponent<Camera>();
         if (cam == null) cam = Camera.main;
+
+        // El HandPoint debe seguir a la camara (como los brazos) para que lo agarrado
+        // no se quede flotando al mirar arriba o abajo
+        if (handPoint != null && !handPoint.IsChildOf(cam.transform))
+            handPoint.SetParent(cam.transform, true);
+
+        // Si los brazos tienen huesos, lo agarrado va al centro del puno
+        Transform grip = CreateGripPoint();
+        if (grip != null) handPoint = grip;
+    }
+
+    // Crea un punto en el centro del puno (promedio de las falanges del medio: F12.R, F22.R...).
+    // Cuelga de la camara y no del hueso, para no heredar la escala rara del modelo.
+    Transform CreateGripPoint()
+    {
+        Transform wrist = null;
+        foreach (Transform t in transform.root.GetComponentsInChildren<Transform>(true))
+            if (t.name == wristBoneName) { wrist = t; break; }
+        if (wrist == null) return null;
+
+        Vector3 center = Vector3.zero;
+        int count = 0;
+        foreach (Transform t in wrist.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.Length == 5 && t.name[0] == 'F' && t.name[2] == '2')
+            {
+                center += t.position;
+                count++;
+            }
+        }
+        if (count == 0) return null;
+
+        Transform grip = new GameObject("Agarre_Mano").transform;
+        grip.SetParent(cam.transform, false);
+        grip.position = center / count;
+        return grip;
     }
 
     void Update()
@@ -65,10 +106,36 @@ public class PlayerInteractor : MonoBehaviour
                             raycastLayers, QueryTriggerInteraction.Ignore))
         {
             // GetComponentInParent permite que el collider este en un hijo del objeto
-            return hit.collider.GetComponentInParent<IInteractable>();
+            IInteractable direct = hit.collider.GetComponentInParent<IInteractable>();
+            if (direct != null) return direct;
+
+            return FindNear(hit.point);
         }
 
         return null;
+    }
+
+    IInteractable FindNear(Vector3 point)
+    {
+        if (aimAssistRadius <= 0f) return null;
+
+        IInteractable closest = null;
+        float closestDistance = float.MaxValue;
+
+        foreach (Collider c in Physics.OverlapSphere(point, aimAssistRadius, raycastLayers, QueryTriggerInteraction.Ignore))
+        {
+            IInteractable interactable = c.GetComponentInParent<IInteractable>();
+            if (interactable == null) continue;
+
+            float distance = (c.ClosestPoint(point) - point).sqrMagnitude;
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closest = interactable;
+            }
+        }
+
+        return closest;
     }
 
     public void Hold(GrabInteractable obj)

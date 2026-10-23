@@ -20,7 +20,6 @@ public class EstatuaAI : MonoBehaviour
     public float catchDistance = 1.2f;
 
     public UnityEvent onPlayerCaught;
-    // Se llaman al cambiar entre quieto y en movimiento (por si quieres sonidos)
     public UnityEvent onFreeze;
     public UnityEvent onStartMoving;
 
