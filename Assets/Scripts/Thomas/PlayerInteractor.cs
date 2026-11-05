@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// Detecta con un raycast desde el centro de la camara el objeto interactuable
+// Detecta con un raycast desde el centro de la camara (o desde su puntero, si tiene) el objeto interactuable
 // al que apunta el jugador y lo activa al presionar la tecla de interaccion.
 // Se coloca en la Main Camera (junto a MouseLook).
 public class PlayerInteractor : MonoBehaviour
@@ -11,10 +11,13 @@ public class PlayerInteractor : MonoBehaviour
     // Capas que bloquean/permiten el rayo. Se deja en "Everything" a proposito:
     // asi una pared entre el jugador y el objeto impide la interaccion.
     public LayerMask raycastLayers = ~0;
-    public KeyCode interactKey = KeyCode.F;
     // Ayuda para apuntar a objetos pequenos: si el rayo pega cerca de uno (ej: en el suelo
     // junto a la linterna), se detecta el objeto mas cercano dentro de este radio
     public float aimAssistRadius = 0.3f;
+
+    [Header("Puntero")]
+    [Tooltip("Con que se apunta y se agarra en lugar de la camara (ej: un mando). Vacio = la camara.")]
+    public Transform pointer;
 
     [Header("Agarrar")]
     // Punto donde se coloca el objeto agarrado (ej: el HandPoint del Player)
@@ -23,11 +26,11 @@ public class PlayerInteractor : MonoBehaviour
     public string wristBoneName = "wrist.R";
 
     // Objeto al que se esta apuntando ahora mismo (null si no hay ninguno)
-    public IInteractable Current { get; private set; }
+    public Interactable Current { get; private set; }
     public string CurrentPrompt => Held != null ? "Soltar" : Current != null ? Current.Prompt : string.Empty;
 
     // Objeto que el jugador tiene en la mano (null si no tiene ninguno)
-    public GrabInteractable Held { get; private set; }
+    public Grabbable Held { get; private set; }
 
     private Camera cam;
 
@@ -36,10 +39,11 @@ public class PlayerInteractor : MonoBehaviour
         cam = GetComponent<Camera>();
         if (cam == null) cam = Camera.main;
 
-        // El HandPoint debe seguir a la camara (como los brazos) para que lo agarrado
-        // no se quede flotando al mirar arriba o abajo
-        if (handPoint != null && !handPoint.IsChildOf(cam.transform))
-            handPoint.SetParent(cam.transform, true);
+        // El HandPoint debe seguir a la camara (como los brazos) o al puntero para que lo
+        // agarrado no se quede flotando al mirar arriba o abajo
+        Transform follow = pointer != null ? pointer : cam.transform;
+        if (handPoint != null && !handPoint.IsChildOf(follow))
+            handPoint.SetParent(follow, true);
 
         // Si los brazos tienen huesos, lo agarrado va al centro del puno
         Transform grip = CreateGripPoint();
@@ -86,7 +90,7 @@ public class PlayerInteractor : MonoBehaviour
         if (Held != null)
         {
             Current = null;
-            if (Input.GetKeyDown(interactKey)) Drop();
+            if (GameInput.Interact) Drop();
             return;
         }
 
@@ -94,20 +98,21 @@ public class PlayerInteractor : MonoBehaviour
         Current = FindInteractable();
 
         // Si hay uno y se presiona la tecla, se interactua con el
-        if (Current != null && Input.GetKeyDown(interactKey))
+        if (Current != null && GameInput.Interact)
             Current.Interact(this);
     }
 
-    IInteractable FindInteractable()
+    Interactable FindInteractable()
     {
-        Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+        Transform aim = pointer != null ? pointer : cam.transform;
+        Ray ray = new Ray(aim.position, aim.forward);
 
         if (Physics.Raycast(ray, out RaycastHit hit, interactDistance,
                             raycastLayers, QueryTriggerInteraction.Ignore))
         {
             // GetComponentInParent permite que el collider este en un hijo del objeto
-            IInteractable direct = hit.collider.GetComponentInParent<IInteractable>();
-            if (direct != null) return direct;
+            Interactable direct = hit.collider.GetComponentInParent<Interactable>();
+            if (direct != null && direct.enabled) return direct;
 
             return FindNear(hit.point);
         }
@@ -115,17 +120,17 @@ public class PlayerInteractor : MonoBehaviour
         return null;
     }
 
-    IInteractable FindNear(Vector3 point)
+    Interactable FindNear(Vector3 point)
     {
         if (aimAssistRadius <= 0f) return null;
 
-        IInteractable closest = null;
+        Interactable closest = null;
         float closestDistance = float.MaxValue;
 
         foreach (Collider c in Physics.OverlapSphere(point, aimAssistRadius, raycastLayers, QueryTriggerInteraction.Ignore))
         {
-            IInteractable interactable = c.GetComponentInParent<IInteractable>();
-            if (interactable == null) continue;
+            Interactable interactable = c.GetComponentInParent<Interactable>();
+            if (interactable == null || !interactable.enabled) continue;
 
             float distance = (c.ClosestPoint(point) - point).sqrMagnitude;
             if (distance < closestDistance)
@@ -138,7 +143,7 @@ public class PlayerInteractor : MonoBehaviour
         return closest;
     }
 
-    public void Hold(GrabInteractable obj)
+    public void Hold(Grabbable obj)
     {
         if (handPoint == null)
         {
@@ -161,7 +166,8 @@ public class PlayerInteractor : MonoBehaviour
     // Texto temporal en pantalla para probar. Mas adelante se reemplaza por un Canvas.
     void OnGUI()
     {
-        if (string.IsNullOrEmpty(CurrentPrompt)) return;
+        // Con puntero propio, el texto lo muestra quien maneje ese puntero
+        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt)) return;
 
         GUIStyle style = new GUIStyle(GUI.skin.label)
         {
@@ -170,6 +176,6 @@ public class PlayerInteractor : MonoBehaviour
         };
 
         Rect rect = new Rect(Screen.width / 2f - 150f, Screen.height / 2f + 40f, 300f, 40f);
-        GUI.Label(rect, "[" + interactKey + "] " + CurrentPrompt, style);
+        GUI.Label(rect, "[" + GameInput.InteractKeyName + "] " + CurrentPrompt, style);
     }
 }

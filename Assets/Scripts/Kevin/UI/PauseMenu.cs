@@ -9,7 +9,6 @@ public class PauseMenu : MonoBehaviour
 
     [Tooltip("Objeto raiz del menu: se activa al pausar y se oculta al continuar.")]
     public GameObject pausePanel;
-    public KeyCode pauseKey = KeyCode.Escape;
 
     private CursorLockMode previousLockState;
     private bool previousCursorVisible;
@@ -32,7 +31,7 @@ public class PauseMenu : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(pauseKey))
+        if (GameInput.Pause)
         {
             if (IsPaused) Resume();
             else Pause();

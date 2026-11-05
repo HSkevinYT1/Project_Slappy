@@ -1,13 +1,11 @@
 using UnityEngine;
 
-// Se coloca en cualquier objeto con Rigidbody y Collider para que el jugador
-// pueda agarrarlo mirandolo y presionando la tecla de interaccion (F).
-// Con el objeto en la mano, la misma tecla lo suelta.
-[RequireComponent(typeof(Rigidbody))]
-public class GrabInteractable : MonoBehaviour, IInteractable
+// Se coloca en cualquier objeto con Rigidbody y Collider para que el jugador pueda agarrarlo.
+// Se activa desde un Interactable (On Interact > Grabbable > PickUp).
+// Con el objeto en la mano, la tecla de interaccion lo suelta.
+[RequireComponent(typeof(Rigidbody), typeof(Interactable))]
+public class Grabbable : MonoBehaviour
 {
-    [SerializeField] private string prompt = "Agarrar";
-
     [Header("En la mano")]
     // Punto propio donde se sostiene (ej: un hijo del hueso de la muneca). Vacio = HandPoint del jugador
     [SerializeField] private Transform holdPoint;
@@ -20,8 +18,6 @@ public class GrabInteractable : MonoBehaviour, IInteractable
     // Tamano maximo (en metros) en la mano: si el objeto es mas grande se achica mientras se
     // sostiene, para que no tape la camara. Al soltarlo recupera su tamano. 0 = sin limite
     [SerializeField] private float maxHeldSize = 0.25f;
-
-    public string Prompt => prompt;
 
     private Rigidbody rb;
     private Collider[] colliders;
@@ -36,7 +32,8 @@ public class GrabInteractable : MonoBehaviour, IInteractable
         interpolation = rb.interpolation;
     }
 
-    public void Interact(PlayerInteractor interactor)
+    // Se elige en el On Interact del Interactable
+    public void PickUp(PlayerInteractor interactor)
     {
         interactor.Hold(this);
     }

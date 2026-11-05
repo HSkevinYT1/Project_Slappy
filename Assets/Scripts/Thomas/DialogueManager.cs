@@ -16,8 +16,6 @@ public class DialogueManager : MonoBehaviour
 
     [Header("Ajustes")]
     [SerializeField] private float typingSpeed = 0.05f;
-    // Tecla para completar la linea y pasar a la siguiente
-    [SerializeField] private KeyCode nextKey = KeyCode.Space;
 
     [Header("Jugador")]
     [Tooltip("Opcional. Si se deja vacio se busca solo el PlayerMovement de la escena.")]
@@ -72,7 +70,7 @@ public class DialogueManager : MonoBehaviour
         // (evita que una misma pulsacion inicie y avance a la vez)
         if (!IsActive || Time.frameCount == startFrame) return;
 
-        if (Input.GetKeyDown(nextKey))
+        if (GameInput.NextDialogue)
         {
             if (isTyping)
                 skipTyping = true;   // muestra de golpe lo que falta de la linea

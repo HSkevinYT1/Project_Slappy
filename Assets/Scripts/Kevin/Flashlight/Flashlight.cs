@@ -9,20 +9,20 @@ public class Flashlight : MonoBehaviour
 
     public float battery = 100f;
 
-    private GrabInteractable grab;
+    private Grabbable grab;
     private PlayerInteractor interactor;
 
     void Start()
     {
         source = GetComponent<AudioSource>();
-        grab = GetComponentInParent<GrabInteractable>();
+        grab = GetComponentInParent<Grabbable>();
         interactor = FindFirstObjectByType<PlayerInteractor>();
     }
 
     void Update()
     {
         // Solo se puede prender/apagar si el jugador la tiene en la mano
-        if (Input.GetMouseButtonDown(1) && IsHeld())
+        if (GameInput.Flashlight && IsHeld())
         {
             LightManager();
         }

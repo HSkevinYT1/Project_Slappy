@@ -23,4 +23,16 @@ public class DialogueData : ScriptableObject
     [Tooltip("Solo en modo Examinar: segundos que se queda visible cada linea antes de pasar sola")]
     [Min(0.5f)]
     public float segundosPorLinea = 3f;
+
+    // Se elige en el On Interact de un Interactable, arrastrando este asset al evento
+    public void Play()
+    {
+        if (DialogueManager.Instance == null)
+        {
+            Debug.LogWarning("No hay un DialogueManager en la escena.");
+            return;
+        }
+
+        DialogueManager.Instance.StartDialogue(this);
+    }
 }
