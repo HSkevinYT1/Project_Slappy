@@ -7,11 +7,11 @@ using UnityEngine.Rendering;
 // - Las lianas se crean al iniciar, siguiendo la forma de cada cubo de los contenedores
 //   indicados (por defecto "Paredes" y "Paredes Elevadas"), asi que si cambias o
 //   eliminas cubos, las lianas se adaptan solas.
-// - Al principio solo se encienden las lianas que bordean el camino desde el jugador
-//   hasta la zona segura (se recalcula mientras el jugador se mueve).
-// - Las encendidas pulsan como una onda seno que avanza hacia la zona segura.
-// - Cuando el jugador llega a la zona segura (ver ZonaSeguraLianas) se encienden todas,
-//   en una ola que sale desde la zona segura.
+// - Siempre estan encendidas las lianas de la ruta marcada (bloques "p1", "p1 (1)"...
+//   hasta la zona segura). Sin ruta marcada, se usa el camino mas corto desde el jugador.
+// - Las demas lianas se encienden solo cuando el jugador pasa cerca (y se quedan encendidas).
+//   Llegar a la zona segura NO enciende todas.
+// - Las encendidas pulsan como una onda seno que avanza por la ruta hacia la zona segura.
 //
 // Uso: poner este componente en el objeto "Laberinto" y asignar "Zona Segura".
 // Tambien existe el menu Tools > Lianas > Configurar Laberinto que lo hace solo.
@@ -53,6 +53,16 @@ public class LianasLaberinto : MonoBehaviour
     [Tooltip("Cada cuanto se revisa si el jugador cambio de posicion (segundos).")]
     [Range(0.05f, 2f)] public float intervaloRecalculo = 0.3f;
 
+    [Header("Ruta marcada (p1 -> p1 (1) -> ... -> zona segura)")]
+    [Tooltip("Si hay puntos, las lianas encendidas son las de ESTA ruta (en orden) y no el camino mas corto.")]
+    public List<Transform> puntosRuta = new List<Transform>();
+    [Tooltip("Copia de la ruta en coordenadas del Laberinto: sigue funcionando aunque se borren los puntos.")]
+    [SerializeField] List<Vector3> rutaGuardada = new List<Vector3>();
+
+    [Header("Descubrir lianas")]
+    [Tooltip("Las lianas a esta distancia (caminando) del jugador se encienden y se quedan encendidas.")]
+    [Range(0f, 10f)] public float radioDescubrir = 3f;
+
     [Header("Zona segura")]
     [Tooltip("Retraso por metro de la ola que enciende todas las lianas al llegar a la zona segura.")]
     [Range(0f, 0.2f)] public float retrasoPorMetro = 0.04f;
@@ -73,6 +83,20 @@ public class LianasLaberinto : MonoBehaviour
     [Range(0, 4)] public int ramasMaximas = 2;
     [Tooltip("Agrega una raiz horizontal en la base de cada pared.")]
     public bool raizEnLaBase = true;
+
+    [Tooltip("Contenedores cuyas lianas van en vertical (hacia arriba o hacia abajo), ej: Paredes Elevadas (rosadas).")]
+    public List<Transform> contenedoresVerticales = new List<Transform>();
+    [Tooltip("Material propio de las lianas verticales (bloques rosas). Si esta vacio se usa Resources/LianasVerticales.")]
+    public Material materialLianasVerticales;
+    [Tooltip("Lianas verticales por metro en los bloques rosas.")]
+    [Range(0.5f, 8f)] public float densidadVerticales = 3f;
+
+    [Header("Lianas en el piso")]
+    public bool lianasEnPiso = true;
+    [Tooltip("El piso se divide en baldosas de este tamano; cada una se enciende/apaga como unidad.")]
+    [Range(1f, 8f)] public float tamanoBaldosaPiso = 3f;
+    [Range(0, 6)] public int venasPorBaldosa = 2;
+    [Range(0.005f, 0.15f)] public float grosorPiso = 0.035f;
     [Range(3, 8)] public int ladosTubo = 5;
 
     const string NombreObjetoGenerado = "Lianas (generadas)";
@@ -105,6 +129,9 @@ public class LianasLaberinto : MonoBehaviour
     int[] marcaCerca;      // celdas cerca del camino (con marca de recalculo)
     int marcaActual;
     readonly List<int> camino = new List<int>();
+    float[] distRuta;      // metros que faltan por la ruta marcada (-1 = lejos de la ruta)
+    bool[] descubierta;    // celdas por las que ya paso (cerca) el jugador
+    bool hayRuta;
 
     // Malla
     readonly List<Tramo> tramos = new List<Tramo>();
@@ -138,10 +165,13 @@ public class LianasLaberinto : MonoBehaviour
         if (paredes) contenedoresConLianas.Add(paredes);
         if (elevadas) contenedoresConLianas.Add(elevadas);
 
+        // Las paredes elevadas (rosadas) NO bloquean: el jugador pasa por debajo.
         contenedoresObstaculos.Clear();
         if (paredes) contenedoresObstaculos.Add(paredes);
-        if (elevadas) contenedoresObstaculos.Add(elevadas);
         if (bloques) contenedoresObstaculos.Add(bloques);
+
+        contenedoresVerticales.Clear();
+        if (elevadas) contenedoresVerticales.Add(elevadas);
 
         if (!piso) piso = transform.Find("Piso");
         if (!techo) techo = transform.Find("techo");
@@ -152,6 +182,17 @@ public class LianasLaberinto : MonoBehaviour
             ZonaSeguraLianas z = GetComponentInChildren<ZonaSeguraLianas>(true);
             if (z) zonaSegura = z.transform;
         }
+        if (!zonaSegura)
+        {
+            // Objeto colocado a mano con nombre tipo "zona segura".
+            foreach (Transform t in GetComponentsInChildren<Transform>(true))
+            {
+                string n = t.name.Replace("'", "").Replace("_", " ").Trim().ToLowerInvariant();
+                if (n.Contains("zona segura")) { zonaSegura = t; break; }
+            }
+        }
+
+        if (puntosRuta.Count == 0) BuscarPuntosRuta();
 
 #if UNITY_EDITOR
         if (!materialLianas)
@@ -162,6 +203,73 @@ public class LianasLaberinto : MonoBehaviour
                 if (materialLianas) break;
             }
         }
+#endif
+    }
+
+    // Busca los bloques "p1", "p1 (1)", "p1 (2)"... dentro del Laberinto, en orden.
+    public void BuscarPuntosRuta()
+    {
+        var encontrados = new List<KeyValuePair<int, Transform>>();
+        foreach (Transform t in GetComponentsInChildren<Transform>(true))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(t.name.Trim(), @"^p1(?:\s*\((\d+)\))?$");
+            if (!m.Success) continue;
+            int orden = m.Groups[1].Success ? int.Parse(m.Groups[1].Value) : 0;
+            encontrados.Add(new KeyValuePair<int, Transform>(orden, t));
+        }
+        encontrados.Sort((a, b) => a.Key.CompareTo(b.Key));
+        puntosRuta.Clear();
+        foreach (var e in encontrados) puntosRuta.Add(e.Value);
+    }
+
+    // Ruta en el mundo: puntos (o su copia guardada) + la zona segura al final.
+    List<Vector3> RutaMundo()
+    {
+        var ruta = new List<Vector3>();
+        bool hayPuntos = false;
+        foreach (Transform t in puntosRuta) if (t) { ruta.Add(t.position); hayPuntos = true; }
+        if (hayPuntos)
+        {
+            if (zonaSegura) ruta.Add(CentroZonaSegura());
+        }
+        else
+        {
+            foreach (Vector3 p in rutaGuardada) ruta.Add(transform.TransformPoint(p));
+        }
+        return ruta;
+    }
+
+    Vector3 CentroZonaSegura()
+    {
+        return LimitesDe(zonaSegura, out Bounds b) ? b.center : zonaSegura.position;
+    }
+
+    // Destino final: la zona segura, o el ultimo punto de la ruta guardada si se borro.
+    bool PosicionZonaSegura(out Vector3 p)
+    {
+        if (zonaSegura) { p = CentroZonaSegura(); return true; }
+        if (rutaGuardada.Count > 0) { p = transform.TransformPoint(rutaGuardada[rutaGuardada.Count - 1]); return true; }
+        p = default;
+        return false;
+    }
+
+    // Guarda la ruta en coordenadas locales (para cuando se borren los bloques).
+    void ActualizarRutaGuardada()
+    {
+        bool hayPuntos = false;
+        foreach (Transform t in puntosRuta) if (t) { hayPuntos = true; break; }
+        if (!hayPuntos) return;
+
+        var nueva = new List<Vector3>();
+        foreach (Vector3 p in RutaMundo()) nueva.Add(transform.InverseTransformPoint(p));
+
+        bool igual = nueva.Count == rutaGuardada.Count;
+        for (int i = 0; igual && i < nueva.Count; i++) igual = (nueva[i] - rutaGuardada[i]).sqrMagnitude < 1e-6f;
+        if (igual) return;
+
+        rutaGuardada = nueva;
+#if UNITY_EDITOR
+        if (!Application.isPlaying) UnityEditor.EditorUtility.SetDirty(this);
 #endif
     }
 
@@ -230,16 +338,13 @@ public class LianasLaberinto : MonoBehaviour
             if (j) jugador = j.transform;
         }
 
+        if (puntosRuta.Count == 0 && rutaGuardada.Count == 0) BuscarPuntosRuta();
+        ActualizarRutaGuardada();
+
         Construir(false);
 
-        if (!zonaSegura)
-        {
-            // Sin destino no hay camino que mostrar: se encienden todas para que se vean.
-            Debug.LogWarning("[LianasLaberinto] No hay Zona Segura asignada: se encienden todas las lianas. " +
-                             "Crea una con Tools > Lianas > Configurar Laberinto.", this);
-            ActivarTodas();
-            return;
-        }
+        if (!hayRuta && !PosicionZonaSegura(out _))
+            Debug.LogWarning("[LianasLaberinto] No hay ruta ni zona segura: solo se encenderan las lianas por donde pase el jugador.", this);
 
         ActualizarCamino(true);
     }
@@ -255,6 +360,8 @@ public class LianasLaberinto : MonoBehaviour
 
         if (todasEncendidas) return;
 
+        // Llegar a la zona segura ya NO enciende todo: fuera de la ruta, las lianas
+        // solo se encienden por donde pasa el jugador.
         temporizador -= Time.deltaTime;
         if (temporizador <= 0f)
         {
@@ -266,7 +373,8 @@ public class LianasLaberinto : MonoBehaviour
     // ---------------------------------------------------------------------
     // API publica
 
-    // Enciende todas las lianas del laberinto (se llama al llegar a la zona segura).
+    // Enciende todas las lianas del laberinto. Ya no se llama sola al llegar a la zona segura;
+    // queda disponible por si algun evento del juego lo necesita.
     public void ActivarTodas()
     {
         if (!listo || todasEncendidas) return;
@@ -306,6 +414,7 @@ public class LianasLaberinto : MonoBehaviour
 
         ConstruirCuadricula(obstaculos, conLianas);
         CalcularDistanciasZonaSegura();
+        CalcularRuta();
         ConstruirMalla(conLianas, obstaculos, todoEncendido);
         listo = malla != null;
     }
@@ -479,11 +588,11 @@ public class LianasLaberinto : MonoBehaviour
     void CalcularDistanciasZonaSegura()
     {
         for (int i = 0; i < distSegura.Length; i++) distSegura[i] = -1;
-        if (!zonaSegura) return;
+        if (!PosicionZonaSegura(out Vector3 posSegura)) return;
 
         var cola = new Queue<int>();
         Bounds bz;
-        if (LimitesDe(zonaSegura, out bz))
+        if (zonaSegura && LimitesDe(zonaSegura, out bz))
         {
             for (int i = 0; i < caminable.Length; i++)
             {
@@ -499,7 +608,7 @@ public class LianasLaberinto : MonoBehaviour
 
         if (cola.Count == 0)
         {
-            int c = CeldaCaminable(zonaSegura.position, 8);
+            int c = CeldaCaminable(posSegura, 8);
             if (c < 0)
             {
                 Debug.LogWarning("[LianasLaberinto] La zona segura no esta sobre una parte caminable del laberinto.", this);
@@ -523,16 +632,123 @@ public class LianasLaberinto : MonoBehaviour
         }
     }
 
+    // Fase de la onda: por la ruta marcada si la liana esta cerca de ella
+    // (asi la onda corre a lo largo de la ruta), si no, por el camino mas corto.
     float DistanciaSeguraEn(Vector3 p, float porDefecto)
     {
         int i = IndiceCelda(p);
+        if (i >= 0 && distRuta != null && distRuta[i] >= 0f) return distRuta[i];
         if (i >= 0 && distSegura[i] >= 0) return distSegura[i] * tamanoCelda;
         return porDefecto;
     }
 
+    // Recorre la ruta marcada punto a punto (por los pasillos, sin atravesar paredes)
+    // y marca las celdas cercanas con los metros que faltan hasta la zona segura.
+    void CalcularRuta()
+    {
+        distRuta = new float[nx * nz];
+        descubierta = new bool[nx * nz];
+        for (int i = 0; i < distRuta.Length; i++) distRuta[i] = -1f;
+        camino.Clear();
+        hayRuta = false;
+
+        List<Vector3> puntos = RutaMundo();
+        if (puntos.Count < 2) return;
+
+        var celdasRuta = new List<int>();
+        int anterior = CeldaCaminable(puntos[0], 6);
+        if (anterior < 0)
+        {
+            Debug.LogWarning("[LianasLaberinto] El primer punto de la ruta (p1) no esta sobre una parte caminable.", this);
+            return;
+        }
+        celdasRuta.Add(anterior);
+        for (int k = 1; k < puntos.Count; k++)
+        {
+            int siguiente = CeldaCaminable(puntos[k], 6);
+            if (siguiente < 0)
+            {
+                Debug.LogWarning($"[LianasLaberinto] El punto {k} de la ruta no esta sobre una parte caminable; se salta.", this);
+                continue;
+            }
+            List<int> tramo = CaminoEntre(anterior, siguiente);
+            if (tramo == null)
+            {
+                Debug.LogWarning($"[LianasLaberinto] No hay paso caminando entre los puntos {k - 1} y {k} de la ruta.", this);
+                continue;
+            }
+            for (int i = 1; i < tramo.Count; i++) celdasRuta.Add(tramo[i]);
+            anterior = siguiente;
+        }
+        if (celdasRuta.Count < 2) return;
+
+        // Metros que faltan desde cada celda de la ruta hasta el final.
+        var falta = new float[celdasRuta.Count];
+        for (int i = celdasRuta.Count - 2; i >= 0; i--)
+            falta[i] = falta[i + 1] + Vector3.Distance(CentroCelda(celdasRuta[i]), CentroCelda(celdasRuta[i + 1]));
+
+        // Expandir a las celdas cercanas (caminando), heredando la distancia de la ruta.
+        int radio = Mathf.CeilToInt(distanciaCamino / tamanoCelda);
+        var pasos = new int[nx * nz];
+        var cola = new Queue<int>();
+        for (int i = 0; i < celdasRuta.Count; i++)
+        {
+            int c = celdasRuta[i];
+            if (distRuta[c] >= 0f && distRuta[c] <= falta[i]) continue;
+            distRuta[c] = falta[i];
+            pasos[c] = 0;
+            cola.Enqueue(c);
+        }
+        while (cola.Count > 0)
+        {
+            int i = cola.Dequeue();
+            if (pasos[i] >= radio) continue;
+            for (int k = 0; k < 4; k++)
+            {
+                if (Vecino(i, k, out int j) && distRuta[j] < 0f)
+                {
+                    distRuta[j] = distRuta[i];
+                    pasos[j] = pasos[i] + 1;
+                    cola.Enqueue(j);
+                }
+            }
+        }
+
+        camino.AddRange(celdasRuta);
+        hayRuta = true;
+    }
+
+    // Camino mas corto (BFS) entre dos celdas caminables.
+    List<int> CaminoEntre(int desde, int hasta)
+    {
+        if (desde == hasta) return new List<int> { desde };
+        var previo = new Dictionary<int, int> { [desde] = desde };
+        var cola = new Queue<int>();
+        cola.Enqueue(desde);
+        while (cola.Count > 0)
+        {
+            int i = cola.Dequeue();
+            if (i == hasta) break;
+            for (int k = 0; k < 8; k++)
+            {
+                if (Vecino(i, k, out int j) && !previo.ContainsKey(j))
+                {
+                    previo[j] = i;
+                    cola.Enqueue(j);
+                }
+            }
+        }
+        if (!previo.ContainsKey(hasta)) return null;
+        var lista = new List<int>();
+        for (int c = hasta; c != desde; c = previo[c]) lista.Add(c);
+        lista.Add(desde);
+        lista.Reverse();
+        return lista;
+    }
+
     float DistanciaEuclidea(Vector3 p)
     {
-        Vector3 destino = zonaSegura ? zonaSegura.position : transform.position;
+        Vector3 destino = PosicionZonaSegura(out Vector3 ps) ? ps : transform.position;
         p.y = destino.y;
         return Vector3.Distance(p, destino);
     }
@@ -543,7 +759,9 @@ public class LianasLaberinto : MonoBehaviour
     readonly List<Vector3> vPos = new List<Vector3>();
     readonly List<Vector3> vNor = new List<Vector3>();
     readonly List<Vector4> vDat = new List<Vector4>();
-    readonly List<int> vTri = new List<int>();
+    readonly List<int> vTri = new List<int>();   // submalla 0: paredes y piso
+    readonly List<int> vTriV = new List<int>();  // submalla 1: bloques rosas (material propio)
+    List<int> trisActual;
     readonly List<Vector3> puntos = new List<Vector3>();
     readonly List<float> radios = new List<float>();
     Transform destinoMalla;
@@ -551,14 +769,21 @@ public class LianasLaberinto : MonoBehaviour
     void ConstruirMalla(List<Caja> conLianas, List<Caja> obstaculos, bool todoEncendido)
     {
         destinoMalla = ObtenerObjetoGenerado(true).transform;
-        vPos.Clear(); vNor.Clear(); vDat.Clear(); vTri.Clear();
+        vPos.Clear(); vNor.Clear(); vDat.Clear(); vTri.Clear(); vTriV.Clear();
+        trisActual = vTri;
 
         var rnd = new System.Random(semilla);
         float inicial = todoEncendido ? 1f : 0f;
 
+        var verticales = new HashSet<Transform>();
+        foreach (Transform cont in contenedoresVerticales)
+            if (cont) foreach (Transform t in cont.GetComponentsInChildren<Transform>(true)) verticales.Add(t);
+        var sinHorizontales = new VenaHorizontal[0];
+
         for (int ci = 0; ci < conLianas.Count; ci++)
         {
             Caja b = conLianas[ci];
+            Modo modo = verticales.Contains(b.t) ? Modo.Vertical : Modo.Pared;
             for (int cara = 0; cara < 4; cara++)
             {
                 // Cara vertical: esquina inferior O, direccion horizontal R, normal N.
@@ -624,11 +849,38 @@ public class LianasLaberinto : MonoBehaviour
                         ? distSegura[tramo.celda] * tamanoCelda
                         : DistanciaEuclidea(frente);
 
-                    GenerarTramo(rnd, tramo, O, R, U, N, ancho, u0, u1, vIni, vFin, horizontales);
+                    GenerarTramo(rnd, tramo, O, R, U, N, ancho, u0, u1, vIni, vFin,
+                                 modo == Modo.Vertical ? sinHorizontales : horizontales, modo, grosor);
 
                     tramo.vCant = vPos.Count - tramo.vIni;
                     if (tramo.vCant > 0) tramos.Add(tramo);
                 }
+            }
+        }
+
+        // Venas sobre el piso, por baldosas (solo donde se puede caminar).
+        if (lianasEnPiso && venasPorBaldosa > 0)
+        {
+            float lado = tamanoBaldosaPiso;
+            float anchoX = nx * tamanoCelda, anchoZ = nz * tamanoCelda;
+            int bx = Mathf.Max(1, Mathf.CeilToInt(anchoX / lado));
+            int bz = Mathf.Max(1, Mathf.CeilToInt(anchoZ / lado));
+            for (int z = 0; z < bz; z++)
+            for (int x = 0; x < bx; x++)
+            {
+                Vector3 O = new Vector3(origen.x + x * lado, pisoY, origen.y + z * lado);
+                Vector3 centro = O + new Vector3(lado * 0.5f, 0f, lado * 0.5f);
+                int celda = CeldaCaminable(centro, Mathf.CeilToInt(lado * 0.5f / tamanoCelda));
+                if (celda < 0) continue;
+
+                var tramo = new Tramo { vIni = vPos.Count, prev = inicial, next = inicial, tCambio = -100f, celda = celda };
+                tramo.distSegura = distSegura[celda] >= 0 ? distSegura[celda] * tamanoCelda : DistanciaEuclidea(centro);
+
+                GenerarTramo(rnd, tramo, O, Vector3.right, Vector3.forward, Vector3.up,
+                             lado, 0f, lado, 0f, lado, sinHorizontales, Modo.Piso, grosorPiso);
+
+                tramo.vCant = vPos.Count - tramo.vIni;
+                if (tramo.vCant > 0) tramos.Add(tramo);
             }
         }
 
@@ -642,13 +894,17 @@ public class LianasLaberinto : MonoBehaviour
         malla.SetVertices(vPos);
         malla.SetNormals(vNor);
         malla.SetUVs(1, vDat);
+        malla.subMeshCount = 2;
         malla.SetTriangles(vTri, 0);
+        malla.SetTriangles(vTriV, 1);
         malla.RecalculateBounds();
         datos = vDat.ToArray();
 
+        if (!materialLianasVerticales) materialLianasVerticales = Resources.Load<Material>("LianasVerticales");
+
         destinoMalla.GetComponent<MeshFilter>().sharedMesh = malla;
         rendererLianas = destinoMalla.GetComponent<MeshRenderer>();
-        rendererLianas.sharedMaterial = materialLianas;
+        rendererLianas.sharedMaterials = new[] { materialLianas, materialLianasVerticales ? materialLianasVerticales : materialLianas };
         rendererLianas.shadowCastingMode = ShadowCastingMode.Off;
         rendererLianas.receiveShadows = false;
 
@@ -670,25 +926,64 @@ public class LianasLaberinto : MonoBehaviour
         public float altura, amp, frec, fase, radio;
     }
 
+    enum Modo { Pared, Vertical, Piso }
+
     void GenerarTramo(System.Random rnd, Tramo tramo, Vector3 O, Vector3 R, Vector3 U, Vector3 N,
-                      float ancho, float u0, float u1, float vIni, float vFin, VenaHorizontal[] horizontales)
+                      float ancho, float u0, float u1, float vIni, float vFin, VenaHorizontal[] horizontales,
+                      Modo modo, float grosorBase)
     {
         float alto = vFin - vIni;
         float margen = Mathf.Min(0.03f, ancho * 0.25f);
         const float paso = 0.15f;
 
-        // Venas que serpentean por la pared: salen de la base y avanzan en diagonal,
-        // girando de un lado a otro (cuanto mayor "tendenciaHorizontal", mas de lado).
-        int venas = Mathf.Max(1, Mathf.RoundToInt((u1 - u0) * densidadVenas));
+        // Pared: venas que salen de la base y avanzan en diagonal / de lado.
+        // Vertical: venas rectas que suben desde abajo o cuelgan desde arriba (paredes rosadas).
+        // Piso: venas que se extienden en cualquier direccion sobre el suelo.
+        int venas = modo == Modo.Piso ? venasPorBaldosa
+            : modo == Modo.Vertical ? Mathf.Max(2, Mathf.RoundToInt((u1 - u0) * densidadVerticales))
+            : Mathf.Max(1, Mathf.RoundToInt((u1 - u0) * densidadVenas));
+        trisActual = modo == Modo.Vertical ? vTriV : vTri;
+
         for (int s = 0; s < venas; s++)
         {
             float u = Mathf.Lerp(u0, u1, (s + Aleatorio(rnd, 0.2f, 0.8f)) / venas);
-            float v = vIni + Aleatorio(rnd, 0f, alto * 0.35f);
-            float signo = rnd.NextDouble() < 0.5 ? -1f : 1f;
-            // Angulo: 0 = horizontal, PI/2 = vertical.
-            float inclinacion = Mathf.Lerp(1.35f, 0.25f, tendenciaHorizontal) + Aleatorio(rnd, -0.2f, 0.2f);
-            float ang = signo > 0 ? inclinacion : Mathf.PI - inclinacion;
-            float largo = Aleatorio(rnd, 0.6f, 1f) * largoVenas;
+            float v, ang, angBase = 0f, largo, ruido;
+            bool limitarAngulo;
+
+            switch (modo)
+            {
+                case Modo.Vertical:
+                {
+                    bool desdeArriba = rnd.NextDouble() < 0.5;
+                    v = desdeArriba ? vFin - 0.05f : vIni + 0.05f;
+                    angBase = desdeArriba ? -Mathf.PI * 0.5f : Mathf.PI * 0.5f;
+                    ang = angBase + Aleatorio(rnd, -0.15f, 0.15f);
+                    largo = alto * Aleatorio(rnd, 0.5f, 1f);
+                    ruido = 0.07f;
+                    limitarAngulo = true;
+                    break;
+                }
+                case Modo.Piso:
+                    v = Aleatorio(rnd, vIni, vFin);
+                    ang = Aleatorio(rnd, 0f, Mathf.PI * 2f);
+                    largo = Aleatorio(rnd, 0.6f, 1f) * largoVenas;
+                    ruido = 0.22f;
+                    limitarAngulo = false;
+                    break;
+                default:
+                {
+                    v = vIni + Aleatorio(rnd, 0f, alto * 0.35f);
+                    float signo = rnd.NextDouble() < 0.5 ? -1f : 1f;
+                    // Angulo: 0 = horizontal, PI/2 = vertical.
+                    float inclinacion = Mathf.Lerp(1.35f, 0.25f, tendenciaHorizontal) + Aleatorio(rnd, -0.2f, 0.2f);
+                    ang = signo > 0 ? inclinacion : Mathf.PI - inclinacion;
+                    largo = Aleatorio(rnd, 0.6f, 1f) * largoVenas;
+                    ruido = 0.18f;
+                    limitarAngulo = false;
+                    break;
+                }
+            }
+
             float vaiven = Aleatorio(rnd, 0.6f, 1.2f);
             float fase = Aleatorio(rnd, 0f, Mathf.PI * 2f);
 
@@ -697,26 +992,40 @@ public class LianasLaberinto : MonoBehaviour
             for (int i = 0; i <= pasos; i++)
             {
                 float f = i / (float)pasos;
-                float r = Mathf.Lerp(grosor, grosor * 0.2f, f);
-                puntos.Add(PuntoCara(O, R, U, N, u, v, r));
+                float r = Mathf.Lerp(grosorBase, grosorBase * 0.2f, f);
+                Vector3 p = PuntoCara(O, R, U, N, u, v, r);
+
+                // En el piso, la vena se corta al llegar a una pared.
+                if (modo == Modo.Piso)
+                {
+                    int c = IndiceCelda(p);
+                    if (c < 0 || !caminable[c]) break;
+                }
+
+                puntos.Add(p);
                 radios.Add(r);
 
-                // Giro suave tipo "vaiven" + ruido, y rebote en los bordes de la pared.
-                ang += Mathf.Sin(i * 0.35f + fase) * 0.12f * vaiven + Aleatorio(rnd, -0.18f, 0.18f);
-                float minAng = -0.35f, maxAng = Mathf.PI + 0.35f;
-                ang = Mathf.Clamp(ang, minAng, maxAng);
+                // Giro suave tipo "vaiven" + ruido, y rebote en los bordes.
+                ang += Mathf.Sin(i * 0.35f + fase) * 0.12f * vaiven * (modo == Modo.Vertical ? 0.4f : 1f)
+                     + Aleatorio(rnd, -ruido, ruido);
+                if (limitarAngulo) ang = Mathf.Clamp(ang, angBase - 0.4f, angBase + 0.4f);
+                else if (modo == Modo.Pared) ang = Mathf.Clamp(ang, -0.35f, Mathf.PI + 0.35f);
 
                 float nu = u + Mathf.Cos(ang) * paso;
                 float nv = v + Mathf.Sin(ang) * paso;
+                bool fueraV = nv < vIni + 0.05f || nv > vFin - 0.05f;
+                if (modo == Modo.Vertical && fueraV) break; // llego al otro extremo
                 if (nu < margen || nu > ancho - margen) { ang = Mathf.PI - ang; nu = Mathf.Clamp(nu, margen, ancho - margen); }
-                if (nv < vIni + 0.05f || nv > vFin - 0.05f) { ang = -ang; nv = Mathf.Clamp(nv, vIni + 0.05f, vFin - 0.05f); }
+                if (fueraV) { ang = -ang; nv = Mathf.Clamp(nv, vIni + 0.05f, vFin - 0.05f); }
                 u = nu; v = nv;
             }
+            if (puntos.Count < 3) continue;
+            pasos = puntos.Count - 1;
             var tronco = new List<Vector3>(puntos);
             var radiosTronco = new List<float>(radios);
             AgregarTubo(tramo, N);
 
-            // Ramas que salen hacia los lados.
+            // Ramas: hacia los lados en paredes, en diagonal en el piso y paredes rosadas.
             int ramas = rnd.Next(1, ramasMaximas + 1);
             for (int rr = 0; rr < ramas; rr++)
             {
@@ -724,7 +1033,15 @@ public class LianasLaberinto : MonoBehaviour
                 float ub = Vector3.Dot(tronco[idx] - O, R);
                 float vb = Vector3.Dot(tronco[idx] - O, U);
                 float sb = rnd.NextDouble() < 0.5 ? -1f : 1f;
-                float ab = (sb > 0 ? 0f : Mathf.PI) + sb * Aleatorio(rnd, -0.25f, 0.45f);
+                float ab;
+                if (modo == Modo.Pared)
+                    ab = (sb > 0 ? 0f : Mathf.PI) + sb * Aleatorio(rnd, -0.25f, 0.45f);
+                else
+                {
+                    Vector3 d = tronco[idx + 1] - tronco[idx];
+                    float angTronco = Mathf.Atan2(Vector3.Dot(d, U), Vector3.Dot(d, R));
+                    ab = angTronco + sb * Aleatorio(rnd, modo == Modo.Vertical ? 0.25f : 0.5f, modo == Modo.Vertical ? 0.6f : 1.1f);
+                }
                 float lb = Aleatorio(rnd, 0.5f, 1.6f);
                 float r0 = radiosTronco[idx] * 0.75f;
 
@@ -734,9 +1051,15 @@ public class LianasLaberinto : MonoBehaviour
                 {
                     float f = i / (float)pr;
                     float r = Mathf.Lerp(r0, 0.006f, f);
-                    puntos.Add(PuntoCara(O, R, U, N, ub, vb, r));
+                    Vector3 p = PuntoCara(O, R, U, N, ub, vb, r);
+                    if (modo == Modo.Piso)
+                    {
+                        int c = IndiceCelda(p);
+                        if (c < 0 || !caminable[c]) break;
+                    }
+                    puntos.Add(p);
                     radios.Add(r);
-                    ab += Aleatorio(rnd, -0.25f, 0.25f);
+                    ab += Aleatorio(rnd, modo == Modo.Vertical ? -0.1f : -0.25f, modo == Modo.Vertical ? 0.1f : 0.25f);
                     ub = Mathf.Clamp(ub + Mathf.Cos(ab) * paso, margen, ancho - margen);
                     vb = Mathf.Clamp(vb + Mathf.Sin(ab) * paso, vIni + 0.05f, vFin - 0.05f);
                 }
@@ -810,8 +1133,8 @@ public class LianasLaberinto : MonoBehaviour
                 int p01 = baseIdx + i * lados + a2;
                 int p10 = baseIdx + (i + 1) * lados + a;
                 int p11 = baseIdx + (i + 1) * lados + a2;
-                vTri.Add(p00); vTri.Add(p01); vTri.Add(p10);
-                vTri.Add(p01); vTri.Add(p11); vTri.Add(p10);
+                trisActual.Add(p00); trisActual.Add(p01); trisActual.Add(p10);
+                trisActual.Add(p01); trisActual.Add(p11); trisActual.Add(p10);
             }
         }
     }
@@ -831,21 +1154,105 @@ public class LianasLaberinto : MonoBehaviour
     // ---------------------------------------------------------------------
     // Camino y estados
 
+    bool avisoMostrado;
+
+    // Posicion real del jugador. El objeto con tag puede no ser el que se mueve
+    // (ej: rig de VR, o un jugador desactivado), asi que si hace falta se usa la camara.
+    bool PosicionJugador(out Vector3 pos)
+    {
+        if ((!jugador || !jugador.gameObject.activeInHierarchy) && !string.IsNullOrEmpty(tagJugador))
+        {
+            foreach (GameObject j in GameObject.FindGameObjectsWithTag(tagJugador))
+                if (j.activeInHierarchy) { jugador = j.transform; break; }
+        }
+        if (jugador && jugador.gameObject.activeInHierarchy)
+        {
+            Camera cam = Camera.main;
+            // Si la camara esta lejos del objeto con tag, manda la camara (es lo que ve el jugador).
+            pos = cam && (cam.transform.position - jugador.position).sqrMagnitude > 9f
+                ? cam.transform.position : jugador.position;
+            return true;
+        }
+        if (Camera.main) { pos = Camera.main.transform.position; return true; }
+        pos = default;
+        return false;
+    }
+
+    // Con ruta marcada: encendidas = la ruta + todo lo que el jugador ya tuvo cerca.
+    void ActualizarRutaYDescubrir(bool forzar)
+    {
+        int celda = -1;
+        if (PosicionJugador(out Vector3 pos) && IndiceCelda(pos) >= 0)
+            celda = CeldaCaminable(pos, 2);
+
+        if (!forzar && celda == ultimaCeldaJugador) return;
+        ultimaCeldaJugador = celda;
+
+        // Marcar como descubierto lo que esta a "radioDescubrir" metros caminando del jugador.
+        if (celda >= 0 && radioDescubrir > 0f)
+        {
+            marcaActual++;
+            int radio = Mathf.CeilToInt(radioDescubrir / tamanoCelda);
+            var cola = new Queue<(int c, int d)>();
+            cola.Enqueue((celda, 0));
+            marcaCerca[celda] = marcaActual;
+            while (cola.Count > 0)
+            {
+                var (i, d) = cola.Dequeue();
+                descubierta[i] = true;
+                if (d >= radio) continue;
+                for (int k = 0; k < 4; k++)
+                {
+                    if (Vecino(i, k, out int j) && marcaCerca[j] != marcaActual)
+                    {
+                        marcaCerca[j] = marcaActual;
+                        cola.Enqueue((j, d + 1));
+                    }
+                }
+            }
+        }
+
+        float ahora = Time.time;
+        bool cambio = false;
+        foreach (Tramo t in tramos)
+        {
+            bool encender = t.celda >= 0 && (distRuta[t.celda] >= 0f || descubierta[t.celda]);
+            cambio |= CambiarEstado(t, encender ? 1f : 0f, ahora);
+        }
+        if (cambio) malla.SetUVs(1, datos);
+    }
+
     void ActualizarCamino(bool forzar)
     {
         if (!listo || todasEncendidas) return;
-
-        if (!jugador && !string.IsNullOrEmpty(tagJugador))
-        {
-            GameObject j = GameObject.FindGameObjectWithTag(tagJugador);
-            if (j) jugador = j.transform;
-        }
+        if (hayRuta || !PosicionZonaSegura(out _)) { ActualizarRutaYDescubrir(forzar); return; }
 
         int celda = -1;
-        if (jugador && IndiceCelda(jugador.position) >= 0)
-            celda = CeldaCaminable(jugador.position, 4);
+        if (PosicionJugador(out Vector3 posJugador))
+        {
+            if (IndiceCelda(posJugador) >= 0)
+                celda = CeldaCaminable(posJugador, 4);
+            else if (!puntoInicio)
+            {
+                // Fuera del laberinto (ej: recien llega por la cabina): el camino empieza
+                // en el punto del laberinto mas cercano al jugador.
+                Vector3 p = posJugador;
+                p.x = Mathf.Clamp(p.x, origen.x + tamanoCelda * 0.5f, origen.x + (nx - 0.5f) * tamanoCelda);
+                p.z = Mathf.Clamp(p.z, origen.y + tamanoCelda * 0.5f, origen.y + (nz - 0.5f) * tamanoCelda);
+                celda = CeldaCaminable(p, 10);
+            }
+        }
         if (celda < 0 && puntoInicio)
             celda = CeldaCaminable(puntoInicio.position, 4);
+
+        if (!avisoMostrado)
+        {
+            avisoMostrado = true;
+            if (celda < 0)
+                Debug.LogWarning("[LianasLaberinto] No se pudo ubicar al jugador en el laberinto: no se enciende ningun camino.", this);
+            else if (distSegura[celda] < 0)
+                Debug.LogWarning("[LianasLaberinto] No hay camino caminable desde el jugador hasta la zona segura.", this);
+        }
 
         if (!forzar && celda == ultimaCeldaJugador) return;
         ultimaCeldaJugador = celda;
@@ -942,14 +1349,35 @@ public class LianasLaberinto : MonoBehaviour
     // ---------------------------------------------------------------------
     // Editor
 
+    // Para herramientas de editor que mueven/cambian el laberinto.
+    public void RegenerarVistaPrevia()
+    {
+        if (!Application.isPlaying && isActiveAndEnabled) Previsualizar();
+    }
+
     [ContextMenu("Previsualizar lianas (editor)")]
     void Previsualizar()
     {
         if (contenedoresConLianas.Count == 0) AutoConfigurar();
         if (!materialLianas) materialLianas = Resources.Load<Material>("LianasIndigo");
+        if (puntosRuta.Count == 0) BuscarPuntosRuta();
+        ActualizarRutaGuardada();
         Construir(true);
+
+        // Con ruta marcada, la vista previa muestra encendida solo la ruta (como al empezar a jugar).
+        if (listo && hayRuta)
+        {
+            foreach (Tramo t in tramos)
+            {
+                float v = t.celda >= 0 && distRuta[t.celda] >= 0f ? 1f : 0f;
+                t.prev = t.next = v;
+                for (int i = t.vIni; i < t.vIni + t.vCant; i++) { Vector4 d = datos[i]; d.y = v; d.z = v; datos[i] = d; }
+            }
+            malla.SetUVs(1, datos);
+        }
         if (listo)
-            Debug.Log($"[LianasLaberinto] {tramos.Count} tramos, {vPos.Count} vertices.", this);
+            Debug.Log($"[LianasLaberinto] {tramos.Count} tramos, {vPos.Count} vertices. Ruta marcada: " +
+                      (hayRuta ? $"{puntosRuta.Count} puntos, {camino.Count} celdas, {(camino.Count > 1 ? distRuta[camino[0]] : 0f):0} m" : "no"), this);
     }
 
     [ContextMenu("Borrar previsualizacion")]

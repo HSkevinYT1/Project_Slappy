@@ -1,8 +1,8 @@
 using UnityEngine;
 using UnityEngine.Events;
 
-// Zona segura del laberinto: cuando el jugador entra, se encienden todas las lianas
-// para mostrar que ya puede ir a donde quiera.
+// Zona segura del laberinto: cuando el jugador entra se dispara el evento "alLlegar"
+// (sonidos, dialogos, etc). Ya no enciende todas las lianas.
 // Necesita un Collider marcado como "Is Trigger" (se marca solo al agregar el componente).
 [RequireComponent(typeof(Collider))]
 public class ZonaSeguraLianas : MonoBehaviour
@@ -38,7 +38,7 @@ public class ZonaSeguraLianas : MonoBehaviour
         if (!esJugador) return;
 
         activada = true;
-        if (lianas) lianas.ActivarTodas();
+        // Llegar ya no enciende todas las lianas (solo se encienden por donde pasa el jugador).
         alLlegar?.Invoke();
     }
 
