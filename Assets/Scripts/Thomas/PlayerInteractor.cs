@@ -27,7 +27,11 @@ public class PlayerInteractor : MonoBehaviour
 
     // Objeto al que se esta apuntando ahora mismo (null si no hay ninguno)
     public Interactable Current { get; private set; }
-    public string CurrentPrompt => Held != null ? "Soltar" : Current != null ? Current.Prompt : string.Empty;
+    public string CurrentPrompt => Held != null ? (Receptor != null ? Receptor.Prompt : "Soltar")
+                                 : Current != null ? Current.Prompt : string.Empty;
+
+    // Con un objeto en la mano: quien lo espera y al que se esta apuntando (ej: el cliente del tutorial)
+    public ReceptorObjeto Receptor { get; private set; }
 
     // Objeto que el jugador tiene en la mano (null si no tiene ninguno)
     public Grabbable Held { get; private set; }
@@ -87,12 +91,19 @@ public class PlayerInteractor : MonoBehaviour
         }
 
         // Con un objeto en la mano, la tecla de interaccion lo suelta
+        // (o se lo entrega a quien lo espera, si se le esta apuntando)
         if (Held != null)
         {
             Current = null;
-            if (GameInput.Interact) Drop();
+            Receptor = FindReceptor();
+            if (GameInput.Interact)
+            {
+                if (Receptor != null) Give(Receptor);
+                else Drop();
+            }
             return;
         }
+        Receptor = null;
 
         // Busca el objeto al que apunta la camara
         Current = FindInteractable();
@@ -161,6 +172,30 @@ public class PlayerInteractor : MonoBehaviour
 
         Held.Release();
         Held = null;
+    }
+
+    // Entrega el objeto de la mano a un receptor (ej: un NPC que lo pidio)
+    public void Give(ReceptorObjeto receptor)
+    {
+        if (Held == null || receptor == null || !receptor.Acepta(Held)) return;
+
+        Grabbable obj = Held;
+        Held = null;
+        Receptor = null;
+        receptor.Recibir(obj);
+    }
+
+    // Receptor al que apunta el jugador que acepta el objeto que tiene en la mano
+    ReceptorObjeto FindReceptor()
+    {
+        Transform aim = pointer != null ? pointer : cam.transform;
+        if (Physics.Raycast(new Ray(aim.position, aim.forward), out RaycastHit hit, interactDistance,
+                            raycastLayers, QueryTriggerInteraction.Ignore))
+        {
+            ReceptorObjeto r = hit.collider.GetComponentInParent<ReceptorObjeto>();
+            if (r != null && r.Acepta(Held)) return r;
+        }
+        return null;
     }
 
     // Texto temporal en pantalla para probar. Mas adelante se reemplaza por un Canvas.
