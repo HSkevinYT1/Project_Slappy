@@ -19,6 +19,14 @@ public class MouseLook : MonoBehaviour
     private float peekLean;
     private Vector3 startLocalPosition;
 
+    // Al reactivarse toma el giro actual del cuerpo (ej: tras un teletransporte que lo haya girado)
+    void OnEnable()
+    {
+        if (playerBody == null) return;
+        playerYaw = playerBody.eulerAngles.y;
+        pendingYaw = 0f;
+    }
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;

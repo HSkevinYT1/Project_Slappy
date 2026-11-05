@@ -175,7 +175,8 @@ public class PhoneMinigame : MonoBehaviour
         panelDropped = true;
         if (panel == null) return;
 
-        panel.SetParent(null, true);
+        // Sigue colgando del telefono para que, si el telefono se mueve (ej: FaintTeleport), la tapa vaya con el
+        panel.SetParent(transform, true);
         BoxCollider box = AddBoxCollider(panel);
 
         Rigidbody rb = panel.gameObject.AddComponent<Rigidbody>();
@@ -204,7 +205,8 @@ public class PhoneMinigame : MonoBehaviour
 
     private static void IgnoreCollisions(Collider collider, Collider[] others)
     {
-        foreach (Collider other in others) Physics.IgnoreCollision(collider, other);
+        foreach (Collider other in others)
+            if (other != collider) Physics.IgnoreCollision(collider, other);
     }
 
     private static BoxCollider AddBoxCollider(Transform root)
