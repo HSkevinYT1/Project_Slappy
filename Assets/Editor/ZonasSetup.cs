@@ -49,6 +49,9 @@ public static class ZonasSetup
 
         // Zona roja: isla con el faro (ver ZonaRojaSetup.cs).
         if (zp && zp.transform.Find("Pasillos")) ZonaRojaSetup.AutoAplicar();
+
+        // NavMesh solo en pisos, enemigos de cada area, llave de las Cloacas y triggers de Volume (ver EnemigosZonasSetup.cs).
+        if (zp && GameObject.Find("Zona Roja")) EnemigosZonasSetup.AutoAplicar();
     }
 
     // ---------------------------------------------------------------- Laberinto

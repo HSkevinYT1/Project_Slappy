@@ -30,6 +30,9 @@ public class EstatuaAI : MonoBehaviour
     private Collider playerCollider;
     private Transform target;
     private int frameCounter;
+    private NavMeshPath reachPath;
+    private float nextReachCheck;
+    private bool playerReachable;
 
     void Start()
     {
@@ -111,6 +114,15 @@ public class EstatuaAI : MonoBehaviour
 
     void UpdateMoving()
     {
+        // Si no hay camino hasta el jugador (esta en otra area) se queda quieta donde esta
+        if (!PlayerReachable())
+        {
+            agent.ResetPath();
+            agent.nextPosition = transform.position;
+            frameCounter = 0;
+            return;
+        }
+
         agent.SetDestination(target.position);
 
         if (Vector3.Distance(transform.position, target.position) <= catchDistance)
@@ -136,6 +148,21 @@ public class EstatuaAI : MonoBehaviour
         }
     }
 
+
+    // Comprueba cada medio segundo si hay un camino completo por el NavMesh hasta el jugador
+    bool PlayerReachable()
+    {
+        if (Time.time < nextReachCheck) return playerReachable;
+        nextReachCheck = Time.time + 0.5f;
+
+        if (reachPath == null) reachPath = new NavMeshPath();
+        playerReachable =
+            NavMesh.SamplePosition(transform.position, out NavMeshHit from, 2.5f, agent.areaMask) &&
+            NavMesh.SamplePosition(target.position, out NavMeshHit to, 2.5f, agent.areaMask) &&
+            NavMesh.CalculatePath(from.position, to.position, agent.areaMask, reachPath) &&
+            reachPath.status == NavMeshPathStatus.PathComplete;
+        return playerReachable;
+    }
 
     bool IsSeenByPlayer()
     {
@@ -169,13 +196,19 @@ public class EstatuaAI : MonoBehaviour
 
     Bounds GetBounds()
     {
-        if (ownColliders != null && ownColliders.Length > 0)
+        // Solo cuenta su propio cuerpo: lo que lleve en la mano (ej: la llave) se puede quitar
+        bool found = false;
+        Bounds b = default;
+        if (ownColliders != null)
         {
-            Bounds b = ownColliders[0].bounds;
-            for (int i = 1; i < ownColliders.Length; i++) b.Encapsulate(ownColliders[i].bounds);
-            return b;
+            foreach (Collider c in ownColliders)
+            {
+                if (c == null || !c.enabled || c.attachedRigidbody != null || !c.transform.IsChildOf(transform)) continue;
+                if (!found) { b = c.bounds; found = true; }
+                else b.Encapsulate(c.bounds);
+            }
         }
-        return new Bounds(transform.position + Vector3.up, Vector3.one);
+        return found ? b : new Bounds(transform.position + Vector3.up, Vector3.one);
     }
 
     bool HasLineOfSight(Vector3 from, Vector3 to)
