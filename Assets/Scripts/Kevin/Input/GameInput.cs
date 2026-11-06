@@ -2,16 +2,13 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Unico lugar donde se leen los controles del juego. Los botones no estan aqui, sino en
-// Assets/InputSystem_Actions: el mapa "Juego" (teclado y mouse) y el mapa "JuegoVR" (mandos).
-// Los dos estan separados pero siempre activos, asi que funcionan en cualquier escena.
+// Assets/InputSystem_Actions, en el mapa "Juego" (teclado y mouse), que siempre esta activo.
 public static class GameInput
 {
-    private const string PcMapName = "Juego";
-    private const string VrMapName = "JuegoVR";
+    private const string MapName = "Juego";
     private const string KeyboardGroup = "Keyboard&Mouse";
 
-    private static InputActionMap pcMap;
-    private static InputActionMap vrMap;
+    private static InputActionMap map;
 
     // Botones: solo son true en el frame en que se presionan
     public static bool Interact => Pressed("Interactuar");
@@ -26,8 +23,7 @@ public static class GameInput
         get
         {
             Load();
-            return pcMap.FindAction("Arrastrar", true).WasReleasedThisFrame()
-                || vrMap.FindAction("Arrastrar", true).WasReleasedThisFrame();
+            return map.FindAction("Arrastrar", true).WasReleasedThisFrame();
         }
     }
 
@@ -39,31 +35,21 @@ public static class GameInput
         get
         {
             Load();
-            return pcMap.FindAction("Interactuar", true).GetBindingDisplayString(InputBinding.MaskByGroup(KeyboardGroup));
+            return map.FindAction("Interactuar", true).GetBindingDisplayString(InputBinding.MaskByGroup(KeyboardGroup));
         }
-    }
-
-    // Sticks de los mandos ("Mover", "Girar")
-    public static Vector2 ReadStick(string actionName)
-    {
-        Load();
-        return vrMap.FindAction(actionName, true).ReadValue<Vector2>();
     }
 
     private static bool Pressed(string actionName)
     {
         Load();
-        return pcMap.FindAction(actionName, true).WasPressedThisFrame()
-            || vrMap.FindAction(actionName, true).WasPressedThisFrame();
+        return map.FindAction(actionName, true).WasPressedThisFrame();
     }
 
     private static void Load()
     {
-        if (pcMap != null) return;
+        if (map != null) return;
 
-        pcMap = InputSystem.actions.FindActionMap(PcMapName, true);
-        vrMap = InputSystem.actions.FindActionMap(VrMapName, true);
-        pcMap.Enable();
-        vrMap.Enable();
+        map = InputSystem.actions.FindActionMap(MapName, true);
+        map.Enable();
     }
 }

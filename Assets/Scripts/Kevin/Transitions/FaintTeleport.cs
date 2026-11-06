@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
-using UnityEngine.XR;
 
 //efecto de desmayo y tp en las cabinas
 public class FaintTeleport : MonoBehaviour
@@ -27,7 +26,7 @@ public class FaintTeleport : MonoBehaviour
     // Despertar: los ojos se abren poco a poco
     [SerializeField] private float wakeTime = 3f;
 
-    [Header("Camara (solo pantalla, en VR no se mueve la cabeza)")]
+    [Header("Camara")]
     [SerializeField] private float swayAngle = 4f;
     [SerializeField] private float collapsePitch = 35f;
     [SerializeField] private float collapseRoll = 18f;
@@ -83,7 +82,7 @@ public class FaintTeleport : MonoBehaviour
         bodyRb = cam.GetComponentInParent<Rigidbody>();
         bodyController = cam.GetComponentInParent<CharacterController>();
         body = bodyRb != null ? bodyRb.transform : bodyController != null ? bodyController.transform : cam.transform.root;
-        moveHead = !XRSettings.isDeviceActive;
+        moveHead = true;
 
         StartCoroutine(Run());
     }
@@ -275,7 +274,7 @@ public class FaintTeleport : MonoBehaviour
         }
     }
 
-    // Parpados, vineta y negro, pegados delante de la camara (asi tambien se ven en el visor VR)
+    // Parpados, vineta y negro, pegados delante de la camara
     private void BuildOverlay()
     {
         GameObject root = new GameObject("Desmayo_Overlay", typeof(RectTransform));

@@ -9,7 +9,6 @@ public class FlashlightUI : MonoBehaviour
     public Image batteryFill;
     public TextMeshProUGUI batteryText;
 
-    public float maxBattery = 100f;
     public Color fullColor = new Color(0.4f, 1f, 0.4f);
     public Color lowColor = new Color(1f, 0.25f, 0.2f);
 
@@ -25,7 +24,7 @@ public class FlashlightUI : MonoBehaviour
     {
         if (flashlight == null) return;
 
-        float percent = Mathf.Clamp01(flashlight.battery / maxBattery);
+        float percent = flashlight.BatteryPercent;
 
         // Barra de bateria
         if (batteryFill != null)

@@ -52,6 +52,9 @@ public static class ZonasSetup
 
         // NavMesh solo en pisos, enemigos de cada area, llave de las Cloacas y triggers de Volume (ver EnemigosZonasSetup.cs).
         if (zp && GameObject.Find("Zona Roja")) EnemigosZonasSetup.AutoAplicar();
+
+        // Caminos y puertas segun el progreso, pilas, linterna y menu principal (ver MenuProgresoSetup.cs).
+        if (zp && GameObject.Find("Enemigos y Zonas")) MenuProgresoSetup.AutoAplicar();
     }
 
     // ---------------------------------------------------------------- Laberinto

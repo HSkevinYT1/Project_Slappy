@@ -27,7 +27,8 @@ public class PlayerInteractor : MonoBehaviour
 
     // Objeto al que se esta apuntando ahora mismo (null si no hay ninguno)
     public Interactable Current { get; private set; }
-    public string CurrentPrompt => Held != null ? (Receptor != null ? Receptor.Prompt : "Soltar")
+    // Con algo en la mano no se muestra "Soltar": solo el receptor o el objeto al que se apunta
+    public string CurrentPrompt => Receptor != null ? Receptor.Prompt
                                  : Current != null ? Current.Prompt : string.Empty;
 
     // Con un objeto en la mano: quien lo espera y al que se esta apuntando (ej: el cliente del tutorial)
@@ -90,27 +91,15 @@ public class PlayerInteractor : MonoBehaviour
             return;
         }
 
-        // Con un objeto en la mano, la tecla de interaccion lo suelta
-        // (o se lo entrega a quien lo espera, si se le esta apuntando)
-        if (Held != null)
-        {
-            Current = null;
-            Receptor = FindReceptor();
-            if (GameInput.Interact)
-            {
-                if (Receptor != null) Give(Receptor);
-                else Drop();
-            }
-            return;
-        }
-        Receptor = null;
+        // Con un objeto en la mano (ej: la linterna) se sigue pudiendo interactuar con todo.
+        // Si se le apunta a quien lo espera, se le entrega; si no se apunta a nada, se suelta.
+        Receptor = Held != null ? FindReceptor() : null;
+        Current = Receptor != null ? null : FindInteractable();
 
-        // Busca el objeto al que apunta la camara
-        Current = FindInteractable();
-
-        // Si hay uno y se presiona la tecla, se interactua con el
-        if (Current != null && GameInput.Interact)
-            Current.Interact(this);
+        if (!GameInput.Interact) return;
+        if (Receptor != null) Give(Receptor);
+        else if (Current != null) Current.Interact(this);
+        else if (Held != null) Drop();
     }
 
     Interactable FindInteractable()
@@ -162,6 +151,8 @@ public class PlayerInteractor : MonoBehaviour
             return;
         }
 
+        // Solo cabe un objeto en la mano: el anterior se suelta
+        if (Held != null && Held != obj) Drop();
         Held = obj;
         Held.Grab(handPoint);
     }

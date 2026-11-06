@@ -41,7 +41,7 @@ public class ZonaVolumen : MonoBehaviour
         if (volumen != null) volumen.Salir(this);
     }
 
-    // Jugador de PC (etiqueta Player) o cualquier rig que lleve la camara principal (VR)
+    // Jugador (etiqueta Player) o lo que lleve la camara principal
     static bool EsJugador(Collider c)
     {
         for (Transform t = c.transform; t != null; t = t.parent)

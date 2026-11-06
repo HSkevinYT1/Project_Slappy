@@ -411,6 +411,8 @@ MonoBehaviour:
   lightObject: {fileID: 4001286614896705935}
   lightSound: {fileID: 8300000, guid: 6aa87e1ea51837a44b51891da7be38a7, type: 3}
   battery: 100
+  maxBattery: 100
+  drainPerSecond: 2
 --- !u!65 &5411161112105315408
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -475,6 +477,7 @@ MonoBehaviour:
   holdPointName: Agarre_Linterna
   holdPosition: {x: 0, y: 0, z: 0}
   holdRotation: {x: 0, y: 0, z: 0}
+  maxHeldSize: 0.25
 --- !u!114 &5281930174620913377
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -548,8 +551,8 @@ Light:
   serializedVersion: 11
   m_Type: 0
   m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_Intensity: 22.5
-  m_Range: 13
+  m_Intensity: 100
+  m_Range: 22
   m_SpotAngle: 112.53316
   m_InnerSpotAngle: 47.533283
   m_CookieSize: 10

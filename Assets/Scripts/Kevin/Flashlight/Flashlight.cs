@@ -8,6 +8,11 @@ public class Flashlight : MonoBehaviour
     private AudioSource source;
 
     public float battery = 100f;
+    public float maxBattery = 100f;
+    // Energia que gasta por segundo encendida
+    public float drainPerSecond = 2f;
+
+    public float BatteryPercent => maxBattery > 0f ? Mathf.Clamp01(battery / maxBattery) : 0f;
 
     private Grabbable grab;
     private PlayerInteractor interactor;
@@ -30,7 +35,7 @@ public class Flashlight : MonoBehaviour
         // Descargar bateria
         if (lightObject.activeSelf)
         {
-            battery -= 2f * Time.deltaTime;
+            battery -= drainPerSecond * Time.deltaTime;
 
             if (battery <= 0)
             {
@@ -38,6 +43,12 @@ public class Flashlight : MonoBehaviour
                 lightObject.SetActive(false);
             }
         }
+    }
+
+    // La llaman las pilas (Bateria.Recoger)
+    public void Recharge(float amount)
+    {
+        battery = Mathf.Min(maxBattery, battery + amount);
     }
 
     bool IsHeld()
