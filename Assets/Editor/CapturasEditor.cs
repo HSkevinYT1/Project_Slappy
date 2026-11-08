@@ -18,6 +18,7 @@ public static class CapturasEditor
     {
         // Espera unos ciclos para correr despues de las herramientas que modifican la escena.
         EditorApplication.delayCall += () => EditorApplication.delayCall += () => EditorApplication.delayCall += () =>
+            EditorApplication.delayCall += () => EditorApplication.delayCall += () =>
         {
             if (File.Exists(Pedido)) ProcesarPedido();
         };
@@ -33,6 +34,7 @@ public static class CapturasEditor
         foreach (string l in lineas)
         {
             if (l.Trim() == "volcar") { VolcarTienda(); continue; }
+            if (l.Trim().StartsWith("volcar:")) { Volcar(l.Trim().Substring(7)); continue; }
             string[] p = l.Split(';');
             if (p.Length < 8) continue;
             float F(int i) => float.Parse(p[i], System.Globalization.CultureInfo.InvariantCulture);
@@ -57,6 +59,7 @@ public static class CapturasEditor
         cam.backgroundColor = new Color(0.05f, 0.05f, 0.08f);
 
         // Luz de apoyo para que se vea el interior (solo durante la captura).
+        // Si el nombre termina en "_real" no se agrega (se ve la iluminacion real de la escena).
         var luzGo = new GameObject("_LuzCaptura") { hideFlags = HideFlags.HideAndDontSave };
         luzGo.transform.position = pos;
         var luz = luzGo.AddComponent<Light>();
@@ -64,6 +67,7 @@ public static class CapturasEditor
         luz.range = 25f;
         luz.intensity = 6f;
         luz.shadows = LightShadows.None;
+        luz.enabled = !nombre.EndsWith("_real");
 
         var rt = new RenderTexture(ancho, alto, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
         cam.targetTexture = rt;
@@ -86,9 +90,12 @@ public static class CapturasEditor
 
     // Vuelca la geometria de la tienda (estantes, mesas, paredes) para planificar la decoracion.
     [MenuItem("Tools/Capturas/Volcar geometria de la Tienda")]
-    public static void VolcarTienda()
+    public static void VolcarTienda() => Volcar("Tienda");
+
+    // Vuelca la geometria de cualquier objeto raiz (por nombre) a Temp/Capturas/<nombre>_geometria.txt
+    public static void Volcar(string nombre)
     {
-        GameObject tienda = GameObject.Find("Tienda");
+        GameObject tienda = GameObject.Find(nombre);
         if (!tienda) return;
         Directory.CreateDirectory(Carpeta);
         var sb = new StringBuilder();
@@ -102,11 +109,16 @@ public static class CapturasEditor
                 continue;
             }
             Bounds b = r.bounds;
-            sb.AppendLine($"R {ruta} min={V(b.min)} max={V(b.max)} col={(t.GetComponent<Collider>() ? 1 : 0)} activo={(t.gameObject.activeInHierarchy ? 1 : 0)}");
+            var mats = new System.Collections.Generic.List<string>();
+            foreach (Material m in r.sharedMaterials) mats.Add(m ? m.name + "[" + (m.shader ? m.shader.name : "?") + (m.HasProperty("_BaseMap") && m.GetTexture("_BaseMap") ? ",tex" : "") + (m.HasProperty("_BumpMap") && m.GetTexture("_BumpMap") ? ",nrm" : "") + "]" : "null");
+            sb.AppendLine($"R {ruta} min={V(b.min)} max={V(b.max)} col={(t.GetComponent<Collider>() ? 1 : 0)} activo={(t.gameObject.activeInHierarchy ? 1 : 0)} mat={string.Join("|", mats)}");
         }
-        File.WriteAllText(Path.Combine(Carpeta, "tienda_geometria.txt"), sb.ToString());
+        File.WriteAllText(Path.Combine(Carpeta, nombre.ToLowerInvariant() + "_geometria.txt"), sb.ToString());
     }
 
     static string Ruta(Transform t, Transform raiz) => t == raiz ? t.name : Ruta(t.parent, raiz) + "/" + t.name;
     static string V(Vector3 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z);
 }
+
+
+

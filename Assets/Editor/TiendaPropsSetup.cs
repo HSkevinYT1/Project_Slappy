@@ -45,6 +45,7 @@ public static class TiendaPropsSetup
         { "planta",   new Prop("plant 1.obj", 0.40f) },
         { "auto",     new Prop("car (1).fbx", 0.28f) },
         { "katana",   new Prop("kATANA (1).fbx", 0.95f, Forma.Acostado) },
+        { "mesa",     new Prop("mesa.obj", 2.2f) },
     };
 
     // Que va en cada lugar (se repite la lista al azar).
@@ -151,6 +152,26 @@ public static class TiendaPropsSetup
     }
 
     static System.Random rnd;
+
+    // ---- Para otras herramientas (ej: SotanoSetup) ----
+
+    // Crea un prop del catalogo (taza, radio, reloj, lampara, farol, libros, maletin, planta, auto, katana,
+    // cenicero, cigarro) con los materiales correctos, escalado a "tam" metros y apoyado en "baseCentro".
+    internal static GameObject CrearProp(string clave, Transform padre, Vector3 baseCentro, float tam, float yaw,
+                                         bool acostado, System.Random azar)
+    {
+        rnd = azar;
+        if (!Props.ContainsKey(clave)) return null;
+        GameObject go = Instanciar(clave, padre);
+        if (!go) return null;
+        Prop p = Props[clave];
+        if (acostado) p = new Prop(p.archivo, p.tam, Forma.Acostado);
+        Encajar(go, p, Vector3.forward, yaw, tam, 10f, 10f, 10f);
+        Apoyar(go, baseCentro);
+        return go;
+    }
+
+    internal static bool LimitesDe(GameObject go, out Bounds b) => Limites(go, out b);
     static readonly List<Bounds> zonasLibres = new List<Bounds>();
     static readonly Dictionary<string, Material> cacheMat = new Dictionary<string, Material>();
     static int colocados;
