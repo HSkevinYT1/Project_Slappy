@@ -86,8 +86,8 @@ MonoBehaviour:
   sonidoAgitacion: {fileID: 0}
   volumenAgitacion: 0.8
   fadeAgitacion: 0.8
-  sonidoAbrir: {fileID: 0}
-  sonidoCerrar: {fileID: 0}
+  sonidoAbrir: {fileID: 8300000, guid: c232eca23f8cd424f885b42d066bdcd0, type: 3}
+  sonidoCerrar: {fileID: 8300000, guid: 840e125eba9d7424f919938d7a557839, type: 3}
   textoEsconderse: Esconderse
   textoSalir: Salir
   alEsconderse:
@@ -304,10 +304,18 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -2179052694957828658, guid: b8496c531ca985045b1073cb05b3a7f4, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4969a6193e3c0ae4ba04b2781020d8b1, type: 2}
     - target: {fileID: 919132149155446097, guid: b8496c531ca985045b1073cb05b3a7f4, type: 3}
       propertyPath: m_Name
       value: Puerta
       objectReference: {fileID: 0}
+    - target: {fileID: 8646596602509147345, guid: b8496c531ca985045b1073cb05b3a7f4, type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 4300000, guid: 038380e4b41ac284c881c3b16fd1bbd8, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -378,10 +386,18 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -479742670592348376, guid: e23b08b25dc06c9489a527ebde41d937, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4969a6193e3c0ae4ba04b2781020d8b1, type: 2}
     - target: {fileID: 919132149155446097, guid: e23b08b25dc06c9489a527ebde41d937, type: 3}
       propertyPath: m_Name
       value: Modelo
       objectReference: {fileID: 0}
+    - target: {fileID: 3088027449341506826, guid: e23b08b25dc06c9489a527ebde41d937, type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 4300000, guid: 637586f145bf53c47a6ee91bf8285e4e, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

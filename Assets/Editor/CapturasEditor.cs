@@ -35,6 +35,15 @@ public static class CapturasEditor
         {
             if (l.Trim() == "volcar") { VolcarTienda(); continue; }
             if (l.Trim().StartsWith("volcar:")) { Volcar(l.Trim().Substring(7)); continue; }
+            // prefab:<ruta>;<nombre>;<giro>;<inclinacion>;<distancia en tamanos>  -> foto del prefab aislado
+            if (l.Trim().StartsWith("prefab:"))
+            {
+                string[] q = l.Trim().Substring(7).Split(';');
+                float G(int i) => float.Parse(q[i], System.Globalization.CultureInfo.InvariantCulture);
+                CapturarPrefab(q[0], q[1], G(2), G(3), G(4));
+                n++;
+                continue;
+            }
             // colorMaterial:<prefijo de nombre>:r,g,b  -> cambia _BaseColor de los materiales de la escena que empiecen asi
             if (l.Trim().StartsWith("colorMaterial:"))
             {
@@ -102,6 +111,57 @@ public static class CapturasEditor
         Object.DestroyImmediate(luzGo);
     }
 
+    // Foto de un prefab solo, en una escena de vista previa con dos luces.
+    public static void CapturarPrefab(string ruta, string nombre, float giro, float inclinacion, float distancia, int ancho = 1280, int alto = 720)
+    {
+        GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(ruta);
+        // Si el prefab esta abierto en modo prefab, se fotografia lo abierto (incluye cambios sin guardar).
+        var etapa = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+        if (etapa != null && etapa.assetPath == ruta) asset = etapa.prefabContentsRoot;
+        if (!asset) return;
+        Directory.CreateDirectory(Carpeta);
+        var escena = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+        var inst = (GameObject)Object.Instantiate(asset);
+        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(inst, escena);
+        Bounds b = default; bool hay = false;
+        foreach (Renderer r in inst.GetComponentsInChildren<Renderer>()) { if (!hay) { b = r.bounds; hay = true; } else b.Encapsulate(r.bounds); }
+
+        var camGo = new GameObject("_Cam");
+        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(camGo, escena);
+        var cam = camGo.AddComponent<Camera>();
+        cam.scene = escena;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.12f, 0.12f, 0.14f);
+        cam.fieldOfView = 40f;
+        Quaternion rot = Quaternion.Euler(inclinacion, giro, 0f);
+        cam.transform.position = b.center - rot * Vector3.forward * (b.extents.magnitude * distancia);
+        cam.transform.LookAt(b.center);
+
+        foreach (var (dir, inten, col) in new[] { (new Vector3(35f, giro - 40f, 0f), 1.3f, new Color(1f, 0.95f, 0.88f)), (new Vector3(15f, giro + 130f, 0f), 0.5f, new Color(0.7f, 0.8f, 1f)) })
+        {
+            var lg = new GameObject("_Luz");
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(lg, escena);
+            lg.transform.rotation = Quaternion.Euler(dir);
+            var luz = lg.AddComponent<Light>();
+            luz.type = LightType.Directional; luz.intensity = inten; luz.color = col; luz.shadows = LightShadows.Soft;
+        }
+
+        var rt = new RenderTexture(ancho, alto, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
+        cam.targetTexture = rt;
+        cam.Render();
+        var prev = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(ancho, alto, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, ancho, alto), 0, 0);
+        tex.Apply();
+        RenderTexture.active = prev;
+        File.WriteAllBytes(Path.Combine(Carpeta, nombre + ".png"), tex.EncodeToPNG());
+        cam.targetTexture = null;
+        Object.DestroyImmediate(tex);
+        Object.DestroyImmediate(rt);
+        UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(escena);
+    }
+
     // Vuelca la geometria de la tienda (estantes, mesas, paredes) para planificar la decoracion.
     [MenuItem("Tools/Capturas/Volcar geometria de la Tienda")]
     public static void VolcarTienda() => Volcar("Tienda");
@@ -133,6 +193,7 @@ public static class CapturasEditor
     static string Ruta(Transform t, Transform raiz) => t == raiz ? t.name : Ruta(t.parent, raiz) + "/" + t.name;
     static string V(Vector3 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z);
 }
+
 
 
 
