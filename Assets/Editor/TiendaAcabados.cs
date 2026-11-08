@@ -20,6 +20,7 @@ public static class TiendaAcabados
     const string CarpetaTex = "Assets/Tienda/Texturas";
     const string CarpetaMat = "Assets/Tienda/Materiales";
     const string CarpetaDetalle = "Assets/Tienda/Materiales/Detalle";
+    static readonly Color ColorParedes = new Color(0.66f, 0.5f, 0.3f); // ocre
 
     static TiendaAcabados()
     {
@@ -65,9 +66,8 @@ public static class TiendaAcabados
         var dMetal = SotanoAcabados.Generar("DetalleMetal", DetalleMetal, 0.5f, 1f, 0.5f, CarpetaTex, "Tienda");
         var dGrano = SotanoAcabados.Generar("DetalleGrano", DetalleGrano, 0.5f, 1f, 0.3f, CarpetaTex, "Tienda");
 
-        Color amarillo = new Color(1f, 0.95f, 0.37f);
-        var matParedOrig = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/material paredes.mat");
-        if (matParedOrig && matParedOrig.HasProperty("_BaseColor")) amarillo = matParedOrig.GetColor("_BaseColor");
+        // Color de las paredes: ocre (elegido entre varias opciones; antes era amarillo).
+        Color amarillo = ColorParedes;
 
         int paredes = 0, muebles = 0, mesas = 0, pisos = 0, props = 0, omitidos = 0;
         foreach (Renderer r in tienda.GetComponentsInChildren<Renderer>(true))

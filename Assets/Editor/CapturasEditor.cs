@@ -35,6 +35,20 @@ public static class CapturasEditor
         {
             if (l.Trim() == "volcar") { VolcarTienda(); continue; }
             if (l.Trim().StartsWith("volcar:")) { Volcar(l.Trim().Substring(7)); continue; }
+            // colorMaterial:<prefijo de nombre>:r,g,b  -> cambia _BaseColor de los materiales de la escena que empiecen asi
+            if (l.Trim().StartsWith("colorMaterial:"))
+            {
+                string[] c = l.Trim().Split(':');
+                string[] rgb = c[2].Split(',');
+                var col = new Color(float.Parse(rgb[0], System.Globalization.CultureInfo.InvariantCulture),
+                                    float.Parse(rgb[1], System.Globalization.CultureInfo.InvariantCulture),
+                                    float.Parse(rgb[2], System.Globalization.CultureInfo.InvariantCulture));
+                var hechos = new System.Collections.Generic.HashSet<Material>();
+                foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+                    foreach (Material m in r.sharedMaterials)
+                        if (m && m.name.StartsWith(c[1]) && hechos.Add(m)) { m.SetColor("_BaseColor", col); EditorUtility.SetDirty(m); }
+                continue;
+            }
             string[] p = l.Split(';');
             if (p.Length < 8) continue;
             float F(int i) => float.Parse(p[i], System.Globalization.CultureInfo.InvariantCulture);
@@ -119,6 +133,7 @@ public static class CapturasEditor
     static string Ruta(Transform t, Transform raiz) => t == raiz ? t.name : Ruta(t.parent, raiz) + "/" + t.name;
     static string V(Vector3 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z);
 }
+
 
 
 
