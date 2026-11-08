@@ -22,6 +22,8 @@ public class FlashlightUI : MonoBehaviour
 
     void Update()
     {
+        // La linterna puede aparecer mas tarde (ej: en una caja del sotano)
+        if (flashlight == null) flashlight = FindFirstObjectByType<Flashlight>();
         if (flashlight == null) return;
 
         float percent = flashlight.BatteryPercent;
