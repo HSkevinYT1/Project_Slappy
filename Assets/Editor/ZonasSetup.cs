@@ -37,6 +37,8 @@ public static class ZonasSetup
         }
         // Vista previa de las lianas en el editor (se pierde al recompilar, asi que se rehace aqui).
         if (lab && lab.TryGetComponent(out LianasLaberinto vista)) vista.RegenerarVistaPrevia();
+        // Paredes elevadas: se puede pasar por debajo (ver ParedesBajoSetup.cs).
+        if (lab) ParedesBajoSetup.AutoAplicar();
 
         GameObject zp = GameObject.Find("Zona_Principal");
         if (zp && !zp.transform.Find("Marcas Caminos"))
