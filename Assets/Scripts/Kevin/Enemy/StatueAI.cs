@@ -152,6 +152,8 @@ public class EstatuaAI : MonoBehaviour
     // Comprueba cada medio segundo si hay un camino completo por el NavMesh hasta el jugador
     bool PlayerReachable()
     {
+        // Escondido (ej: en un armario) no lo persigue
+        if (Escondite.JugadorEscondido) return false;
         if (Time.time < nextReachCheck) return playerReachable;
         nextReachCheck = Time.time + 0.5f;
 

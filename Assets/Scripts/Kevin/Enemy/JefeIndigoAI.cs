@@ -155,7 +155,7 @@ public class JefeIndigoAI : MonoBehaviour
     {
         agent.SetDestination(detectingPlayer ? target.position : lastKnownPosition);
 
-        if (Vector3.Distance(transform.position, target.position) <= catchDistance)
+        if (!Escondite.JugadorEscondido && Vector3.Distance(transform.position, target.position) <= catchDistance)
         {
             EnterState(State.Caught);
             return;
@@ -188,6 +188,9 @@ public class JefeIndigoAI : MonoBehaviour
 
     bool CanSeePlayer()
     {
+        // Escondido (ej: en un armario) no se le ve
+        if (Escondite.JugadorEscondido) return false;
+
         Vector3 eyes = EyePosition();
         // Apunta al centro del cuerpo del jugador
         Vector3 aim = playerCollider != null ? playerCollider.bounds.center : target.position;
@@ -227,7 +230,7 @@ public class JefeIndigoAI : MonoBehaviour
 
     bool CanHearPlayer()
     {
-        if (playerBody == null) return false;
+        if (playerBody == null || Escondite.JugadorEscondido) return false;
         if (Vector3.Distance(transform.position, target.position) > hearingRadius) return false;
 
         Vector3 v = playerBody.linearVelocity;

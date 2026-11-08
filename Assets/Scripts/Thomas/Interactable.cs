@@ -16,6 +16,9 @@ public class Interactable : MonoBehaviour
 
     public string Prompt => prompt;
 
+    // Para acciones que cambian de texto segun su estado (ej: el armario: "Esconderse" / "Salir")
+    public void SetPrompt(string texto) => prompt = texto;
+
     void Start()
     {
         // Aviso util para detectar objetos mal configurados
