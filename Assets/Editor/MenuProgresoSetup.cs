@@ -15,7 +15,7 @@ using UnityEngine.UI;
 // - Progreso de la Zona Principal: solo brilla el camino de la zona que toca y solo su puerta esta abierta
 //   (ProgresoCaminos en "Marcas Caminos" + una PuertaDeslizante al inicio de cada pasillo).
 // - Pilas para la linterna repartidas por las zonas (prefab Assets/Prefabs/Bateria.prefab).
-// - Linterna visible con los Volumes: mas potente, Volume propio (LinternaVolume) y el negro del laberinto
+// - Linterna visible con los Volumes: mas potente y el negro del laberinto
 //   deja de ser metalico (antes no podia reflejar ninguna luz).
 // - Menu principal: camara frente a la tienda, Jugar / Salir y cinematica hasta la cabeza del jugador.
 // - Quita el jugador de VR de la escena.
@@ -27,11 +27,10 @@ public static class MenuProgresoSetup
     const string Raiz = "Menu y Progreso";
     const string PrefabBateria = "Assets/Prefabs/Bateria.prefab";
     const string PrefabLinterna = "Assets/Prefabs/Linterna.prefab";
-    const string PerfilLinterna = "Assets/Volumenes/LinternaVolume.asset";
     const string MaterialNegro = "Assets/Shaders/NegroLVL1.mat";
     const string Fuente = "Assets/Fonts/Frisky SDF.asset";
-    const float IntensidadLinterna = 100f;
-    const float RangoLinterna = 22f;
+    const float IntensidadLinterna = 350f;
+    const float RangoLinterna = 30f;
     const int BateriasPorZona = 3;
 
     // Orden de las zonas (nombreDestino de cada MarcaCamino)
@@ -290,40 +289,7 @@ public static class MenuProgresoSetup
             EditorUtility.SetDirty(negro);
         }
 
-        var go = new GameObject("Volumen Linterna");
-        go.transform.SetParent(raiz, false);
-        var volume = go.AddComponent<Volume>();
-        volume.isGlobal = true;
-        volume.priority = 50f;
-        volume.weight = 0f;
-        volume.sharedProfile = PerfilDeLinterna();
-        go.AddComponent<VolumenLinterna>();
-    }
-
-    static VolumeProfile PerfilDeLinterna()
-    {
-        var perfil = AssetDatabase.LoadAssetAtPath<VolumeProfile>(PerfilLinterna);
-        if (perfil) return perfil;
-        perfil = ScriptableObject.CreateInstance<VolumeProfile>();
-        AssetDatabase.CreateAsset(perfil, PerfilLinterna);
-
-        // Sombras y medios tonos neutros (los perfiles de las zonas los hunden hasta el negro)
-        var smh = perfil.Add<ShadowsMidtonesHighlights>(true);
-        smh.shadows.value = new Vector4(1f, 1f, 1f, 0f);
-        smh.midtones.value = new Vector4(1f, 1f, 1f, 0f);
-        smh.highlights.value = new Vector4(1f, 1f, 1f, 0f);
-        var ajustes = perfil.Add<ColorAdjustments>(false);
-        ajustes.colorFilter.overrideState = true;
-        ajustes.colorFilter.value = Color.white;
-
-        foreach (VolumeComponent c in perfil.components)
-        {
-            c.name = c.GetType().Name;
-            AssetDatabase.AddObjectToAsset(c, perfil);
-        }
-        EditorUtility.SetDirty(perfil);
-        AssetDatabase.SaveAssets();
-        return perfil;
+        // (Ya no se usa un Volume propio para la linterna: cambiaba el color de los Volumes de cada zona)
     }
 
     // ------------------------------------------------------------------ Menu

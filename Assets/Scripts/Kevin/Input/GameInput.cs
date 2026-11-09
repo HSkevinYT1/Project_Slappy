@@ -12,6 +12,8 @@ public static class GameInput
 
     // Botones: solo son true en el frame en que se presionan
     public static bool Interact => Pressed("Interactuar");
+    // Soltar lo que se tiene en la mano (Z)
+    public static bool Drop => Pressed("Soltar");
     public static bool ExitMinigame => Pressed("Salir");
     public static bool NextDialogue => Pressed("SiguienteDialogo");
     public static bool Flashlight => Pressed("Linterna");

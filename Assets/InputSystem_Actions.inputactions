@@ -58,6 +58,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "Soltar",
+                    "type": "Button",
+                    "id": "5b7e2c1d-8f3a-4e6b-9c2d-1a4f7e8b3c55",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -124,6 +133,17 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "Arrastrar",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "9d4a6f2e-3b1c-4c8d-a7e5-6f0b2d9c4e17",
+                    "path": "<Keyboard>/z",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Soltar",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

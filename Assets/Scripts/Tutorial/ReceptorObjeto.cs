@@ -6,6 +6,11 @@ using UnityEngine.Events;
 // lo ENTREGA en lugar de soltarlo (ver PlayerInteractor). El objeto queda en la mano del receptor.
 public class ReceptorObjeto : MonoBehaviour
 {
+    void Awake()
+    {
+        if (zonaEntrega != null) zonaEntrega.isTrigger = true;
+    }
+
     [Tooltip("Objeto que acepta. Vacio = acepta cualquier objeto agarrable.")]
     public Grabbable objetoEsperado;
 
@@ -21,15 +26,39 @@ public class ReceptorObjeto : MonoBehaviour
     [Tooltip("Si se marca, el objeto recibido se oculta en lugar de quedar en la mano.")]
     public bool ocultarAlRecibir = false;
 
+    [Header("Desde donde se entrega")]
+    [Tooltip("Opcional: el jugador tiene que estar dentro de esta caja para entregarlo (ej: detras del mostrador).")]
+    public BoxCollider zonaEntrega;
+    [Tooltip("Texto al apuntarle con el objeto desde fuera de la Zona Entrega.")]
+    public string promptFueraZona = "Entregalo desde el mostrador";
+
     public UnityEvent<Grabbable> alRecibir;
 
     public bool Recibido { get; private set; }
-    public string Prompt => prompt;
+    public string Prompt => JugadorEnZona() ? prompt : promptFueraZona;
 
-    public bool Acepta(Grabbable objeto)
+    private Transform jugador;
+
+    // Espera este objeto (aunque el jugador todavia no este en la zona de entrega)
+    public bool Espera(Grabbable objeto)
     {
         if (!enabled || Recibido || objeto == null) return false;
         return objetoEsperado == null || objeto == objetoEsperado;
+    }
+
+    // Se le puede entregar ya: lo espera y el jugador esta en la zona de entrega
+    public bool Acepta(Grabbable objeto) => Espera(objeto) && JugadorEnZona();
+
+    public bool JugadorEnZona()
+    {
+        if (zonaEntrega == null) return true;
+        if (jugador == null)
+        {
+            PlayerMovement pm = FindFirstObjectByType<PlayerMovement>();
+            if (pm == null) return true;
+            jugador = pm.transform;
+        }
+        return zonaEntrega.bounds.Contains(jugador.position);
     }
 
     // Lo llama PlayerInteractor cuando el jugador entrega el objeto.

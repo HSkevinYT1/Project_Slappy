@@ -3,12 +3,15 @@ using UnityEngine;
 using UnityEngine.Events;
 
 // Tutorial de la tienda:
-// 1. Llega un cliente al mostrador y pide un cuchillo (dialogo).
+// 1. Llega un cliente al mostrador y espera a que el jugador lo atienda (Interactable del cliente > Atender).
+//    Al atenderlo pide un cuchillo (dialogo).
 // 2. Al cerrar el dialogo, el cuchillo brilla (Highlightable) y se puede agarrar.
-// 3. El jugador agarra el cuchillo y se lo entrega al cliente (apuntarle + tecla de interaccion).
+// 3. El jugador agarra el cuchillo y se lo entrega al cliente desde detras del mostrador
+//    (Zona Entrega del ReceptorObjeto; apuntarle + tecla de interaccion).
 // 4. El cliente agradece y se va.
 // 5. Llega el cultista y pide un muneco (dialogo).
-// 6. Al cerrar el dialogo, la camara del jugador gira 180 grados (hacia la bajada al sotano).
+// 6. Al cerrar el dialogo: si el jugador esta detras del mostrador, la camara gira 180 grados (hacia la
+//    bajada al sotano); si no, brilla el marco de la puerta del sotano hasta que llega a el.
 //
 // Empieza cuando el jugador esta dentro de la tienda (zona "areaTienda").
 public class TutorialTienda : MonoBehaviour
@@ -31,6 +34,8 @@ public class TutorialTienda : MonoBehaviour
     public DialogueData dialogoClienteGracias;
     [Tooltip("Lo que pide el cliente (brilla y se habilita al terminar el dialogo).")]
     public Grabbable cuchillo;
+    [Tooltip("El cliente espera en el mostrador hasta que el jugador interactua con el (su Interactable llama a Atender).")]
+    public bool atenderParaEmpezar = true;
 
     [Header("Cultista")]
     public Transform cultista;
@@ -40,6 +45,12 @@ public class TutorialTienda : MonoBehaviour
     [Tooltip("Grados que gira el jugador al terminar el dialogo del cultista (180 = darse la vuelta).")]
     public float gradosGiro = 180f;
     public float duracionGiro = 1.2f;
+    [Tooltip("Solo gira si el jugador esta dentro de esta zona (detras del mostrador). Vacio = gira siempre.")]
+    public BoxCollider zonaMostrador;
+    [Tooltip("Si el jugador no esta en el mostrador, brilla este marco (la puerta del sotano) hasta que llega a el.")]
+    public Highlightable marcoSotano;
+    [Tooltip("Distancia al marco a la que deja de brillar.")]
+    public float distanciaApagarMarco = 1.5f;
 
     [Header("Eventos")]
     public UnityEvent alPedirCuchillo;
@@ -51,6 +62,10 @@ public class TutorialTienda : MonoBehaviour
     PlayerMovement jugador;
     MouseLook mirada;
     bool dialogoTerminado;
+    bool atendido;
+
+    // Lo llama el Interactable del cliente
+    public void Atender() => atendido = true;
 
     void Start()
     {
@@ -59,6 +74,7 @@ public class TutorialTienda : MonoBehaviour
 
         if (cliente) cliente.gameObject.SetActive(false);
         if (cultista) cultista.gameObject.SetActive(false);
+        if (cliente && cliente.TryGetComponent(out Interactable hablar)) hablar.enabled = false;
 
         // El cuchillo no se puede agarrar hasta que el cliente lo pida.
         if (cuchillo && cuchillo.TryGetComponent(out Interactable inter)) inter.enabled = false;
@@ -85,6 +101,20 @@ public class TutorialTienda : MonoBehaviour
         // ---- Cliente: entra y pide el cuchillo ----
         Paso = "Cliente entrando";
         yield return Entrar(cliente);
+
+        // ---- Espera a que el jugador lo atienda ----
+        if (atenderParaEmpezar && cliente && cliente.TryGetComponent(out Interactable hablarCliente))
+        {
+            Paso = "Atender al cliente";
+            atendido = false;
+            hablarCliente.enabled = true;
+            while (!atendido)
+            {
+                MirarJugador(cliente);
+                yield return null;
+            }
+            hablarCliente.enabled = false;
+        }
         yield return Dialogo(dialogoClientePide);
 
         Paso = "Buscar el cuchillo";
@@ -117,9 +147,17 @@ public class TutorialTienda : MonoBehaviour
         yield return Entrar(cultista);
         yield return Dialogo(dialogoCultistaPide);
 
-        // ---- Giro de 180 hacia el sotano ----
-        Paso = "Girando hacia el sotano";
-        yield return GirarJugador(gradosGiro, duracionGiro);
+        // ---- Hacia el sotano: giro de 180 si esta en el mostrador; si no, brilla la puerta ----
+        if (zonaMostrador == null || JugadorEn(zonaMostrador))
+        {
+            Paso = "Girando hacia el sotano";
+            yield return GirarJugador(gradosGiro, duracionGiro);
+        }
+        else if (marcoSotano != null)
+        {
+            marcoSotano.Show();
+            StartCoroutine(ApagarMarcoAlLlegar());
+        }
 
         Paso = "Terminado";
         alTerminar?.Invoke();
@@ -133,22 +171,64 @@ public class TutorialTienda : MonoBehaviour
         return t != null && areaTienda.Contains(t.position);
     }
 
+    bool JugadorEn(BoxCollider zona)
+    {
+        Transform t = jugador ? jugador.transform : (Camera.main ? Camera.main.transform : null);
+        return t != null && zona.bounds.Contains(t.position);
+    }
+
+    // El marco deja de brillar cuando el jugador llega a la puerta del sotano
+    IEnumerator ApagarMarcoAlLlegar()
+    {
+        Renderer[] partes = marcoSotano.GetComponentsInChildren<Renderer>();
+        while (marcoSotano != null && marcoSotano.IsHighlighted)
+        {
+            Transform t = jugador ? jugador.transform : null;
+            if (t != null)
+                foreach (Renderer r in partes)
+                    if (r != null && Vector3.Distance(r.bounds.ClosestPoint(t.position), t.position) < distanciaApagarMarco)
+                    {
+                        marcoSotano.Hide();
+                        yield break;
+                    }
+            yield return null;
+        }
+    }
+
     IEnumerator Entrar(Transform npc)
     {
         if (!npc || caminoEntrada == null || caminoEntrada.Length == 0) yield break;
         npc.position = caminoEntrada[0].position;
         npc.gameObject.SetActive(true);
+        Animar(npc, true);
         for (int i = 1; i < caminoEntrada.Length; i++)
             yield return Caminar(npc, caminoEntrada[i].position);
+        Animar(npc, false);
         yield return GirarHaciaJugador(npc, 0.5f);
     }
 
     IEnumerator Salir(Transform npc)
     {
         if (!npc || caminoEntrada == null || caminoEntrada.Length == 0) yield break;
+        Animar(npc, true);
         for (int i = caminoEntrada.Length - 2; i >= 0; i--)
             yield return Caminar(npc, caminoEntrada[i].position);
+        Animar(npc, false);
         npc.gameObject.SetActive(false);
+    }
+
+    // Si el NPC tiene Animator con el parametro "Caminando", camina mientras se mueve y queda en idle al parar
+    const string ParamCaminando = "Caminando";
+
+    static void Animar(Transform npc, bool caminando)
+    {
+        if (!npc) return;
+        foreach (Animator a in npc.GetComponentsInChildren<Animator>())
+        {
+            if (a.runtimeAnimatorController == null) continue;
+            foreach (AnimatorControllerParameter p in a.parameters)
+                if (p.name == ParamCaminando && p.type == AnimatorControllerParameterType.Bool) a.SetBool(ParamCaminando, caminando);
+        }
     }
 
     IEnumerator Caminar(Transform npc, Vector3 destino)

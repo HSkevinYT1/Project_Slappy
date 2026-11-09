@@ -92,14 +92,14 @@ public class PlayerInteractor : MonoBehaviour
         }
 
         // Con un objeto en la mano (ej: la linterna) se sigue pudiendo interactuar con todo.
-        // Si se le apunta a quien lo espera, se le entrega; si no se apunta a nada, se suelta.
+        // Si se le apunta a quien lo espera, se le entrega. Para soltarlo hay una tecla aparte (Z).
         Receptor = Held != null ? FindReceptor() : null;
         Current = Receptor != null ? null : FindInteractable();
 
+        if (Held != null && GameInput.Drop) { Drop(); return; }
         if (!GameInput.Interact) return;
         if (Receptor != null) Give(Receptor);
         else if (Current != null) Current.Interact(this);
-        else if (Held != null) Drop();
     }
 
     Interactable FindInteractable()
@@ -176,7 +176,7 @@ public class PlayerInteractor : MonoBehaviour
         receptor.Recibir(obj);
     }
 
-    // Receptor al que apunta el jugador que acepta el objeto que tiene en la mano
+    // Receptor al que apunta el jugador que espera el objeto que tiene en la mano
     ReceptorObjeto FindReceptor()
     {
         Transform aim = pointer != null ? pointer : cam.transform;
@@ -184,7 +184,9 @@ public class PlayerInteractor : MonoBehaviour
                             raycastLayers, QueryTriggerInteraction.Ignore))
         {
             ReceptorObjeto r = hit.collider.GetComponentInParent<ReceptorObjeto>();
-            if (r != null && r.Acepta(Held)) return r;
+            // Aunque todavia no se le pueda entregar (fuera de su zona) se le apunta igual: muestra su
+            // texto y la tecla no suelta el objeto
+            if (r != null && r.Espera(Held)) return r;
         }
         return null;
     }
