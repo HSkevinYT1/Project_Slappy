@@ -86,8 +86,8 @@ MonoBehaviour:
   sonidoAgitacion: {fileID: 0}
   volumenAgitacion: 0.8
   fadeAgitacion: 0.8
-  sonidoAbrir: {fileID: 8300000, guid: c232eca23f8cd424f885b42d066bdcd0, type: 3}
-  sonidoCerrar: {fileID: 8300000, guid: 840e125eba9d7424f919938d7a557839, type: 3}
+  sonidoAbrir: {fileID: 8300000, guid: 9a5d22b441e15654faa5bedc44896915, type: 3}
+  sonidoCerrar: {fileID: 8300000, guid: 045af2f627161a84bb707d2b524f414a, type: 3}
   textoEsconderse: Esconderse
   textoSalir: Salir
   alEsconderse:
