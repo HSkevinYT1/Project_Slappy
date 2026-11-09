@@ -15,6 +15,9 @@ public class ReceptorObjeto : MonoBehaviour
     [Tooltip("Donde queda el objeto recibido (ej: la mano del NPC). Vacio = frente al pecho.")]
     public Transform puntoMano;
 
+    [Tooltip("Con Punto Mano asignado: el objeto toma tambien la rotacion de ese punto (ej: el cuchillo bien agarrado).")]
+    public bool alinearConMano = true;
+
     [Tooltip("Si se marca, el objeto recibido se oculta en lugar de quedar en la mano.")]
     public bool ocultarAlRecibir = false;
 
@@ -58,6 +61,7 @@ public class ReceptorObjeto : MonoBehaviour
             }
             objeto.transform.SetParent(mano, true);
             objeto.transform.localPosition = Vector3.zero;
+            if (puntoMano != null && alinearConMano) objeto.transform.localRotation = Quaternion.identity;
         }
 
         alRecibir?.Invoke(objeto);
