@@ -2,7 +2,10 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using System.Reflection;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering.Universal;
 
 // ZONA ROJA (bloqueo): isla con un faro.
@@ -16,40 +19,44 @@ using UnityEngine.Rendering.Universal;
 // Se crea sola una vez (si no existe "Zona Roja") y se puede rehacer con Tools > Zona Roja > Reconstruir.
 public static class ZonaRojaSetup
 {
-    const string Version = "_zona roja v2";
+    const string Version = "_zona roja v5";
     const string Carpeta = "Assets/ZonaRoja";
     const string CarpetaMat = Carpeta + "/Materiales";
     const string CarpetaMallas = Carpeta + "/Mallas";
 
     // ---- Faro ----
-    const float AltoPiso = 4f;          // cada piso mide 4 m
-    const float RadioFaro = 7f;         // radio exterior
+    const float AltoPiso = 10f;         // cada piso mide 10 m (al principio 4): mismos 3 pisos, mucho mas altos
+    const float RadioFaro = 9f;         // radio exterior (antes 7)
     const float GrosorMuro = 0.6f;
     const float RadioInterior = RadioFaro - GrosorMuro;
-    const float AnchoEscalera = 2f;     // ancho de cada escalera
-    const float AlturaLibre = 3f;       // altura libre sobre la escalera (el jugador mide ~2.65 m)
+    const float AnchoEscalera = 2.5f;   // ancho de cada escalera
+    const float AlturaLibre = 3f;       // altura libre sobre la escalera (el jugador mide ~1.72 m)
     const float GiroEscalera = 288f;    // grados que gira cada tramo de escalera (de un piso al siguiente)
-    const int Escalones = 16;           // 16 escalones de 0.25 m = 4 m
+    const int Escalones = (int)(AltoPiso / 0.25f); // escalones de 0.25 m
     const float AnchoPuerta = 13f;      // medio angulo de las puertas (grados)
-    const float DistEntrada = 5f;       // la punta del pasillo queda a 5 m del centro del faro (dentro del muro)
+    const float DistEntrada = RadioFaro - 2f; // la punta del pasillo entra 2 m en el faro (dentro del muro)
     // Angulos (0 = hacia el pasillo / entrada del piso 3, 180 = hacia la isla / puerta del piso 1).
     // Tramo 1->2 por el anillo EXTERIOR (pegado al muro) y tramo 2->3 por un anillo INTERIOR,
     // asi los huecos de cada piso no se cruzan y las puertas quedan libres.
     const float InicioEscalera1a2 = -108f; // termina en 180 (sobre la puerta del piso 1, a 4 m)
     const float InicioEscalera2a3 = 30f;   // su hueco en el piso 3 queda lejos de la entrada (0)
-    static float ExtIn => RadioInterior - AnchoEscalera;   // anillo exterior [4.4, 6.4]
+    static float ExtIn => RadioInterior - AnchoEscalera;   // anillo exterior
     static float ExtOut => RadioInterior;
-    static float IntIn => RadioInterior - 2f * AnchoEscalera; // anillo interior [2.4, 4.4]
+    static float IntIn => RadioInterior - 2f * AnchoEscalera; // anillo interior
     static float IntOut => RadioInterior - AnchoEscalera;
 
     // ---- Isla ----
-    // 3 veces el AREA de la primera version: isla casi cuadrada (con esquinas) de ~128 m de lado.
-    const float MitadIsla = 64f;          // medio lado
+    // Isla casi cuadrada (con esquinas) de ~168 m de lado (antes ~128 m: +70% de area).
+    // Crece hacia el oeste y el sur: al norte esta la Tienda y al este la Zona Principal, Cloacas y Backrooms.
+    const float MitadIsla = 84f;          // medio lado
+    const float DesplazamientoSur = 13f;  // el centro de la isla queda al sur del faro (el faro sigue en la orilla este)
     const float Playa = 9f;               // pendiente del borde hasta debajo del mar
     const float CeldaTerreno = 2f;        // resolucion de la malla del terreno
-    const int Arboles = 570;
+    const int Arboles = 700;              // maximo (los limita la separacion)
+    const float SeparacionArboles = 5.5f; // distancia minima entre troncos
+    const string ModeloArbol = "Assets/Scenes/jesus/tree 1.obj";
     // Lago "como tal": una cuenca hundida en el terreno, en una ESQUINA de la isla.
-    const float RadioLago = 20f;
+    const float RadioLago = 24f;
     const float ProfundidadLago = 3f;
     const float NivelLago = -0.6f;        // relativo al suelo de la isla
     const float NivelMar = -0.8f;
@@ -196,6 +203,7 @@ public static class ZonaRojaSetup
         Undo.SetCurrentGroupName("Crear Zona Roja");
 
         GameObject vieja = GameObject.Find("Zona Roja");
+        Guardado guardado = Guardar(vieja);
         if (vieja) Undo.DestroyObjectImmediate(vieja);
 
         // Donde termina el pasillo rojo.
@@ -235,7 +243,7 @@ public static class ZonaRojaSetup
 
         float ySuelo = -2f * AltoPiso; // el piso 1 del faro esta al nivel del suelo de la isla
         // El faro queda en el centro del borde ESTE de la isla (lado del pasillo).
-        Vector3 centroIsla = new Vector3(-(MitadIsla - 1f), ySuelo, 0f);
+        Vector3 centroIsla = new Vector3(-(MitadIsla - 1f), ySuelo, -DesplazamientoSur);
         var terreno = new Terreno(centroIsla);
         ConstruirIsla(raiz.transform, terreno, mats);
         ConstruirBosque(raiz.transform, terreno, ySuelo, mats);
@@ -248,6 +256,7 @@ public static class ZonaRojaSetup
             EditorUtility.SetDirty(marcaRoja);
         }
 
+        Restaurar(guardado, raiz.transform, terreno);
         ConfigurarLuzFaro(raiz.transform);
 
         EditorSceneManager.MarkSceneDirty(raiz.scene);
@@ -279,7 +288,8 @@ public static class ZonaRojaSetup
         // ---- Piso 3: sala de la linterna, entrada desde el pasillo ----
         Transform p3 = Hijo(faro, "Piso 3 - Linterna");
         SueloConHueco(p3, yP3, InicioEscalera2a3, IntIn, IntOut, m.madera);
-        float murete = 1.1f, vidrioHasta = 3.6f;
+        float k = AltoPiso / 4f, kr = RadioFaro / 7f; // detalles proporcionales (el diseno original era de 4 m x 7 m)
+        float murete = 1.2f, vidrioHasta = AltoPiso * 0.9f;
         Anillo(p3, "Murete", yP3, murete, RadioInterior, RadioFaro, 36, new[] { 0f }, m.blanco);
         Anillo(p3, "Vidrio", yP3 + murete, vidrioHasta - murete, RadioInterior + 0.2f, RadioFaro - 0.2f, 36, new[] { 0f }, m.vidrio);
         Anillo(p3, "Marco superior", yP3 + vidrioHasta, AltoPiso - vidrioHasta, RadioInterior, RadioFaro, 36, new[] { 0f }, m.blanco);
@@ -289,18 +299,18 @@ public static class ZonaRojaSetup
         Cilindro(techo, "Alero", new Vector3(0f, AltoPiso + 0.15f, 0f), RadioFaro + 0.5f, 0.3f, m.rojo, true);
         float[] radios = { 6f, 4.6f, 3.2f, 1.8f };
         for (int i = 0; i < radios.Length; i++)
-            Cilindro(techo, "Cupula " + i, new Vector3(0f, AltoPiso + 0.6f + i * 0.6f, 0f), radios[i], 0.6f, m.rojo, false);
-        Esfera(techo, "Remate", new Vector3(0f, AltoPiso + 3.1f, 0f), 0.5f, m.metal);
+            Cilindro(techo, "Cupula " + i, new Vector3(0f, AltoPiso + (0.6f + i * 0.6f) * k, 0f), radios[i] * kr, 0.6f * k, m.rojo, false);
+        Esfera(techo, "Remate", new Vector3(0f, AltoPiso + 3.1f * k, 0f), 0.5f * k, m.metal);
 
         // La luz giratoria, APAGADA, en el centro (enfrente de la entrada).
         Transform luz = Hijo(p3, "Luz del faro (apagada)");
-        Cilindro(luz, "Pedestal", new Vector3(0f, 0.5f, 0f), 0.9f, 1f, m.metal, true);
-        Cilindro(luz, "Base giratoria", new Vector3(0f, 1.1f, 0f), 1.1f, 0.2f, m.metal, false);
-        Cilindro(luz, "Lente (apagada)", new Vector3(0f, 1.9f, 0f), 0.9f, 1.4f, m.lente, false);
-        Cilindro(luz, "Tapa", new Vector3(0f, 2.7f, 0f), 1.0f, 0.2f, m.metal, false);
+        Cilindro(luz, "Pedestal", new Vector3(0f, 0.5f * k, 0f), 0.9f * k, 1f * k, m.metal, true);
+        Cilindro(luz, "Base giratoria", new Vector3(0f, 1.1f * k, 0f), 1.1f * k, 0.2f * k, m.metal, false);
+        Cilindro(luz, "Lente (apagada)", new Vector3(0f, 1.9f * k, 0f), 0.9f * k, 1.4f * k, m.lente, false);
+        Cilindro(luz, "Tapa", new Vector3(0f, 2.7f * k, 0f), 1.0f * k, 0.2f * k, m.metal, false);
         var foco = new GameObject("Foco (desactivado)");
         foco.transform.SetParent(luz, false);
-        foco.transform.localPosition = new Vector3(0f, 1.9f, 0f);
+        foco.transform.localPosition = new Vector3(0f, 1.9f * k, 0f);
         foco.transform.localRotation = Quaternion.LookRotation(Vector3.right);
         var l = foco.AddComponent<Light>();
         l.type = LightType.Spot;
@@ -565,11 +575,15 @@ public static class ZonaRojaSetup
         {
             new Vector2(26f, -22f), new Vector2(-6f, 30f), new Vector2(-34f, 6f), new Vector2(12f, 4f),
         };
+        for (int i = 0; i < posNotas.Length; i++) posNotas[i] *= MitadIsla / 64f;
         for (int i = 0; i < posNotas.Length; i++)
             Esfera(notas, "Nota " + (i + 1), new Vector3(c.x + posNotas[i].x, ySuelo + 1f, c.z + posNotas[i].y), 0.35f, m.nota);
 
-        // Arboles: cada uno es un solo bloque.
+        // Arboles: el modelo "tree 1" (pino), separados para que el bosque no se sienta pegado.
         Transform bosque = Hijo(raiz, "Bosque");
+        Mesh pino = MallaPino(out float radioTronco);
+        Material[] matsPino = { Lit("ArbolTronco", new Color(0.24f, 0.15f, 0.09f)), Lit("ArbolHojas", new Color(0.07f, 0.19f, 0.08f)) };
+        foreach (Material mp in matsPino) mp.enableInstancing = true;
         Vector2 faro = new Vector2(-c.x, -c.z); // el faro esta en el origen de "Zona Roja"
         var puestos = new List<Vector2>();
         int intentos = 0;
@@ -581,13 +595,23 @@ public static class ZonaRojaSetup
             if ((p - cuboRel).magnitude < 4f) continue;
             bool cerca = false;
             foreach (Vector2 n in posNotas) if ((p - n).magnitude < 3f) { cerca = true; break; }
-            if (!cerca) foreach (Vector2 q in puestos) if ((q - p).sqrMagnitude < 3.6f * 3.6f) { cerca = true; break; }
+            if (!cerca) foreach (Vector2 q in puestos) if ((q - p).sqrMagnitude < SeparacionArboles * SeparacionArboles) { cerca = true; break; }
             if (cerca) continue;
             puestos.Add(p);
 
-            float alto = 5f + R() * 4f, ancho = 1.2f + R() * 0.6f;
-            Caja(bosque, "Arbol " + puestos.Count, new Vector3(c.x + p.x, ySuelo + alto * 0.5f, c.z + p.y),
-                 Quaternion.Euler(0f, R() * 90f, 0f), new Vector3(ancho, alto, ancho), m.arbol, true);
+            float escala = 0.8f + R() * 0.45f; // 8.8 a 13.7 m de alto
+            var arbol = new GameObject("Arbol " + puestos.Count);
+            arbol.transform.SetParent(bosque, false);
+            arbol.transform.localPosition = new Vector3(c.x + p.x, ySuelo + ter.Altura(p.x, p.y) - 0.15f, c.z + p.y);
+            arbol.transform.localRotation = Quaternion.Euler(0f, R() * 360f, 0f);
+            arbol.transform.localScale = Vector3.one * escala;
+            arbol.AddComponent<MeshFilter>().sharedMesh = pino;
+            arbol.AddComponent<MeshRenderer>().sharedMaterials = matsPino;
+            var tronco = arbol.AddComponent<CapsuleCollider>(); // solo el tronco choca (las ramas quedan por encima del jugador)
+            tronco.radius = radioTronco;
+            tronco.height = 5f;
+            tronco.center = new Vector3(0f, 2.5f, 0f);
+            GameObjectUtility.SetStaticEditorFlags(arbol, StaticEditorFlags.BatchingStatic);
         }
         Debug.Log($"[Zona Roja] {puestos.Count} arboles.");
     }
@@ -604,9 +628,9 @@ public static class ZonaRojaSetup
         if (grupo.Count == 0) return;
 
         // Huella de la isla (con playa) en el mundo.
-        float ext = MitadIsla * 1.2f + Playa;
+        float ext = MitadIsla * 1.14f + Playa;
         Vector3 cMundo = raiz.TransformPoint(ter.centro);
-        var isla = new Bounds(new Vector3(cMundo.x, 0f, cMundo.z), new Vector3(ext * 2f + 30f, 1f, ext * 2f + 30f));
+        var isla = new Bounds(new Vector3(cMundo.x, 0f, cMundo.z), new Vector3(ext * 2f + 10f, 1f, ext * 2f + 10f));
 
         Bounds bg = default; bool hay = false;
         foreach (Transform t in grupo)
@@ -620,14 +644,174 @@ public static class ZonaRojaSetup
         while (bg.min.z + mover < isla.max.z && bg.max.x > isla.min.x && bg.min.x < isla.max.x
                && bg.max.z + mover > isla.min.z && mover < 400f)
             mover += 5f;
-        if (mover <= 0f) return;
+        // Ya no se mueve sola (la Tienda tiene cabinas, teletransporte y tutorial): solo se avisa.
+        if (mover > 0f)
+            Debug.LogWarning($"[Zona Roja] La isla toca la Tienda/sotano: habria que moverlos {mover} m al norte o achicar MitadIsla.");
+    }
 
-        foreach (Transform t in grupo)
+    // ------------------------------------------------------------------ Pino (modelo tree 1)
+
+    // Une las 8 piezas del modelo en una malla de 2 submallas (tronco y hojas), con la base en y = 0 y ~11 m de alto.
+    static Mesh MallaPino(out float radioTronco)
+    {
+        const float AltoBase = 11f;
+        var modelo = AssetDatabase.LoadAssetAtPath<GameObject>(ModeloArbol);
+        radioTronco = 0.6f;
+        if (!modelo) { Debug.LogWarning("[Zona Roja] No encuentro " + ModeloArbol); return null; }
+        var inst = Object.Instantiate(modelo);
+        try
         {
-            Undo.RecordObject(t, "Mover Tienda");
-            t.position += new Vector3(0f, 0f, mover);
+            MeshFilter[] mfs = inst.GetComponentsInChildren<MeshFilter>();
+            Bounds total = default; bool hay = false;
+            MeshFilter troncoMf = null;
+            foreach (MeshFilter mf in mfs)
+            {
+                Bounds b = mf.GetComponent<Renderer>().bounds;
+                if (!hay) { total = b; hay = true; } else total.Encapsulate(b);
+                if (!troncoMf || b.min.y < troncoMf.GetComponent<Renderer>().bounds.min.y) troncoMf = mf; // el tronco llega hasta abajo
+            }
+            float esc = AltoBase / total.size.y;
+            Matrix4x4 ajuste = Matrix4x4.Scale(Vector3.one * esc) * Matrix4x4.Translate(new Vector3(-total.center.x, -total.min.y, -total.center.z));
+            var tronco = new List<CombineInstance>();
+            var hojas = new List<CombineInstance>();
+            foreach (MeshFilter mf in mfs)
+                (mf == troncoMf ? tronco : hojas).Add(new CombineInstance { mesh = mf.sharedMesh, transform = ajuste * mf.transform.localToWorldMatrix });
+
+            var mT = new Mesh(); mT.CombineMeshes(tronco.ToArray(), true, true);
+            var mH = new Mesh(); mH.CombineMeshes(hojas.ToArray(), true, true);
+            var pino = new Mesh { name = "Pino" };
+            pino.CombineMeshes(new[] { new CombineInstance { mesh = mT, transform = Matrix4x4.identity }, new CombineInstance { mesh = mH, transform = Matrix4x4.identity } }, false, true);
+            pino.RecalculateBounds();
+            Object.DestroyImmediate(mT); Object.DestroyImmediate(mH);
+
+            Bounds bt = troncoMf.GetComponent<Renderer>().bounds;
+            radioTronco = Mathf.Max(0.25f, Mathf.Min(bt.extents.x, bt.extents.z) * esc * 0.7f);
+            return GuardarMalla(pino, "Pino");
         }
-        Debug.Log($"[Zona Roja] Tienda, sotano, escaleras, niebla y linterna movidos {mover} m al norte para no quedar sobre la isla.");
+        finally { Object.DestroyImmediate(inst); }
+    }
+
+    // ------------------------------------------------------------------ Lo que depende de la isla
+
+    // Al reconstruir se conserva el foco del faro (intensidad, etc. cambiados a mano) y el NavMesh de "Enemigos y Zonas";
+    // despues se re-hornea solo el NavMesh de la isla, se ajusta su trigger de Volume y se reubican su enemigo y sus baterias.
+    class Guardado
+    {
+        public string luz, luzUrp, superficie;
+        public readonly Dictionary<string, string> modificadores = new Dictionary<string, string>();
+    }
+
+    const string RutaFoco = "Faro/Piso 3 - Linterna/Luz del faro (apagada)/Foco (desactivado)";
+
+    static Guardado Guardar(GameObject vieja)
+    {
+        var g = new Guardado();
+        if (!vieja) return g;
+        Transform foco = vieja.transform.Find(RutaFoco);
+        if (foco && foco.TryGetComponent(out Light l)) g.luz = EditorJsonUtility.ToJson(l);
+        if (foco && foco.TryGetComponent(out UniversalAdditionalLightData d)) g.luzUrp = EditorJsonUtility.ToJson(d);
+        if (vieja.TryGetComponent(out NavMeshSurface s)) g.superficie = EditorJsonUtility.ToJson(s);
+        foreach (NavMeshModifier mod in vieja.GetComponentsInChildren<NavMeshModifier>(true))
+            g.modificadores[RutaRel(mod.transform, vieja.transform)] = EditorJsonUtility.ToJson(mod);
+        return g;
+    }
+
+    static string RutaRel(Transform t, Transform raiz) => t == raiz ? "" : (t.parent == raiz ? t.name : RutaRel(t.parent, raiz) + "/" + t.name);
+
+    static void Restaurar(Guardado g, Transform raiz, Terreno ter)
+    {
+        Transform foco = raiz.Find(RutaFoco);
+        if (foco && g.luz != null) EditorJsonUtility.FromJsonOverwrite(g.luz, foco.GetComponent<Light>());
+        if (foco && g.luzUrp != null)
+        {
+            var urp = foco.GetComponent<UniversalAdditionalLightData>();
+            if (!urp) urp = foco.gameObject.AddComponent<UniversalAdditionalLightData>();
+            EditorJsonUtility.FromJsonOverwrite(g.luzUrp, urp);
+        }
+        if (g.superficie == null) return; // todavia no hay "Enemigos y Zonas": su script lo hara todo despues
+
+        // NavMesh solo de la isla (mismos ajustes que puso EnemigosZonasSetup)
+        var surface = raiz.gameObject.AddComponent<NavMeshSurface>();
+        EditorJsonUtility.FromJsonOverwrite(g.superficie, surface);
+        surface.navMeshData = null;
+        foreach (var kv in g.modificadores)
+        {
+            Transform t = kv.Key == "" ? raiz : raiz.Find(kv.Key);
+            if (t) EditorJsonUtility.FromJsonOverwrite(kv.Value, t.gameObject.AddComponent<NavMeshModifier>());
+        }
+        Physics.SyncTransforms();
+        var guardarNav = typeof(EnemigosZonasSetup).GetMethod("GuardarNavMesh", BindingFlags.NonPublic | BindingFlags.Static);
+        if (guardarNav != null) guardarNav.Invoke(null, new object[] { surface });
+        else surface.BuildNavMesh();
+
+        // Trigger del Volume de la zona: caja de los colliders de la isla (recortada contra la Zona Principal)
+        GameObject trig = GameObject.Find("Enemigos y Zonas/Triggers Volumen/Trigger Zona Roja");
+        var limites = typeof(EnemigosZonasSetup).GetMethod("LimitesColliders", BindingFlags.NonPublic | BindingFlags.Static);
+        var recortar = typeof(EnemigosZonasSetup).GetMethod("RecortarContraZonaPrincipal", BindingFlags.NonPublic | BindingFlags.Static);
+        if (trig && limites != null && recortar != null)
+        {
+            var args = new object[] { raiz, null };
+            if ((bool)limites.Invoke(null, args))
+            {
+                Bounds b = (Bounds)args[1];
+                b.Expand(new Vector3(0f, 4f, 0f));
+                var args2 = new object[] { b };
+                recortar.Invoke(null, args2);
+                b = (Bounds)args2[0];
+                Undo.RecordObject(trig.transform, "Trigger Zona Roja");
+                trig.transform.position = b.center;
+                var box = trig.GetComponent<BoxCollider>();
+                Undo.RecordObject(box, "Trigger Zona Roja");
+                box.center = Vector3.zero;
+                box.size = b.size;
+            }
+        }
+
+        // Enemigo: misma direccion respecto al faro, sobre el NavMesh nuevo
+        Transform faro = raiz.Find("Faro");
+        GameObject grupo = GameObject.Find("Enemigos y Zonas/Enemigos/Enemigos Zona Roja");
+        if (grupo && faro)
+            foreach (Transform e in grupo.transform)
+            {
+                Vector3 d = e.position - faro.position; d.y = 0f;
+                if (d.sqrMagnitude < 0.01f) d = Vector3.left;
+                float dist = Mathf.Clamp(d.magnitude, RadioFaro + 8f, RadioFaro + 30f);
+                Vector3 p = faro.position + d.normalized * dist + Vector3.down * 2f * AltoPiso;
+                if (!NavMesh.SamplePosition(p, out NavMeshHit hit, 25f, NavMesh.AllAreas)) continue;
+                float alto = e.TryGetComponent(out NavMeshAgent agent) ? agent.baseOffset : 0f;
+                Undo.RecordObject(e, "Enemigo Zona Roja");
+                e.position = hit.position + Vector3.up * alto;
+            }
+
+        // Baterias de la zona: en tierra firme, lejos del faro, del lago y entre si
+        GameObject bats = GameObject.Find("Menu y Progreso/Baterias");
+        if (bats)
+        {
+            var rnd = new System.Random(77);
+            var puestas = new List<Vector3>();
+            Vector2 faroRel = new Vector2(-ter.centro.x, -ter.centro.z);
+            foreach (Transform b in bats.transform)
+            {
+                if (!b.name.StartsWith("Bateria Zona Roja")) continue;
+                for (int i = 0; i < 400; i++)
+                {
+                    var q = new Vector2(((float)rnd.NextDouble() * 2f - 1f) * MitadIsla * 0.85f, ((float)rnd.NextDouble() * 2f - 1f) * MitadIsla * 0.85f);
+                    if (!ter.EnTierra(q.x, q.y)) continue;
+                    if ((q - faroRel).magnitude < RadioFaro + 6f || (q - ter.lago).magnitude < RadioLago + 8f) continue;
+                    Vector3 w = raiz.TransformPoint(ter.centro + new Vector3(q.x, ter.Altura(q.x, q.y), q.y));
+                    bool lejos = true;
+                    foreach (Vector3 o in puestas) if ((o - w).magnitude < 30f) lejos = false;
+                    if (!lejos) continue;
+                    // Que no quede dentro de un tronco
+                    if (Physics.CheckSphere(w + Vector3.up * 1f, 0.8f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    if (!Physics.Raycast(w + Vector3.up * 3f, Vector3.down, out RaycastHit suelo, 10f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    puestas.Add(w);
+                    Undo.RecordObject(b, "Bateria Zona Roja");
+                    b.position = suelo.point + Vector3.up * 0.1f;
+                    break;
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------ Materiales y utilidades

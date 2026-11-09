@@ -35,6 +35,23 @@ public static class CapturasEditor
         {
             if (l.Trim() == "volcar") { VolcarTienda(); continue; }
             if (l.Trim().StartsWith("volcar:")) { Volcar(l.Trim().Substring(7)); continue; }
+            // medir:<ruta1>|<ruta2>...  -> Temp/Capturas/medidas.txt con jugadores (CharacterController) y limites de cada hijo
+            if (l.Trim().StartsWith("medir:")) { Medir(l.Trim().Substring(6).Split('|')); continue; }
+            // raices -> Temp/Capturas/raices.txt con los limites (renderers) de cada objeto raiz de la escena
+            if (l.Trim() == "raices")
+            {
+                var sbr = new StringBuilder();
+                foreach (GameObject g in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+                {
+                    Bounds b = default; bool hay = false;
+                    foreach (Renderer r in g.GetComponentsInChildren<Renderer>())
+                    { if (!hay) { b = r.bounds; hay = true; } else b.Encapsulate(r.bounds); }
+                    sbr.AppendLine(hay ? $"{g.name} min={V(b.min)} max={V(b.max)}" : $"{g.name} (sin renderers) pos={V(g.transform.position)}");
+                }
+                Directory.CreateDirectory(Carpeta);
+                File.WriteAllText(Path.Combine(Carpeta, "raices.txt"), sbr.ToString());
+                continue;
+            }
             // prefab:<ruta>;<nombre>;<giro>;<inclinacion>;<distancia en tamanos>  -> foto del prefab aislado
             if (l.Trim().StartsWith("prefab:"))
             {
@@ -190,9 +207,60 @@ public static class CapturasEditor
         File.WriteAllText(Path.Combine(Carpeta, nombre.ToLowerInvariant() + "_geometria.txt"), sb.ToString());
     }
 
+    public static void Medir(string[] rutas)
+    {
+        Directory.CreateDirectory(Carpeta);
+        var sb = new StringBuilder();
+        foreach (var cc in Object.FindObjectsByType<CharacterController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            Vector3 s = cc.transform.lossyScale;
+            sb.AppendLine($"JUGADOR {cc.name} pos={V(cc.transform.position)} escala={V(s)} alto={cc.height * s.y:0.00} radio={cc.radius * Mathf.Max(s.x, s.z):0.00} bounds={V(cc.bounds.min)}-{V(cc.bounds.max)}");
+            var cam = cc.GetComponentInChildren<Camera>(true);
+            if (cam) sb.AppendLine($"  camara {cam.name} y={cam.transform.position.y:0.00} (ojos a {cam.transform.position.y - cc.bounds.min.y:0.00} del piso)");
+        }
+        foreach (var pm in Object.FindObjectsByType<PlayerMovement>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            sb.AppendLine($"PLAYERMOVEMENT {pm.name} pos={V(pm.transform.position)} escala={V(pm.transform.lossyScale)} activo={pm.gameObject.activeInHierarchy}");
+            foreach (var c in pm.GetComponentsInChildren<Collider>(true))
+            {
+                string extra = c is CapsuleCollider cap ? $" capsula alto={cap.height * c.transform.lossyScale.y:0.00} radio={cap.radius * c.transform.lossyScale.x:0.00}" : "";
+                sb.AppendLine($"  collider {c.name} {c.GetType().Name} bounds={V(c.bounds.min)}-{V(c.bounds.max)}{extra}");
+            }
+            foreach (var cam in pm.transform.root.GetComponentsInChildren<Camera>(true))
+                sb.AppendLine($"  camara {cam.name} y={cam.transform.position.y:0.00} (sobre pies: {cam.transform.position.y - pm.transform.position.y:0.00})");
+        }
+        foreach (string r in rutas)
+        {
+            GameObject g = GameObject.Find(r.Trim());
+            if (!g) { sb.AppendLine("NO ENCONTRADO " + r); continue; }
+            sb.AppendLine($"OBJETO {r} pos={V(g.transform.position)} rot={V(g.transform.eulerAngles)} escalaLocal={V(g.transform.localScale)} escala={V(g.transform.lossyScale)}");
+            foreach (Transform t in g.GetComponentsInChildren<Transform>(true))
+            {
+                string linea = $"  {Ruta(t, g.transform)} escalaLocal={V(t.localScale)}";
+                if (t.TryGetComponent(out Renderer rr)) linea += $" R={V(rr.bounds.min)}-{V(rr.bounds.max)} tam={V(rr.bounds.size)}";
+                foreach (var c in t.GetComponents<Collider>()) linea += $" C[{c.GetType().Name}{(c.isTrigger ? ",trigger" : "")}]={V(c.bounds.size)}";
+                foreach (var c in t.GetComponents<MonoBehaviour>()) if (c) linea += $" <{c.GetType().Name}>";
+                sb.AppendLine(linea);
+            }
+        }
+        File.WriteAllText(Path.Combine(Carpeta, "medidas.txt"), sb.ToString());
+    }
+
     static string Ruta(Transform t, Transform raiz) => t == raiz ? t.name : Ruta(t.parent, raiz) + "/" + t.name;
     static string V(Vector3 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z);
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
