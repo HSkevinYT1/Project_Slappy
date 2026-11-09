@@ -4,8 +4,8 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
 
-// Presentacion del enemigo del laberinto: zona justo al entrar, un punto a lo lejos que se ve desde la
-// entrada (sin paredes en medio) donde aparece el enemigo, y un destino hacia el que camina hasta perderse.
+// Presentacion del enemigo del laberinto: zona justo al entrar (al final del pasillo) y un punto a lo lejos,
+// al fondo de un pasillo que se ve desde la entrada, donde el enemigo esta quieto de espaldas.
 // Los puntos se pueden mover a mano despues. Se aplica sola una vez; rehacer: Tools > Laberinto > Presentacion del enemigo.
 [InitializeOnLoad]
 public static class PresentacionEnemigoSetup
@@ -26,10 +26,12 @@ public static class PresentacionEnemigoSetup
     internal static void AutoAplicar()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-        if (Object.FindFirstObjectByType<PresentacionEnemigo>(FindObjectsInactive.Include)) return;
+        var vieja = Object.FindFirstObjectByType<PresentacionEnemigo>(FindObjectsInactive.Include);
         GameObject lab = GameObject.Find("Laberinto");
         if (!lab || !EnemigoDelLaberinto()) return;
-        Aplicar(lab.transform);
+        // Version anterior (franjas de cine y el enemigo cruzando): se rehace (solo si encuentra el nuevo punto)
+        if (vieja && !(vieja.franjasCine && vieja.puntoDestino != null)) return;
+        Aplicar(lab.transform, vieja);
     }
 
     [MenuItem("Tools/Laberinto/Presentacion del enemigo")]
@@ -37,9 +39,7 @@ public static class PresentacionEnemigoSetup
     {
         GameObject lab = GameObject.Find("Laberinto");
         if (!lab) { EditorUtility.DisplayDialog("Laberinto", "No se encontro \"Laberinto\".", "OK"); return; }
-        var vieja = Object.FindFirstObjectByType<PresentacionEnemigo>(FindObjectsInactive.Include);
-        if (vieja) Undo.DestroyObjectImmediate(vieja.gameObject);
-        Aplicar(lab.transform);
+        Aplicar(lab.transform, Object.FindFirstObjectByType<PresentacionEnemigo>(FindObjectsInactive.Include));
     }
 
     static JefeIndigoAI EnemigoDelLaberinto()
@@ -48,7 +48,7 @@ public static class PresentacionEnemigoSetup
         return g ? g.GetComponentInChildren<JefeIndigoAI>(true) : null;
     }
 
-    static void Aplicar(Transform lab)
+    static void Aplicar(Transform lab, PresentacionEnemigo vieja)
     {
         JefeIndigoAI enemigo = EnemigoDelLaberinto();
         Transform entrada = lab.Find("Entrada Pasillo");
@@ -61,42 +61,27 @@ public static class PresentacionEnemigoSetup
         Vector3 pie = hi.hit ? hi.position : inicio;
         Vector3 ojos = pie + Vector3.up * 1.6f;
 
-        // Punto de aparicion: lejos (12-26 m), por delante, y que se vea desde la entrada
-        Bounds b = Limites(lab);
-        var rnd = new System.Random(77);
-        Vector3 mejor = Vector3.zero; float mejorPuntos = float.MinValue;
+        // Punto de aparicion: al final del pasillo mas largo que se ve de frente desde la entrada.
+        // Se lanzan rayos hacia delante (hasta 30 grados a cada lado); el mas largo es el pasillo,
+        // y el enemigo va 1.5 m antes de la pared del fondo.
+        Vector3 mejor = Vector3.zero, mirar = dentro; float mejorPuntos = float.MinValue;
         var camino = new NavMeshPath();
-        for (int i = 0; i < 4000; i++)
+        for (float ang = -30f; ang <= 30.01f; ang += 2f)
         {
-            var p = new Vector3(Mathf.Lerp(b.min.x, b.max.x, (float)rnd.NextDouble()), b.center.y, Mathf.Lerp(b.min.z, b.max.z, (float)rnd.NextDouble()));
-            if (!NavMesh.SamplePosition(p, out NavMeshHit h, 3f, NavMesh.AllAreas) || !b.Contains(h.position)) continue;
-            Vector3 q = h.position;
-            Vector3 d = q - pie; d.y = 0f;
-            float dist = d.magnitude;
-            if (dist < 12f || dist > 26f) continue;
-            float angulo = Vector3.Angle(dentro, d);
-            if (angulo > 55f) continue;
-            if (!Visible(ojos, q + Vector3.up * 0.4f, enemigo.transform) || !Visible(ojos, q + Vector3.up * 1.3f, enemigo.transform)) continue;
-            if (!NavMesh.CalculatePath(pie, q, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete) continue;
-            float puntos = dist - angulo * 0.15f;
-            if (puntos > mejorPuntos) { mejorPuntos = puntos; mejor = q; }
-        }
-        if (mejorPuntos == float.MinValue) { Debug.LogWarning("[Laberinto] No encontre ningun punto lejano visible desde la entrada para presentar al enemigo."); return; }
-
-        // Destino: a 6-12 m del punto, mas lejos de la entrada y preferiblemente fuera de la vista
-        Vector3 destino = mejor; float mejorD = float.MinValue;
-        for (int i = 0; i < 3000; i++)
-        {
-            var p = mejor + new Vector3((float)rnd.NextDouble() * 24f - 12f, 0f, (float)rnd.NextDouble() * 24f - 12f);
+            Vector3 dir = Quaternion.Euler(0f, ang, 0f) * dentro;
+            Vector3 desde = pie + Vector3.up * 1.2f;
+            if (!Physics.Raycast(desde, dir, out RaycastHit pared, 60f, ~0, QueryTriggerInteraction.Ignore)) continue;
+            if (pared.distance < 10f) continue;
+            Vector3 p = desde + dir * (pared.distance - 1.5f);
             if (!NavMesh.SamplePosition(p, out NavMeshHit h, 2f, NavMesh.AllAreas)) continue;
             Vector3 q = h.position;
-            float d = (q - mejor).magnitude;
-            if (d < 6f || d > 12f) continue;
-            if (!NavMesh.CalculatePath(mejor, q, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete) continue;
-            float alejarse = Vector3.Distance(q, pie) - Vector3.Distance(mejor, pie);
-            float puntos = alejarse + (Visible(ojos, q + Vector3.up, enemigo.transform) ? 0f : 6f) - PathLength(camino) * 0.2f;
-            if (puntos > mejorD) { mejorD = puntos; destino = q; }
+            if (!Visible(ojos, q + Vector3.up * 0.5f, enemigo.transform) || !Visible(ojos, q + Vector3.up * 1.4f, enemigo.transform)) continue;
+            if (!NavMesh.CalculatePath(pie, q, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete) continue;
+            float puntos = pared.distance - Mathf.Abs(ang) * 0.3f;
+            if (puntos > mejorPuntos) { mejorPuntos = puntos; mejor = q; mirar = dir; }
         }
+        if (mejorPuntos == float.MinValue) { Debug.LogWarning("[Laberinto] No encontre ningun pasillo largo visible desde la entrada para presentar al enemigo."); return; }
+        if (vieja) Undo.DestroyObjectImmediate(vieja.gameObject);
 
         var raiz = new GameObject(Nombre);
         Undo.RegisterCreatedObjectUndo(raiz, "Presentacion enemigo");
@@ -110,8 +95,9 @@ public static class PresentacionEnemigoSetup
         zona.isTrigger = true;
         zona.size = new Vector3(9f, 3.5f, 2f);
 
+        // De espaldas al jugador, mirando la pared del fondo un poco de lado (no lo ve)
         Transform aparicion = Punto(raiz.transform, "Punto Aparicion", mejor);
-        Transform fin = Punto(raiz.transform, "Punto Destino", destino);
+        aparicion.rotation = Quaternion.LookRotation(Quaternion.Euler(0f, 35f, 0f) * mirar);
         Transform vista = Punto(raiz.transform, "Punto Vista", ojos + (mejor - pie).normalized * 1.2f);
 
         var luzGo = new GameObject("Luz Enemigo");
@@ -129,19 +115,13 @@ public static class PresentacionEnemigoSetup
         pres.zona = zona;
         pres.enemigo = enemigo;
         pres.puntoAparicion = aparicion;
-        pres.puntoDestino = fin;
+        pres.puntoDestino = null;
+        pres.franjasCine = false;
         pres.puntoVista = vista;
         pres.luzEnemigo = luz;
 
         EditorSceneManager.MarkSceneDirty(raiz.scene);
-        Debug.Log($"[Laberinto] Presentacion del enemigo: aparece a {Vector3.Distance(pie, mejor):0} m de la entrada. Puedes mover los puntos. Guarda la escena.", raiz);
-    }
-
-    static float PathLength(NavMeshPath p)
-    {
-        float l = 0f;
-        for (int i = 1; i < p.corners.Length; i++) l += Vector3.Distance(p.corners[i - 1], p.corners[i]);
-        return l;
+        Debug.Log($"[Laberinto] Presentacion del enemigo: quieto al fondo de un pasillo, a {Vector3.Distance(pie, mejor):0} m de la entrada. Puedes mover/girar \"Punto Aparicion\". Guarda la escena.", raiz);
     }
 
     static bool Visible(Vector3 desde, Vector3 hasta, Transform ignorar)

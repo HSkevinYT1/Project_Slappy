@@ -12,6 +12,7 @@ public static class CuchilloTutorialSetup
 {
     const string Modelo = "Assets/Models/Props/cuchillo de david.obj";
     const float Largo = 0.28f;   // largo del cuchillo en metros
+    const float Giro = 90f;      // giro sobre su largo en la mano (con -90 salia boca abajo)
 
     static CuchilloTutorialSetup()
     {
@@ -28,9 +29,29 @@ public static class CuchilloTutorialSetup
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         TutorialTienda tut = Object.FindFirstObjectByType<TutorialTienda>(FindObjectsInactive.Include);
-        // Ya arreglado: el cubo ya no tiene malla
-        if (!tut || !tut.cuchillo || !tut.cuchillo.GetComponent<MeshFilter>()) return;
-        Aplicar(tut);
+        if (!tut || !tut.cuchillo) return;
+        // Sin arreglar: el cubo todavia tiene malla
+        if (tut.cuchillo.GetComponent<MeshFilter>()) { Aplicar(tut); return; }
+        // Version anterior: salia boca abajo (giro -90); se le da la vuelta
+        var so = new SerializedObject(tut.cuchillo);
+        var rot = so.FindProperty("holdRotation");
+        if (Mathf.Abs(rot.vector3Value.z + 90f) < 1f) DarVuelta(tut, so);
+    }
+
+    // Gira el cuchillo 180 grados sobre su largo: en la mano del jugador y en la del cliente
+    static void DarVuelta(TutorialTienda tut, SerializedObject so)
+    {
+        Vector3 r = so.FindProperty("holdRotation").vector3Value;
+        so.FindProperty("holdRotation").vector3Value = new Vector3(r.x, r.y, Giro);
+        so.ApplyModifiedProperties();
+        ReceptorObjeto receptor = tut.cliente ? tut.cliente.GetComponentInChildren<ReceptorObjeto>(true) : null;
+        if (receptor != null && receptor.puntoMano != null && receptor.puntoMano.name == "Agarre cuchillo")
+        {
+            Undo.RecordObject(receptor.puntoMano, "Cuchillo");
+            receptor.puntoMano.localRotation *= Quaternion.Euler(0f, 0f, 180f);
+        }
+        EditorSceneManager.MarkSceneDirty(tut.gameObject.scene);
+        Debug.Log("[Tienda] Cuchillo del tutorial girado (ya no sale boca abajo). Guarda la escena.", tut.cuchillo);
     }
 
     [MenuItem("Tools/Tienda/Arreglar cuchillo del tutorial")]
@@ -103,7 +124,7 @@ public static class CuchilloTutorialSetup
         float mango = Largo * 0.34f;
         var so = new SerializedObject(tut.cuchillo);
         so.FindProperty("holdPosition").vector3Value = new Vector3(0f, 0f, mango * 0.9f);
-        so.FindProperty("holdRotation").vector3Value = new Vector3(-10f, 0f, -90f);
+        so.FindProperty("holdRotation").vector3Value = new Vector3(-10f, 0f, Giro);
         so.ApplyModifiedProperties();
 
         // El cliente lo agarra con la mano derecha
@@ -121,7 +142,7 @@ public static class CuchilloTutorialSetup
             var punto = new GameObject("Agarre cuchillo").transform;
             Undo.RegisterCreatedObjectUndo(punto.gameObject, "Agarre cuchillo");
             punto.SetParent(mano, true);
-            punto.SetPositionAndRotation(agarre + dir * mango, Quaternion.LookRotation(dir) * Quaternion.Euler(0f, 0f, -90f));
+            punto.SetPositionAndRotation(agarre + dir * mango, Quaternion.LookRotation(dir) * Quaternion.Euler(0f, 0f, Giro));
             Undo.RecordObject(receptor, "Receptor");
             receptor.puntoMano = punto;
             receptor.alinearConMano = true;

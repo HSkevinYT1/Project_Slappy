@@ -5,12 +5,20 @@ using UnityEngine;
 // - Al empezar el juego pasa poco a poco a sonar desde la radio (3D).
 // - Al bajar la escalera se va apagando segun la altura del jugador, y en el sotano ya no suena.
 //   Una vez llega al sotano se queda apagada para siempre (aunque el teletransporte lo lleve a otra altura).
-// Desde un UnityEvent: MusicaRadio > Apagar / Encender / CambiarMusica.
+// - El jugador la enciende y apaga interactuando (Interactable > On Interact > MusicaRadio.Alternar).
+// Desde un UnityEvent: MusicaRadio > Alternar / Apagar / Encender / CambiarMusica.
 [RequireComponent(typeof(AudioSource))]
 public class MusicaRadio : MonoBehaviour
 {
     public AudioClip musica;
     [Range(0f, 1f)] public float volumen = 0.6f;
+    public bool encendidaAlIniciar = true;
+    [Tooltip("Sonido al pulsar el boton de la radio (opcional).")]
+    public AudioClip sonidoBoton;
+    public string textoApagar = "Apagar radio";
+    public string textoEncender = "Encender radio";
+
+    public bool Encendida => objetivo > 0.5f;
 
     [Header("Sonido desde la radio")]
     [Tooltip("0 = se oye igual en todos lados, 1 = solo sale de la radio.")]
@@ -50,6 +58,8 @@ public class MusicaRadio : MonoBehaviour
         fuente.maxDistance = distanciaMax;
         if (musica != null) fuente.clip = musica;
         mezcla3D = MenuPrincipal.Abierto ? 0f : 1f;
+        objetivo = factor = encendidaAlIniciar ? 1f : 0f;
+        ActualizarTexto();
         Aplicar(0f);
         if (fuente.clip != null) fuente.Play();
     }
@@ -70,6 +80,8 @@ public class MusicaRadio : MonoBehaviour
         Aplicar(Altura());
 
         if (enSotano && fuente.isPlaying && fuente.volume <= 0.0001f) fuente.Stop();
+        // Apagada: se pausa (al encenderla sigue la cancion donde iba)
+        else if (!enSotano && objetivo <= 0f && factor <= 0f && fuente.isPlaying) fuente.Pause();
     }
 
     // 1 en la tienda, baja por la escalera y 0 en el sotano
@@ -90,19 +102,36 @@ public class MusicaRadio : MonoBehaviour
         fuente.volume = volumen * factor * porAltura;
     }
 
-    public void Apagar() => objetivo = 0f;
+    public void Alternar()
+    {
+        if (sonidoBoton != null) AudioSource.PlayClipAtPoint(sonidoBoton, transform.position);
+        if (Encendida) Apagar(); else Encender();
+    }
+
+    public void Apagar()
+    {
+        objetivo = 0f;
+        ActualizarTexto();
+    }
 
     public void Encender()
     {
         objetivo = 1f;
-        if (!enSotano && fuente != null && fuente.clip != null && !fuente.isPlaying) fuente.Play();
+        ActualizarTexto();
+        if (enSotano || fuente == null || fuente.clip == null || fuente.isPlaying) return;
+        if (fuente.time > 0f) fuente.UnPause(); else fuente.Play();
+    }
+
+    void ActualizarTexto()
+    {
+        if (TryGetComponent(out Interactable i)) i.SetPrompt(Encendida ? textoApagar : textoEncender);
     }
 
     public void CambiarMusica(AudioClip nueva)
     {
         musica = nueva;
         fuente.clip = nueva;
-        if (nueva != null && !enSotano) fuente.Play();
+        if (nueva != null && !enSotano && Encendida) fuente.Play();
     }
 
     // Cajita verde en la escena para ver donde esta la radio aunque todavia no tenga modelo

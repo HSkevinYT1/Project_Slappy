@@ -29,7 +29,7 @@ public class CabinaTeletransporte : MonoBehaviour
         Color.black,                   // negro (apagon)
         new Color(1f, 0.02f, 0.05f),   // rojo
     };
-    public float intensidad = 8f;
+    public float intensidad = 20f;
     [Tooltip("Segundos de cada color.")]
     public float duracionColor = 0.6f;
     public AudioClip sonidoLuz;
@@ -108,7 +108,7 @@ public class CabinaTeletransporte : MonoBehaviour
             {
                 float k = t / duracionColor;
                 // Destello rapido que se apaga, con un pequeno parpadeo; el negro es un apagon total
-                float brillo = apagon ? 0f : Mathf.Clamp01(k * 8f) * (1f - Mathf.SmoothStep(0.55f, 1f, k)) * (Mathf.PerlinNoise(t * 25f, 0f) > 0.2f ? 1f : 0.3f);
+                float brillo = apagon ? 0f : Mathf.Clamp01(k * 8f) * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 1f, k))) * (Mathf.PerlinNoise(t * 25f, 0f) > 0.2f ? 1f : 0.3f);
                 luz.enabled = brillo > 0.001f;
                 luz.color = c;
                 luz.intensity = intensidad * brillo;

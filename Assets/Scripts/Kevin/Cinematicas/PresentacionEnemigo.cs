@@ -5,9 +5,11 @@ using UnityEngine.AI;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
-// Presentacion de un enemigo: al entrar en la zona, el jugador se queda quieto, aparecen franjas negras
-// de cine y la camara se acerca y hace zoom hacia el enemigo, que camina a lo lejos SIN ver al jugador
-// (su IA esta apagada durante la escena). Despues vuelve todo a la normal y la IA sigue sola.
+// Presentacion de un enemigo: al entrar en la zona, el jugador se queda quieto y la camara se acerca y hace
+// zoom hacia el enemigo, que esta a lo lejos (al final de un pasillo) SIN ver al jugador: de espaldas,
+// mirando hacia donde mira "Punto Aparicion" (su IA esta apagada durante la escena).
+// Con "Punto Destino" asignado, en vez de quedarse quieto camina hacia alli.
+// Despues vuelve todo a la normal y la IA sigue sola.
 // Pasa una sola vez.
 public class PresentacionEnemigo : MonoBehaviour
 {
@@ -18,7 +20,7 @@ public class PresentacionEnemigo : MonoBehaviour
     [Header("Puntos")]
     [Tooltip("Donde aparece el enemigo (visible desde la entrada).")]
     public Transform puntoAparicion;
-    [Tooltip("Hacia donde camina mientras se le mira (se pierde de vista).")]
+    [Tooltip("Opcional: hacia donde camina mientras se le mira. Vacio = se queda quieto.")]
     public Transform puntoDestino;
     [Tooltip("Desde donde mira la camara.")]
     public Transform puntoVista;
@@ -31,7 +33,7 @@ public class PresentacionEnemigo : MonoBehaviour
     [Header("Camara")]
     [Tooltip("Campo de vision al hacer zoom sobre el enemigo.")]
     public float fovZoom = 26f;
-    public bool franjasCine = true;
+    public bool franjasCine = false;
 
     [Header("Enemigo")]
     public float velocidadEnemigo = 1.4f;
@@ -92,14 +94,16 @@ public class PresentacionEnemigo : MonoBehaviour
         NavMeshAgent agent = enemigo.GetComponent<NavMeshAgent>();
         enemigo.enabled = false;
         float velocidadAntes = agent != null ? agent.speed : 0f;
+        bool camina = puntoDestino != null;
         if (agent != null && agent.isOnNavMesh)
         {
             agent.Warp(puntoAparicion.position);
             agent.speed = velocidadEnemigo;
-            agent.isStopped = false;
-            if (puntoDestino != null) agent.SetDestination(puntoDestino.position);
+            if (camina) { agent.isStopped = false; agent.SetDestination(puntoDestino.position); }
+            else { agent.ResetPath(); agent.isStopped = true; agent.velocity = Vector3.zero; }
         }
         else enemigo.transform.position = puntoAparicion.position;
+        if (!camina) enemigo.transform.rotation = Quaternion.Euler(0f, puntoAparicion.eulerAngles.y, 0f);
         if (luzEnemigo != null) luzEnemigo.enabled = true;
         if (sonido != null) AudioSource.PlayClipAtPoint(sonido, camJugador.transform.position);
 
@@ -157,7 +161,7 @@ public class PresentacionEnemigo : MonoBehaviour
         if (luzEnemigo != null) luzEnemigo.enabled = false;
 
         // El enemigo sigue con su IA desde donde quedo
-        if (agent != null) agent.speed = velocidadAntes;
+        if (agent != null) { agent.speed = velocidadAntes; if (agent.isOnNavMesh) agent.isStopped = false; }
         enemigo.enabled = true;
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         alTerminar?.Invoke();

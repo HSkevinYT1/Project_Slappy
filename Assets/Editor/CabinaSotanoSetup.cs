@@ -11,6 +11,7 @@ using UnityEngine;
 public static class CabinaSotanoSetup
 {
     const string Ruta = "zotano/props/Cabina_Telefonica";
+    const float IntensidadLuces = 20f;
 
     static CabinaSotanoSetup()
     {
@@ -27,8 +28,19 @@ public static class CabinaSotanoSetup
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         GameObject c = GameObject.Find(Ruta);
-        if (!c || c.GetComponent<CabinaTeletransporte>()) return;
-        Aplicar(c.transform);
+        if (!c) return;
+        var ct = c.GetComponent<CabinaTeletransporte>();
+        if (!ct) { Aplicar(c.transform); return; }
+        // Luces mas fuertes (las de antes eran de 8)
+        if (ct.intensidad < IntensidadLuces - 0.1f)
+        {
+            Undo.RecordObject(ct, "Luces cabina");
+            ct.intensidad = IntensidadLuces;
+            EditorUtility.SetDirty(ct);
+            if (ct.luz) { Undo.RecordObject(ct.luz, "Luces cabina"); ct.luz.range = 6f; EditorUtility.SetDirty(ct.luz); }
+            EditorSceneManager.MarkSceneDirty(c.scene);
+            Debug.Log("[Sotano] Luces de la cabina mas fuertes. Guarda la escena.", c);
+        }
     }
 
     [MenuItem("Tools/Sotano/Cabina sin puzzle")]
@@ -51,31 +63,7 @@ public static class CabinaSotanoSetup
 
     static void Aplicar(Transform cabina)
     {
-        Transform cuerpo = cabina.Find("Cabina");
-        Transform puerta = cabina.Find("Puerta_Cabina_Telefonica");
-        if (!cuerpo || !puerta) { Debug.LogWarning("[Sotano] La cabina no tiene \"Cabina\" o \"Puerta_Cabina_Telefonica\".", cabina); return; }
-        Bounds bc = Limites(cuerpo), bp = Limites(puerta);
-
-        // Bisagra: el extremo de la puerta abierta mas cercano a la cabina
-        bool largoEnX = bp.size.x > bp.size.z;
-        Vector3 e1 = largoEnX ? new Vector3(bp.min.x, 0f, bp.center.z) : new Vector3(bp.center.x, 0f, bp.min.z);
-        Vector3 e2 = largoEnX ? new Vector3(bp.max.x, 0f, bp.center.z) : new Vector3(bp.center.x, 0f, bp.max.z);
-        Vector3 c2 = new Vector3(bc.center.x, 0f, bc.center.z);
-        Vector3 hinge = (e1 - c2).sqrMagnitude < (e2 - c2).sqrMagnitude ? e1 : e2;
-        hinge.y = bp.center.y;
-
-        // Angulo: el que deja la puerta alineada con la cabina y lo mas cerca de su centro (tapando la abertura)
-        float yawPuerta = puerta.eulerAngles.y, yawCabina = cuerpo.eulerAngles.y;
-        float mejor = 90f, mejorDist = float.MaxValue;
-        foreach (float signo in new[] { 1f, -1f })
-        {
-            float yaw = yawPuerta + signo * 90f;
-            float alineado = yawCabina + Mathf.Round(Mathf.DeltaAngle(yawCabina, yaw) / 90f) * 90f;
-            float ang = Mathf.DeltaAngle(yawPuerta, alineado);
-            Vector3 centro = hinge + Quaternion.Euler(0f, ang, 0f) * (new Vector3(bp.center.x, hinge.y, bp.center.z) - hinge);
-            float d = new Vector2(centro.x - bc.center.x, centro.z - bc.center.z).magnitude;
-            if (d < mejorDist) { mejorDist = d; mejor = ang; }
-        }
+        if (!Puerta(cabina, out Transform puerta, out Bounds bc, out Vector3 hinge, out float mejor)) return;
 
         var bisagra = new GameObject("Bisagra Puerta").transform;
         Undo.RegisterCreatedObjectUndo(bisagra.gameObject, "Bisagra");
@@ -89,7 +77,7 @@ public static class CabinaSotanoSetup
         luzGo.transform.position = new Vector3(bc.center.x, bc.max.y - 0.25f, bc.center.z);
         var luz = luzGo.AddComponent<Light>();
         luz.type = LightType.Point;
-        luz.range = 4f;
+        luz.range = 6f;
         luz.intensity = 0f;
         luz.shadows = LightShadows.None;
         luz.enabled = false;
@@ -114,6 +102,7 @@ public static class CabinaSotanoSetup
         ct.bisagra = bisagra;
         ct.anguloCerrar = mejor;
         ct.luz = luz;
+        ct.intensidad = IntensidadLuces;
         EditorUtility.SetDirty(ct);
 
         // Sin puzzle en el sotano: el telefono ya no se usa ni viaja
@@ -136,7 +125,40 @@ public static class CabinaSotanoSetup
         Debug.Log($"[Sotano] Cabina sin puzzle: al entrar se cierra la puerta ({mejor:0} grados), parpadean 4 luces y se desmaya hasta la otra cabina. Guarda la escena.", cabina);
     }
 
-    static Bounds Limites(Transform t)
+    // Puerta de una cabina: su bisagra y los grados que gira para cerrarse (tambien lo usa TelefonosCabinasSetup)
+    internal static bool Puerta(Transform cabina, out Transform puerta, out Bounds bc, out Vector3 hinge, out float mejor)
+    {
+        Transform cuerpo = cabina.Find("Cabina");
+        puerta = cabina.Find("Puerta_Cabina_Telefonica");
+        bc = default; hinge = default; mejor = 90f;
+        if (!cuerpo || !puerta) { Debug.LogWarning("[Cabina] La cabina no tiene \"Cabina\" o \"Puerta_Cabina_Telefonica\".", cabina); return false; }
+        bc = Limites(cuerpo);
+        Bounds bp = Limites(puerta);
+
+        // Bisagra: el extremo de la puerta abierta mas cercano a la cabina
+        bool largoEnX = bp.size.x > bp.size.z;
+        Vector3 e1 = largoEnX ? new Vector3(bp.min.x, 0f, bp.center.z) : new Vector3(bp.center.x, 0f, bp.min.z);
+        Vector3 e2 = largoEnX ? new Vector3(bp.max.x, 0f, bp.center.z) : new Vector3(bp.center.x, 0f, bp.max.z);
+        Vector3 c2 = new Vector3(bc.center.x, 0f, bc.center.z);
+        hinge = (e1 - c2).sqrMagnitude < (e2 - c2).sqrMagnitude ? e1 : e2;
+        hinge.y = bp.center.y;
+
+        // Angulo: el que deja la puerta alineada con la cabina y lo mas cerca de su centro (tapando la abertura)
+        float yawPuerta = puerta.eulerAngles.y, yawCabina = cuerpo.eulerAngles.y;
+        float mejorDist = float.MaxValue;
+        foreach (float signo in new[] { 1f, -1f })
+        {
+            float yaw = yawPuerta + signo * 90f;
+            float alineado = yawCabina + Mathf.Round(Mathf.DeltaAngle(yawCabina, yaw) / 90f) * 90f;
+            float ang = Mathf.DeltaAngle(yawPuerta, alineado);
+            Vector3 centro = hinge + Quaternion.Euler(0f, ang, 0f) * (new Vector3(bp.center.x, hinge.y, bp.center.z) - hinge);
+            float d = new Vector2(centro.x - bc.center.x, centro.z - bc.center.z).magnitude;
+            if (d < mejorDist) { mejorDist = d; mejor = ang; }
+        }
+        return true;
+    }
+
+    internal static Bounds Limites(Transform t)
     {
         Renderer[] rs = t.GetComponentsInChildren<Renderer>();
         if (rs.Length == 0) return new Bounds(t.position, Vector3.zero);
