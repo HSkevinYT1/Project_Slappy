@@ -14,6 +14,8 @@ public static class GameInput
     public static bool Interact => Pressed("Interactuar");
     // Soltar lo que se tiene en la mano (Z)
     public static bool Drop => Pressed("Soltar");
+    // Mirar a traves de un objeto (clic derecho, mientras se mantiene)
+    public static bool LookThrough => Held("Mirar");
     public static bool ExitMinigame => Pressed("Salir");
     public static bool NextDialogue => Pressed("SiguienteDialogo");
     public static bool Flashlight => Pressed("Linterna");
@@ -39,6 +41,12 @@ public static class GameInput
             Load();
             return map.FindAction("Interactuar", true).GetBindingDisplayString(InputBinding.MaskByGroup(KeyboardGroup));
         }
+    }
+
+    private static bool Held(string actionName)
+    {
+        Load();
+        return map.FindAction(actionName, true).IsPressed();
     }
 
     private static bool Pressed(string actionName)
