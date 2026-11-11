@@ -2017,8 +2017,8 @@ MonoBehaviour:
   raycastLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  interactKey: 102
   aimAssistRadius: 0.3
+  pointer: {fileID: 0}
   handPoint: {fileID: 2953182763827163675}
   wristBoneName: wrist.R
 --- !u!1 &6115829742015952492
@@ -2693,6 +2693,7 @@ GameObject:
   - component: {fileID: 3539714118627160303}
   - component: {fileID: 1680282620924783792}
   - component: {fileID: 7714729060870594353}
+  - component: {fileID: 4244335458731972380}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -2851,3 +2852,17 @@ MonoBehaviour:
   stepInterval: 0.45
   bobHeight: 0.1
   returnSpeed: 8
+--- !u!114 &4244335458731972380
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9200164480410709258}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41ca83b9786b8b74e83cd523e8b408c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  nombreCapa: Primera Persona
+  planoCercano: 0.01

@@ -24,6 +24,8 @@ public class PresentacionEnemigo : MonoBehaviour
     public Transform puntoDestino;
     [Tooltip("Desde donde mira la camara.")]
     public Transform puntoVista;
+    [Tooltip("Opcional: la camara mira fijo a este punto (ej: un cruce por el que pasa el enemigo) en vez de seguirlo.")]
+    public Transform mirarFijo;
 
     [Header("Tiempos")]
     public float duracionIr = 1.4f;
@@ -124,7 +126,7 @@ public class PresentacionEnemigo : MonoBehaviour
         Quaternion inicioRot = cam.transform.rotation;
         float fovNormal = cam.fieldOfView;
         Vector3 vista = puntoVista != null ? puntoVista.position : inicioPos;
-        Vector3 Objetivo() => enemigo.transform.position + Vector3.up * 0.3f;
+        Vector3 Objetivo() => mirarFijo != null ? mirarFijo.position : enemigo.transform.position + Vector3.up * 0.3f;
 
         // Acercarse y hacer zoom
         yield return Animar(duracionIr, k =>

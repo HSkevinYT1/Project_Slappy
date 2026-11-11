@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Cliente
   m_EditorClassIdentifier: 
   modo: 0
+  hablante: Cliente
+  colorHablante: {r: 0.4, g: 0.75, b: 1, a: 1}
   lineas:
   - 'Buenos dias buen hombre, vengo buscando un cuchillo antiguo que vi por internet
 

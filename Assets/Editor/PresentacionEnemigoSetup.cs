@@ -44,7 +44,8 @@ public static class PresentacionEnemigoSetup
 
     static JefeIndigoAI EnemigoDelLaberinto()
     {
-        GameObject g = GameObject.Find("Enemigos y Zonas/Enemigos/Enemigos Laberinto");
+        GameObject g = GameObject.Find("Laberinto/Enemigos Laberinto");
+        if (!g) g = GameObject.Find("Enemigos y Zonas/Enemigos/Enemigos Laberinto");
         return g ? g.GetComponentInChildren<JefeIndigoAI>(true) : null;
     }
 

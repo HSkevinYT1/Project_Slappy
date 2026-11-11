@@ -84,12 +84,7 @@ public class PlayerInteractor : MonoBehaviour
 
     void Update()
     {
-        // Mientras hay un dialogo abierto, no se detecta ni se interactua con nada
-        if (DialogueManager.Instance != null && DialogueManager.Instance.IsActive)
-        {
-            Current = null;
-            return;
-        }
+        // Los dialogos son subtitulos (estilo GTA): se puede seguir interactuando mientras alguien habla.
 
         // Con un objeto en la mano (ej: la linterna) se sigue pudiendo interactuar con todo.
         // Si se le apunta a quien lo espera, se le entrega. Para soltarlo hay una tecla aparte (Z).
