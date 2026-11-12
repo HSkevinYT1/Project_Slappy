@@ -76,6 +76,42 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "Reloj",
+                    "type": "Button",
+                    "id": "5bd6e034-7008-4833-88aa-4d10b4946005",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Ranura1",
+                    "type": "Button",
+                    "id": "1a1c405a-cbff-4114-9415-0bd8d0f62f56",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Ranura2",
+                    "type": "Button",
+                    "id": "526629e4-f8be-4cbd-bbd6-aa3a83b54a37",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Ranura3",
+                    "type": "Button",
+                    "id": "c28ee8e3-11b5-4177-a551-56810d0142b7",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -164,6 +200,50 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "Mirar",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "b26162bb-53f0-411b-9000-b515ca2c740b",
+                    "path": "<Keyboard>/c",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Reloj",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "5a4f1c09-f951-4a13-bed4-cc66c9eaa568",
+                    "path": "<Keyboard>/1",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Ranura1",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "4f1a4546-9a1f-458a-a43c-ce24883223fc",
+                    "path": "<Keyboard>/2",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Ranura2",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "60e12b6b-341d-477e-83e9-f18119711ec7",
+                    "path": "<Keyboard>/3",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Ranura3",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

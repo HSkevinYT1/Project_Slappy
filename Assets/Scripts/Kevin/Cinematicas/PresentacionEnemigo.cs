@@ -9,7 +9,9 @@ using UnityEngine.UI;
 // zoom hacia el enemigo, que esta a lo lejos (al final de un pasillo) SIN ver al jugador: de espaldas,
 // mirando hacia donde mira "Punto Aparicion" (su IA esta apagada durante la escena).
 // Con "Punto Destino" asignado, en vez de quedarse quieto camina hacia alli.
-// Despues vuelve todo a la normal y la IA sigue sola.
+// Durante la escena sale el tutorial del reloj: presionar la tecla del reloj (C) para mirarlo; con el enemigo
+// cerca las agujas se vuelven locas. La escena espera a que el jugador lo mire (o lo muestra sola al rato).
+// Despues vuelve todo a la normal, el enemigo se va a la otra punta del mapa y su IA sigue sola desde alli.
 // Pasa una sola vez.
 public class PresentacionEnemigo : MonoBehaviour
 {
@@ -43,6 +45,21 @@ public class PresentacionEnemigo : MonoBehaviour
     public Light luzEnemigo;
     public AudioClip sonido;
 
+    [Header("Despues")]
+    [Tooltip("Al terminar, el enemigo aparece en la otra punta de su area (lo mas lejos posible del jugador)")]
+    public bool mandarLejos = true;
+
+    [Header("Tutorial del reloj")]
+    public bool tutorialReloj = true;
+    [Tooltip("Segundos de la escena antes de que salga el cartel")]
+    public float relojTras = 1.2f;
+    [Tooltip("Si el jugador no presiona la tecla en este tiempo, el reloj se muestra solo")]
+    public float esperaMaximaReloj = 10f;
+    [Tooltip("Segundos mirando el reloj antes de seguir")]
+    public float mirarReloj = 3.2f;
+    public string textoTutorial = "Presiona [{0}] para mirar tu reloj";
+    public string textoPista = "Las agujas enloquecen cuando algo se acerca...";
+
     public UnityEvent alTerminar;
 
     public bool Usada { get; private set; }
@@ -75,6 +92,11 @@ public class PresentacionEnemigo : MonoBehaviour
     IEnumerator Cinematica()
     {
         Usada = true;
+        if (jugador == null)
+        {
+            PlayerMovement pm = FindFirstObjectByType<PlayerMovement>();
+            if (pm != null) jugador = pm.transform;
+        }
         Camera camJugador = Camera.main;
         if (camJugador == null || enemigo == null || puntoAparicion == null) yield break;
 
@@ -115,7 +137,9 @@ public class PresentacionEnemigo : MonoBehaviour
         cam.CopyFrom(camJugador);
         var datos = camJugador.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
         var datosNuevos = camGo.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
-        if (datos != null) { datosNuevos.renderPostProcessing = datos.renderPostProcessing; datosNuevos.antialiasing = datos.antialiasing; }
+        // (con BrazosPrimeraPersona el post-procesado lo hace la camara de los brazos: se usa el valor original)
+        var brazos = camJugador.GetComponent<BrazosPrimeraPersona>();
+        if (datos != null) { datosNuevos.renderPostProcessing = brazos != null ? brazos.PostOriginal : datos.renderPostProcessing; datosNuevos.antialiasing = datos.antialiasing; }
         camGo.transform.SetPositionAndRotation(camJugador.transform.position, camJugador.transform.rotation);
         camJugador.enabled = false;
 
@@ -137,14 +161,36 @@ public class PresentacionEnemigo : MonoBehaviour
             Franjas(barraArriba, barraAbajo, k);
         });
 
-        // Mirarlo mientras camina (la camara lo sigue con suavidad)
-        for (float t = 0f; t < duracionMirar; t += Time.deltaTime)
+        // Mirarlo mientras camina (la camara lo sigue con suavidad). Mientras, el tutorial del reloj.
+        RelojJugador reloj = RelojJugador.Instance;
+        bool tutorialHecho = !tutorialReloj || reloj == null;
+        float vistoDesde = -1f;
+        for (float t = 0f; t < duracionMirar || !tutorialHecho; t += Time.deltaTime)
         {
             Quaternion mirar = Quaternion.LookRotation(Objetivo() - cam.transform.position);
             cam.transform.rotation = Quaternion.Slerp(cam.transform.rotation, mirar, 1f - Mathf.Exp(-3f * Time.deltaTime));
             if (luzEnemigo != null) luzEnemigo.transform.position = enemigo.transform.position + Vector3.up * 2.2f;
+
+            if (!tutorialHecho && t >= relojTras)
+            {
+                if (vistoDesde < 0f)
+                {
+                    reloj.Desbloquear();
+                    reloj.Tutorial(string.Format(textoTutorial, GameInput.KeyName("Reloj")));
+                    // Lo miro (o paso demasiado tiempo: se muestra solo)
+                    if (reloj.Visible || t > relojTras + esperaMaximaReloj)
+                    {
+                        reloj.Mostrar(true);
+                        reloj.Tutorial("");
+                        reloj.Pista(textoPista, mirarReloj + 2.5f);
+                        vistoDesde = t;
+                    }
+                }
+                else if (t >= vistoDesde + mirarReloj) tutorialHecho = true;
+            }
             yield return null;
         }
+        if (reloj != null) { reloj.Tutorial(""); if (tutorialReloj) reloj.Mostrar(false); }
 
         // Volver a la vista del jugador
         Vector3 desde = cam.transform.position;
@@ -162,9 +208,10 @@ public class PresentacionEnemigo : MonoBehaviour
         if (canvas != null) Destroy(canvas);
         if (luzEnemigo != null) luzEnemigo.enabled = false;
 
-        // El enemigo sigue con su IA desde donde quedo
+        // El enemigo sigue con su IA: desde la otra punta del mapa (o desde donde quedo)
         if (agent != null) { agent.speed = velocidadAntes; if (agent.isOnNavMesh) agent.isStopped = false; }
         enemigo.enabled = true;
+        if (mandarLejos && jugador != null) enemigo.MandarLejos(jugador.position);
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         alTerminar?.Invoke();
     }

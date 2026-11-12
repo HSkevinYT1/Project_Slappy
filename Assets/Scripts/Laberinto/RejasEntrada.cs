@@ -38,6 +38,35 @@ public class RejasEntrada : MonoBehaviour
         if (zona.bounds.Contains(jugador.position)) StartCoroutine(Secuencia());
     }
 
+    // Sube la reja otra vez (ej: al resolver el puzzle del centro), despacio y con el estruendo de fondo
+    public void Abrir()
+    {
+        if (!reja) return;
+        bool cayo = Usada;
+        Usada = true;          // si todavia no habia caido, ya no cae
+        if (cayo) StartCoroutine(Subir());
+    }
+
+    IEnumerator Subir()
+    {
+        if (abierta) yield break;
+        abierta = true;
+        if (alturaArriba == null) alturaArriba = reja.position.y + caida;
+        Vector3 desde = reja.position, hasta = new Vector3(desde.x, alturaArriba.Value, desde.z);
+        if (estruendo) Estruendo();
+        for (float t = 0f; t < 1f; t += Time.deltaTime / 3.5f)
+        {
+            // Sube a tirones, como con una cadena
+            float k = Mathf.SmoothStep(0f, 1f, t) + Mathf.Sin(t * 40f) * 0.004f;
+            reja.position = Vector3.Lerp(desde, hasta, k);
+            yield return null;
+        }
+        reja.position = hasta;
+    }
+
+    bool abierta;
+    float? alturaArriba;
+
     // Suena fuerte aunque el jugador ya este lejos de la reja: casi sin atenuacion por distancia,
     // apenas un poco ubicado hacia la reja, con maxima prioridad para que no lo tape otro sonido.
     void Estruendo()
@@ -60,6 +89,7 @@ public class RejasEntrada : MonoBehaviour
     IEnumerator Secuencia()
     {
         Usada = true;
+        alturaArriba = reja.position.y;
         var movimiento = jugador.GetComponent<PlayerMovement>();
         var rb = jugador.GetComponent<Rigidbody>();
         var mirada = FindFirstObjectByType<MouseLook>();

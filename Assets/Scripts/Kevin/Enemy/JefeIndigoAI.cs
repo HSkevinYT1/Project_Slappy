@@ -41,6 +41,12 @@ public class JefeIndigoAI : MonoBehaviour
     public UnityEvent onPlayerSpotted;
     public UnityEvent onPlayerCaught;
 
+    [Header("Mandar lejos")]
+    [Tooltip("Area por la que se mueve (para mandarlo a la otra punta). Vacio = el area (ZonaVolumen) en la que empieza, o un radio alrededor del inicio.")]
+    public Collider areaEnemigo;
+    [Tooltip("Sin area: radio alrededor de donde empieza")]
+    public float radioArea = 60f;
+
     public State CurrentState { get; private set; } = State.Patrol;
 
     private NavMeshAgent agent;
@@ -53,10 +59,12 @@ public class JefeIndigoAI : MonoBehaviour
     private float stateTimer;
     private float lastSeenTime;
     private Vector3 lastKnownPosition;
+    private Vector3 inicio;
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
+        inicio = transform.position;
 
         // Busca al jugador por la etiqueta de player
         if (player == null)
@@ -266,6 +274,90 @@ public class JefeIndigoAI : MonoBehaviour
                 return hit.position;
         }
         return center;
+    }
+
+    // ------------------------------------------------------------------ Mandar lejos / reiniciar
+
+    // Manda al enemigo a la otra punta de su area, lo mas lejos posible de "desde" (ej: el jugador),
+    // y lo deja patrullando por alli. Lo usan la presentacion del enemigo y la pantalla de muerte.
+    public void MandarLejos(Vector3 desde)
+    {
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        if (inicio == Vector3.zero) inicio = transform.position;
+        Vector3 destino = PuntoLejano(desde);
+        if (agent.isOnNavMesh) agent.Warp(destino); else transform.position = destino + Vector3.up * agent.baseOffset;
+        if (agent.isOnNavMesh)
+        {
+            agent.isStopped = false;
+            agent.ResetPath();
+            agent.velocity = Vector3.zero;
+        }
+        // La primera patrulla sale desde alli, sin perseguir a nadie
+        lastSeenTime = -999f;
+        if (enabled && agent.isOnNavMesh) EnterState(State.Patrol);
+        else CurrentState = State.Patrol;
+    }
+
+    // Despues de atrapar al jugador (al reintentar): vuelve a patrullar, lejos de donde reaparece el jugador
+    public void Reiniciar(Vector3 jugador)
+    {
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        CurrentState = State.Patrol;
+        MandarLejos(jugador);
+    }
+
+    public Bounds Area()
+    {
+        if (areaEnemigo != null) return areaEnemigo.bounds;
+        Vector3 casa = inicio != Vector3.zero ? inicio : transform.position;
+        // El area (Laberinto, Cloacas...) en la que empezo: la mas chica que lo contiene
+        Bounds elegida = default; float menor = float.MaxValue;
+        foreach (ZonaVolumen z in FindObjectsByType<ZonaVolumen>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (!z.TryGetComponent(out BoxCollider bc)) continue;
+            Bounds b = bc.enabled ? bc.bounds : new Bounds(z.transform.TransformPoint(bc.center), Vector3.Scale(bc.size, z.transform.lossyScale));
+            Vector3 c = new Vector3(casa.x, b.center.y, casa.z);
+            if (!b.Contains(c)) continue;
+            float v = b.size.x * b.size.z;
+            if (v < menor) { menor = v; elegida = b; }
+        }
+        if (menor < float.MaxValue) return elegida;
+        return new Bounds(casa, new Vector3(radioArea * 2f, 50f, radioArea * 2f));
+    }
+
+    Vector3[] verticesNav;
+
+    Vector3 PuntoLejano(Vector3 desde)
+    {
+        if (verticesNav == null) verticesNav = NavMesh.CalculateTriangulation().vertices;
+        Bounds area = Area();
+        Vector3 origen = transform.position;
+        var camino = new NavMeshPath();
+        Vector3 mejor = origen; float mejorDist = -1f;
+
+        // Los vertices del NavMesh dentro del area, de mas lejano a mas cercano; el primero alcanzable gana
+        var candidatos = new System.Collections.Generic.List<Vector3>();
+        foreach (Vector3 v in verticesNav)
+        {
+            if (v.x < area.min.x || v.x > area.max.x || v.z < area.min.z || v.z > area.max.z) continue;
+            candidatos.Add(v);
+        }
+        candidatos.Sort((a, b) => (b - desde).sqrMagnitude.CompareTo((a - desde).sqrMagnitude));
+        int probados = 0;
+        foreach (Vector3 v in candidatos)
+        {
+            if (++probados > 40) break;
+            // Un poco hacia adentro del borde, sobre el NavMesh
+            if (!NavMesh.SamplePosition(v, out NavMeshHit h, 2f, NavMesh.AllAreas)) continue;
+            if (agent.isOnNavMesh && (!NavMesh.CalculatePath(origen, h.position, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete)) continue;
+            float d = (h.position - desde).sqrMagnitude;
+            if (d > mejorDist) { mejorDist = d; mejor = h.position; break; }
+        }
+        // Que no quede pegado a una esquina: unos metros hacia el centro del area
+        Vector3 haciaCentro = area.center - mejor; haciaCentro.y = 0f;
+        if (haciaCentro.magnitude > 4f && NavMesh.SamplePosition(mejor + haciaCentro.normalized * 2f, out NavMeshHit dentro, 2f, NavMesh.AllAreas))
+            mejor = dentro.position;
+        return mejor;
     }
 
     // Cono de vision y radio de escucha (es depuracion por si acaso, no afecta al juego)

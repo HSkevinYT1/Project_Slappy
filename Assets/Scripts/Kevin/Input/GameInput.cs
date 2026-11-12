@@ -21,6 +21,38 @@ public static class GameInput
     public static bool Flashlight => Pressed("Linterna");
     public static bool Pause => Pressed("Pausa");
     public static bool DragStarted => Pressed("Arrastrar");
+    // Mirar / guardar el reloj de pulsera (C)
+    public static bool Watch => Pressed("Reloj");
+
+    // Inventario: teclas 1, 2 y 3 (devuelve la ranura presionada o -1) y la rueda del mouse (-1, 0 o 1)
+    public static int SlotPressed
+    {
+        get
+        {
+            if (Pressed("Ranura1")) return 0;
+            if (Pressed("Ranura2")) return 1;
+            if (Pressed("Ranura3")) return 2;
+            return -1;
+        }
+    }
+
+    public static int ScrollStep
+    {
+        get
+        {
+            if (Mouse.current == null) return 0;
+            float y = Mouse.current.scroll.ReadValue().y;
+            return y > 0.01f ? -1 : y < -0.01f ? 1 : 0;
+        }
+    }
+
+    // Nombre de una accion para los textos en pantalla (ej: "C")
+    public static string KeyName(string actionName)
+    {
+        Load();
+        InputAction a = map.FindAction(actionName, false);
+        return a != null ? a.GetBindingDisplayString(InputBinding.MaskByGroup(KeyboardGroup)) : actionName;
+    }
 
     public static bool DragReleased
     {
