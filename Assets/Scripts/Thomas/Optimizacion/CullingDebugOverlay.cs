@@ -8,6 +8,7 @@ using UnityEngine.InputSystem;
 /// Overlay de diagnóstico para medir el efecto de la optimización.
 ///
 /// F3: muestra/oculta el overlay (FPS, tiempo de frame, renderers visibles, far clip, occlusion).
+/// F5: activa/desactiva el occlusion culling de la cámara en vivo (para comparar A/B en la misma sesión).
 /// F4: medición de N segundos. Al terminar muestra y registra en consola:
 ///     FPS promedio, 1% low (el FPS de los peores frames = los "tirones"), mínimo, máximo
 ///     y renderers visibles promedio. Usar siempre desde la misma posición para comparar.
@@ -55,6 +56,12 @@ public class CullingDebugOverlay : MonoBehaviour
     {
         if (TeclaPresionada(3)) visible = !visible;
         if (TeclaPresionada(4) && !_midiendo) EmpezarMedicion();
+        if (TeclaPresionada(5))
+        {
+            // Prueba A/B en la misma sesión: medir con y sin occlusion sin salir de Play.
+            var cam = CamaraActual();
+            if (cam != null) cam.useOcclusionCulling = !cam.useOcclusionCulling;
+        }
 
         float dt = Time.unscaledDeltaTime;
         _acumulado += dt;
@@ -164,7 +171,7 @@ public class CullingDebugOverlay : MonoBehaviour
         string color = _fps >= 55 ? "#7CFC00" : _fps >= 30 ? "#FFD700" : "#FF5555";
 
         string texto =
-            $"<b>Culling debug</b>  (F3 ocultar, F4 medir)\n" +
+            $"<b>Culling debug</b>  (F3 ocultar, F4 medir, F5 occlusion on/off)\n" +
             $"FPS: <color={color}>{_fps:0}</color>\n" +
             $"Frame: {_msPromedio:0.0} ms  (peor {_msPeor:0.0} ms)\n" +
             $"Renderers visibles: {_visibles} / {_total}\n" +
@@ -176,7 +183,7 @@ public class CullingDebugOverlay : MonoBehaviour
             texto += $"\n<color=#87CEFA>{_resultado}</color>";
 
         float alto = _midiendo ? 140f : _resultado != null ? 190f : 120f;
-        GUI.Box(new Rect(10, 10, 420, alto), texto, _estilo);
+        GUI.Box(new Rect(10, 10, 480, alto), texto, _estilo);
     }
 
     static bool TeclaPresionada(int f)
@@ -184,9 +191,11 @@ public class CullingDebugOverlay : MonoBehaviour
 #if ENABLE_INPUT_SYSTEM
         var k = Keyboard.current;
         if (k == null) return false;
-        return f == 3 ? k.f3Key.wasPressedThisFrame : k.f4Key.wasPressedThisFrame;
+        return f == 3 ? k.f3Key.wasPressedThisFrame
+             : f == 4 ? k.f4Key.wasPressedThisFrame
+             : k.f5Key.wasPressedThisFrame;
 #else
-        return Input.GetKeyDown(f == 3 ? KeyCode.F3 : KeyCode.F4);
+        return Input.GetKeyDown(f == 3 ? KeyCode.F3 : f == 4 ? KeyCode.F4 : KeyCode.F5);
 #endif
     }
 }
