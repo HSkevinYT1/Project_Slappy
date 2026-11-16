@@ -339,10 +339,10 @@ public class PhoneMinigame : MonoBehaviour
         GUIStyle style = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
-            fontSize = 20
+            fontSize = Mathf.RoundToInt(Screen.height * 0.019f * HUD.Escala)
         };
 
-        Rect rect = new Rect(0f, Screen.height - 60f, Screen.width, 40f);
+        Rect rect = new Rect(0f, Screen.height - style.fontSize * 3f, Screen.width, style.fontSize * 2f);
         GUI.Label(rect, "Une los cables del mismo color   [" + GameInput.InteractKeyName + "] Salir", style);
     }
 }

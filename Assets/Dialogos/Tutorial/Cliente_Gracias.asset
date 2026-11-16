@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Cliente_Gracias
   m_EditorClassIdentifier: 
   modo: 0
+  hablante: Cliente
+  colorHablante: {r: 0.4, g: 0.75, b: 1, a: 1}
   lineas:
   - Perfecto, es justo el que estaba buscando.
   - Muchas gracias. Que tenga buen dia.

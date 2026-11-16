@@ -10,6 +10,8 @@ public class CabinaTeletransporte : MonoBehaviour
     [Tooltip("Zona dentro de la cabina: al entrar el jugador empieza la secuencia.")]
     public BoxCollider zona;
     public FaintTeleport desmayo;
+    [Tooltip("Opcional: la cabina no funciona hasta que se hayan revisado todas estas cajas.")]
+    public RevisionCajas cajasRequeridas;
 
     [Header("Puerta")]
     public Transform puerta;
@@ -49,6 +51,7 @@ public class CabinaTeletransporte : MonoBehaviour
     void Update()
     {
         if (Usada || zona == null) return;
+        if (cajasRequeridas != null && !cajasRequeridas.Completa) return;
         if (jugador == null)
         {
             PlayerMovement pm = FindFirstObjectByType<PlayerMovement>();

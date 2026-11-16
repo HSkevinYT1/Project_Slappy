@@ -16,6 +16,19 @@ public class PlayerMovement : MonoBehaviour
         // Busca el componente Rigidbody que est� en el mismo objeto y este lo guarda en rb.
         rb = GetComponent<Rigidbody>();
 
+        // Sin friccion contra las paredes: al caminar pegado a una pared el roce frenaba al jugador.
+        // (La velocidad la pone este script, asi que en el piso no hace falta friccion para no resbalar.)
+        var sinFriccion = new PhysicsMaterial("Jugador sin friccion")
+        {
+            dynamicFriction = 0f,
+            staticFriction = 0f,
+            frictionCombine = PhysicsMaterialCombine.Minimum,
+            bounciness = 0f,
+            bounceCombine = PhysicsMaterialCombine.Minimum
+        };
+        foreach (Collider c in GetComponents<Collider>())
+            if (!c.isTrigger) c.material = sinFriccion;
+
     }
 
     void Update()

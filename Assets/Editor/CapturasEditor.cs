@@ -36,6 +36,56 @@ public static class CapturasEditor
             if (l.Trim() == "volcar") { VolcarTienda(); continue; }
             if (l.Trim().StartsWith("volcar:")) { Volcar(l.Trim().Substring(7)); continue; }
             // medir:<ruta1>|<ruta2>...  -> Temp/Capturas/medidas.txt con jugadores (CharacterController) y limites de cada hijo
+            // asset:<ruta> -> Temp/Capturas/asset.txt con las piezas (renderers, mallas, materiales) de un modelo/prefab
+            if (l.Trim().StartsWith("asset:"))
+            {
+                var go = AssetDatabase.LoadAssetAtPath<GameObject>(l.Trim().Substring(6));
+                var sba = new StringBuilder();
+                if (go)
+                {
+                    var inst = (GameObject)Object.Instantiate(go);
+                    foreach (Transform t in inst.GetComponentsInChildren<Transform>(true))
+                    {
+                        string linea = Ruta(t, inst.transform) + " escala=" + V(t.localScale);
+                        if (t.TryGetComponent(out Renderer r))
+                        {
+                            Mesh m = r is SkinnedMeshRenderer sk ? sk.sharedMesh : (t.TryGetComponent(out MeshFilter mf) ? mf.sharedMesh : null);
+                            linea += " R=" + r.GetType().Name + " bounds=" + V(r.bounds.size) + " centro=" + V(r.bounds.center) + (m ? " malla=" + m.name + " sub=" + m.subMeshCount + " verts=" + m.vertexCount : "");
+                            foreach (Material mt in r.sharedMaterials) linea += " [" + (mt ? mt.name : "null") + "]";
+                        }
+                        foreach (var c in t.GetComponents<Component>()) if (!(c is Transform) && !(c is Renderer) && !(c is MeshFilter)) linea += " <" + c.GetType().Name + ">";
+                        sba.AppendLine(linea);
+                    }
+                    Object.DestroyImmediate(inst);
+                }
+                Directory.CreateDirectory(Carpeta);
+                File.WriteAllText(Path.Combine(Carpeta, "asset.txt"), sba.ToString());
+                continue;
+            }
+            // dentro:minx,minz,maxx,maxz -> objetos (con renderer, collider o componentes) en esa area que NO cuelgan de "Laberinto"
+            if (l.Trim().StartsWith("dentro:"))
+            {
+                string[] q = l.Trim().Substring(7).Split(',');
+                float F2(int i) => float.Parse(q[i], System.Globalization.CultureInfo.InvariantCulture);
+                Rect area = Rect.MinMaxRect(F2(0), F2(1), F2(2), F2(3));
+                GameObject labG = GameObject.Find("Laberinto");
+                var sbd = new StringBuilder();
+                foreach (GameObject raiz in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+                    foreach (Transform t in raiz.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (labG && t.IsChildOf(labG.transform)) continue;
+                        if (!area.Contains(new Vector2(t.position.x, t.position.z))) continue;
+                        // solo el objeto mas alto que este dentro (no cada hijo)
+                        if (t.parent && area.Contains(new Vector2(t.parent.position.x, t.parent.position.z)) && t.parent.parent != null) continue;
+                        string comps = "";
+                        foreach (var c in t.GetComponents<Component>()) if (!(c is Transform)) comps += c.GetType().Name + " ";
+                        string ruta = t.name; for (Transform pp = t.parent; pp != null; pp = pp.parent) ruta = pp.name + "/" + ruta;
+                        sbd.AppendLine(ruta + " pos=" + V(t.position) + " activo=" + t.gameObject.activeInHierarchy + " hijos=" + t.childCount + " [" + comps.Trim() + "]");
+                    }
+                Directory.CreateDirectory(Carpeta);
+                File.WriteAllText(Path.Combine(Carpeta, "dentro.txt"), sbd.ToString());
+                continue;
+            }
             if (l.Trim().StartsWith("medir:")) { Medir(l.Trim().Substring(6).Split('|')); continue; }
             // raices -> Temp/Capturas/raices.txt con los limites (renderers) de cada objeto raiz de la escena
             if (l.Trim() == "raices")
@@ -236,7 +286,7 @@ public static class CapturasEditor
             sb.AppendLine($"OBJETO {r} pos={V(g.transform.position)} rot={V(g.transform.eulerAngles)} escalaLocal={V(g.transform.localScale)} escala={V(g.transform.lossyScale)}");
             foreach (Transform t in g.GetComponentsInChildren<Transform>(true))
             {
-                string linea = $"  {Ruta(t, g.transform)} escalaLocal={V(t.localScale)}";
+                string linea = $"  {Ruta(t, g.transform)} pos={V(t.position)} rotY={t.eulerAngles.y:0} escalaLocal={V(t.localScale)}";
                 if (t.TryGetComponent(out Renderer rr)) linea += $" R={V(rr.bounds.min)}-{V(rr.bounds.max)} tam={V(rr.bounds.size)}";
                 foreach (var c in t.GetComponents<Collider>()) linea += $" C[{c.GetType().Name}{(c.isTrigger ? ",trigger" : "")}]={V(c.bounds.size)}";
                 foreach (var c in t.GetComponents<MonoBehaviour>()) if (c) linea += $" <{c.GetType().Name}>";
@@ -249,6 +299,24 @@ public static class CapturasEditor
     static string Ruta(Transform t, Transform raiz) => t == raiz ? t.name : Ruta(t.parent, raiz) + "/" + t.name;
     static string V(Vector3 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

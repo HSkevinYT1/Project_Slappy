@@ -30,6 +30,16 @@ public class RevisionCajas : MonoBehaviour
     public UnityEvent alEncontrarLinterna;
 
     public bool Activa { get; private set; }
+    // Todas las cajas revisadas (la cabina del sotano espera esto para funcionar)
+    public bool Completa
+    {
+        get
+        {
+            if (cajas == null || cajas.Length == 0) return false;
+            foreach (CajaRevisable c in cajas) if (c != null && !c.Revisada) return false;
+            return true;
+        }
+    }
     public bool Ocupada { get; private set; }
 
     void Awake()

@@ -84,12 +84,7 @@ public class PlayerInteractor : MonoBehaviour
 
     void Update()
     {
-        // Mientras hay un dialogo abierto, no se detecta ni se interactua con nada
-        if (DialogueManager.Instance != null && DialogueManager.Instance.IsActive)
-        {
-            Current = null;
-            return;
-        }
+        // Los dialogos son subtitulos (estilo GTA): se puede seguir interactuando mientras alguien habla.
 
         // Con un objeto en la mano (ej: la linterna) se sigue pudiendo interactuar con todo.
         // Si se le apunta a quien lo espera, se le entrega. Para soltarlo hay una tecla aparte (Z).
@@ -151,18 +146,34 @@ public class PlayerInteractor : MonoBehaviour
             return;
         }
 
-        // Solo cabe un objeto en la mano: el anterior se suelta
+        // Con inventario, el objeto va a una de sus 3 ranuras (y el de la mano se guarda)
+        Inventario inventario = GetComponent<Inventario>();
+        if (inventario != null && inventario.enabled) { inventario.Recoger(obj); return; }
+
+        // Sin inventario solo cabe un objeto en la mano: el anterior se suelta
         if (Held != null && Held != obj) Drop();
+        HoldDirect(obj);
+    }
+
+    // Pone el objeto en la mano sin pasar por el inventario (lo usa el Inventario)
+    public void HoldDirect(Grabbable obj)
+    {
         Held = obj;
         Held.Grab(handPoint);
     }
+
+    // Cambia lo que se considera "en la mano" sin moverlo (el Inventario al cambiar de ranura)
+    public void SetHeld(Grabbable obj) => Held = obj;
 
     public void Drop()
     {
         if (Held == null) return;
 
+        Grabbable obj = Held;
         Held.Release();
         Held = null;
+        Inventario inventario = GetComponent<Inventario>();
+        if (inventario != null) inventario.Quitar(obj);
     }
 
     // Entrega el objeto de la mano a un receptor (ej: un NPC que lo pidio)
@@ -173,6 +184,8 @@ public class PlayerInteractor : MonoBehaviour
         Grabbable obj = Held;
         Held = null;
         Receptor = null;
+        Inventario inventario = GetComponent<Inventario>();
+        if (inventario != null) inventario.Quitar(obj);
         receptor.Recibir(obj);
     }
 
@@ -195,15 +208,22 @@ public class PlayerInteractor : MonoBehaviour
     void OnGUI()
     {
         // Con puntero propio, el texto lo muestra quien maneje ese puntero
-        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt)) return;
+        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt) || PantallaMuerte.Muerto) return;
 
         GUIStyle style = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
-            fontSize = 20
+            // Escala con la pantalla (antes 20 px fijos: se veia chico)
+            fontSize = Mathf.RoundToInt(Screen.height * 0.019f * HUD.Escala)
         };
+        style.normal.textColor = Color.white;
 
-        Rect rect = new Rect(Screen.width / 2f - 150f, Screen.height / 2f + 40f, 300f, 40f);
+        float ancho = Screen.width * 0.5f, alto = style.fontSize * 2f;
+        Rect rect = new Rect((Screen.width - ancho) / 2f, Screen.height / 2f + style.fontSize * 1.6f, ancho, alto);
+        // Sombra para que se lea sobre fondos claros
+        GUIStyle sombra = new GUIStyle(style);
+        sombra.normal.textColor = new Color(0f, 0f, 0f, 0.8f);
+        GUI.Label(new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height), "[" + GameInput.InteractKeyName + "] " + CurrentPrompt, sombra);
         GUI.Label(rect, "[" + GameInput.InteractKeyName + "] " + CurrentPrompt, style);
     }
 }

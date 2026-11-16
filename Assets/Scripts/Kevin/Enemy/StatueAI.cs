@@ -34,9 +34,14 @@ public class EstatuaAI : MonoBehaviour
     private float nextReachCheck;
     private bool playerReachable;
 
+    private Vector3 posicionInicial;
+    private Quaternion rotacionInicial;
+
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
+        posicionInicial = transform.position;
+        rotacionInicial = transform.rotation;
         ownColliders = GetComponentsInChildren<Collider>();
 
         // Busca al jugador por la etiqueta de player
@@ -110,6 +115,19 @@ public class EstatuaAI : MonoBehaviour
                 Debug.Log(name + " atrapo al jugador");
                 break;
         }
+    }
+
+    // Despues de atrapar al jugador (al reintentar): vuelve a donde empezo, quieta
+    public void Reiniciar()
+    {
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        if (posicionInicial != Vector3.zero)
+        {
+            transform.SetPositionAndRotation(posicionInicial, rotacionInicial);
+            if (agent.isOnNavMesh) agent.Warp(posicionInicial);
+        }
+        if (agent.isOnNavMesh) EnterState(State.Frozen);
+        else CurrentState = State.Frozen;
     }
 
     void UpdateMoving()

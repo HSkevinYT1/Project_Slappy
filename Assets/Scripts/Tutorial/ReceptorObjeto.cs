@@ -35,6 +35,12 @@ public class ReceptorObjeto : MonoBehaviour
     public UnityEvent<Grabbable> alRecibir;
 
     public bool Recibido { get; private set; }
+
+    // Opcional (por codigo): que objetos acepta ademas de "Objeto Esperado" (ej: solo paneles con numero)
+    public System.Func<Grabbable, bool> filtro;
+
+    // Vuelve a esperar un objeto (ej: el jugador se llevo de vuelta el que se le entrego)
+    public void Reabrir() => Recibido = false;
     public string Prompt => JugadorEnZona() ? prompt : promptFueraZona;
 
     private Transform jugador;
@@ -43,6 +49,7 @@ public class ReceptorObjeto : MonoBehaviour
     public bool Espera(Grabbable objeto)
     {
         if (!enabled || Recibido || objeto == null) return false;
+        if (filtro != null && !filtro(objeto)) return false;
         return objetoEsperado == null || objeto == objetoEsperado;
     }
 

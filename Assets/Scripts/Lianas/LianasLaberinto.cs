@@ -93,6 +93,8 @@ public class LianasLaberinto : MonoBehaviour
 
     [Header("Lianas en el piso")]
     public bool lianasEnPiso = true;
+    [Tooltip("Venas tambien en el techo (colgando hacia abajo), si el techo esta activo.")]
+    public bool lianasEnTecho = true;
     [Tooltip("El piso se divide en baldosas de este tamano; cada una se enciende/apaga como unidad.")]
     [Range(1f, 8f)] public float tamanoBaldosaPiso = 3f;
     [Range(0, 6)] public int venasPorBaldosa = 2;
@@ -877,6 +879,33 @@ public class LianasLaberinto : MonoBehaviour
                 tramo.distSegura = distSegura[celda] >= 0 ? distSegura[celda] * tamanoCelda : DistanciaEuclidea(centro);
 
                 GenerarTramo(rnd, tramo, O, Vector3.right, Vector3.forward, Vector3.up,
+                             lado, 0f, lado, 0f, lado, sinHorizontales, Modo.Piso, grosorPiso);
+
+                tramo.vCant = vPos.Count - tramo.vIni;
+                if (tramo.vCant > 0) tramos.Add(tramo);
+            }
+        }
+
+        // Venas en el techo: igual que en el piso pero pegadas por debajo del techo (se cortan en las paredes)
+        if (lianasEnTecho && techo && techo.gameObject.activeInHierarchy && venasPorBaldosa > 0)
+        {
+            float lado = tamanoBaldosaPiso;
+            float anchoX = nx * tamanoCelda, anchoZ = nz * tamanoCelda;
+            int bx = Mathf.Max(1, Mathf.CeilToInt(anchoX / lado));
+            int bz = Mathf.Max(1, Mathf.CeilToInt(anchoZ / lado));
+            var rndTecho = new System.Random(semilla + 777);
+            for (int z = 0; z < bz; z++)
+            for (int x = 0; x < bx; x++)
+            {
+                Vector3 O = new Vector3(origen.x + x * lado, techoY, origen.y + z * lado);
+                Vector3 centro = new Vector3(O.x + lado * 0.5f, pisoY, O.z + lado * 0.5f);
+                int celda = CeldaCaminable(centro, Mathf.CeilToInt(lado * 0.5f / tamanoCelda));
+                if (celda < 0) continue;
+
+                var tramo = new Tramo { vIni = vPos.Count, prev = inicial, next = inicial, tCambio = -100f, celda = celda };
+                tramo.distSegura = distSegura[celda] >= 0 ? distSegura[celda] * tamanoCelda : DistanciaEuclidea(centro);
+
+                GenerarTramo(rndTecho, tramo, O, Vector3.right, Vector3.forward, Vector3.down,
                              lado, 0f, lado, 0f, lado, sinHorizontales, Modo.Piso, grosorPiso);
 
                 tramo.vCant = vPos.Count - tramo.vIni;

@@ -11,6 +11,8 @@ public class ZonaVolumen : MonoBehaviour
     public VolumeProfile perfil;
     // Volume que cambia. Vacio = busca el VolumenZonas de la escena
     public VolumenZonas volumen;
+    // Si esta area usa la niebla (FogVolume) mientras el jugador esta adentro
+    public bool niebla = true;
 
     // Colliders del jugador que estan dentro (el jugador puede tener varios)
     private readonly HashSet<Collider> dentro = new HashSet<Collider>();

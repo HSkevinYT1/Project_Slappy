@@ -1,11 +1,11 @@
 using UnityEngine;
 
-// Forma en que se presenta un dialogo
+// Forma en que se presenta un dialogo (los dos se muestran como subtitulos estilo GTA V y no bloquean al jugador)
 public enum DialogueMode
 {
-    // Varias lineas. El jugador avanza con la tecla de avanzar (Espacio). Bloquea al jugador.
+    // Un personaje que habla: cada linea lleva su nombre en color ("Cliente: ...").
     Conversacion,
-    // Una o pocas lineas de lore. Pasan solas tras unos segundos. No bloquea al jugador.
+    // Lore o pensamientos al examinar algo: sin nombre, en gris claro.
     Examinar
 }
 
@@ -16,13 +16,20 @@ public class DialogueData : ScriptableObject
 {
     public DialogueMode modo = DialogueMode.Conversacion;
 
-    // Cada elemento es una linea que se muestra con el efecto de maquina de escribir
+    [Tooltip("Nombre de quien habla (se muestra en color antes de cada linea). Vacio = sin nombre.\n" +
+             "Una linea puede cambiar de hablante empezando con [Nombre], ej: \"[Cultista] Hola\".")]
+    public string hablante = "";
+
+    [Tooltip("Color del nombre (como en GTA: cada personaje tiene el suyo)")]
+    public Color colorHablante = new Color(0.4f, 0.75f, 1f);
+
+    // Cada elemento es una linea (un subtitulo). Pasan solas segun lo largas que sean.
     [TextArea(3, 8)]
     public string[] lineas;
 
-    [Tooltip("Solo en modo Examinar: segundos que se queda visible cada linea antes de pasar sola")]
-    [Min(0.5f)]
-    public float segundosPorLinea = 3f;
+    [Tooltip("Segundos extra que se suman a cada linea (0 = solo lo que tarda en leerse)")]
+    [Min(0f)]
+    public float segundosExtra = 0f;
 
     // Se elige en el On Interact de un Interactable, arrastrando este asset al evento
     public void Play()
