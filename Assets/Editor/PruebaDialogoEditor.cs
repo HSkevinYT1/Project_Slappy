@@ -35,6 +35,7 @@ public static class PruebaDialogoEditor
         {
             inicio = EditorApplication.timeSinceStartup;
             paso = 0;
+            for (int m = 0; m < 5; m++) SessionState.EraseBool("PruebaMenu" + m);
             EditorApplication.update += Tick;
         }
         else if (e == PlayModeStateChange.EnteredEditMode)
@@ -52,6 +53,51 @@ public static class PruebaDialogoEditor
     {
         double t = EditorApplication.timeSinceStartup - inicio;
         string carpeta = "Temp/Capturas";
+        // Modo "intro": darle a Jugar y sacar fotos de la cinematica de inicio
+        if (SessionState.GetString("PruebaDialogo.Asset", "") == "intro")
+        {
+            void Log(string x) => File.AppendAllText(carpeta + "/intro_estado.txt", x + System.Environment.NewLine);
+            double[] tiempos = { 1.5, 3.2, 4.6, 6.2, 7.6, 8.8, 10.0, 11.2, 13.0, 16.5 };
+            // Fotos del menu antes y despues de darle a Jugar (titulo, carro y el cliente que se baja)
+            double[] menuT = { 0.5, 2.6, 3.3, 3.9, 4.4 };
+            for (int m = 0; m < menuT.Length; m++)
+                if (t > menuT[m] && !SessionState.GetBool("PruebaMenu" + m, false))
+                {
+                    SessionState.SetBool("PruebaMenu" + m, true);
+                    ScreenCapture.CaptureScreenshot(carpeta + "/menu_" + m + ".png");
+                    var tit = GameObject.Find("Titulo");
+                    if (tit) Log("menu " + m + " t=" + t.ToString("0.00") + " titulo escala=" + tit.transform.lossyScale + " rect=" + ((RectTransform)tit.transform).rect + " font=" + tit.GetComponent<TMPro.TMP_Text>().fontSize);
+                }
+            // Seguimiento fino del tendero (cada 0.25 s, entre 7 y 10.5 s)
+            int tick = (int)(t * 4);
+            if (t > 7 && t < 10.5 && tick != SessionState.GetInt("PruebaTick", -1))
+            {
+                SessionState.SetInt("PruebaTick", tick);
+                var ten2 = GameObject.Find("Tendero (intro)");
+                if (ten2)
+                {
+                    var an = ten2.GetComponentInChildren<Animator>();
+                    Log("  ten t=" + t.ToString("0.00") + " pos=" + ten2.transform.position.ToString("F2") + " act=" + ten2.activeSelf + (an ? " rootMotion=" + an.applyRootMotion : ""));
+                }
+            }
+            if (paso < tiempos.Length && t > tiempos[paso])
+            {
+                if (paso == 0) { File.WriteAllText(carpeta + "/intro_estado.txt", ""); var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Jugar(); Log("Jugar"); }
+                else if (paso < tiempos.Length - 1)
+                {
+                    ScreenCapture.CaptureScreenshot(carpeta + "/intro_" + paso + ".png");
+                    var carro = GameObject.Find("Intro Tienda/Carro");
+                    var cli = GameObject.Find("Cliente (intro)");
+                    var ten = GameObject.Find("Tendero (intro)");
+                    var pm = Object.FindFirstObjectByType<PlayerMovement>();
+                    Log("t=" + (t - 1.5).ToString("0.0") + " carro=" + (carro ? carro.transform.position.ToString() : "-") + " cliente=" + (cli ? cli.transform.position.ToString() : "-") + " tendero=" + (ten && ten.activeSelf ? ten.transform.position.ToString() : "-") + " camMain=" + (Camera.main ? Camera.main.name : "-") + " mov=" + (pm && pm.enabled) + " brazos=" + (GameObject.Find("Player_Arms") ? "activos" : "inactivos"));
+                }
+                else EditorApplication.isPlaying = false;
+                paso++;
+            }
+            return;
+        }
+
         // Modo "brillo": dentro y fuera de la sala del panel central
         if (SessionState.GetString("PruebaDialogo.Asset", "") == "brillo")
         {

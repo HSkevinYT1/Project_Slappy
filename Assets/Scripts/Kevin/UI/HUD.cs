@@ -42,6 +42,7 @@ public static class HUD
         foreach (CanvasScaler cs in Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             if (cs.uiScaleMode != CanvasScaler.ScaleMode.ScaleWithScreenSize || cs.GetComponent<HUDEscalado>()) continue;
+            if (cs.GetComponentInParent<MenuPrincipal>(true)) continue; // el menu principal queda como se diseno
             cs.referenceResolution /= Escala;
             cs.gameObject.AddComponent<HUDEscalado>();
         }

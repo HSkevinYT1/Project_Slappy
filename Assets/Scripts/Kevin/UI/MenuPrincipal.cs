@@ -78,7 +78,19 @@ public class MenuPrincipal : MonoBehaviour
     {
         if (empezando) return;
         empezando = true;
-        StartCoroutine(Cinematica());
+        IntroTienda intro = FindFirstObjectByType<IntroTienda>();
+        if (intro != null && camaraMenu != null) StartCoroutine(ConIntro(intro));
+        else StartCoroutine(Cinematica());
+    }
+
+    // Cinematica nueva (carro, cliente, tendero y la camara por la ventana derecha): ver IntroTienda
+    IEnumerator ConIntro(IntroTienda intro)
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        if (panel != null) panel.interactable = false;
+        yield return intro.Reproducir(camaraMenu, panel, camaraJugador, cuerpoJugador);
+        Empezar();
     }
 
     // Boton Salir
