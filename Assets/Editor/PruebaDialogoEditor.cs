@@ -51,6 +51,29 @@ public static class PruebaDialogoEditor
     {
         double t = EditorApplication.timeSinceStartup - inicio;
         string carpeta = "Temp/Capturas";
+        // Modo "puzzle": la reja cae, codigo erroneo, codigo correcto y cinematica de la puerta
+        if (SessionState.GetString("PruebaDialogo.Asset", "") == "puzzle")
+        {
+            var pm = Object.FindFirstObjectByType<PlayerMovement>();
+            var pz = Object.FindFirstObjectByType<PuzzleContrasena>();
+            var rj = Object.FindFirstObjectByType<RejasEntrada>();
+            void Log(string x) => File.AppendAllText(carpeta + "/puzzle_estado.txt", x + System.Environment.NewLine);
+            void Poner(Vector3 p) { var rb = pm.GetComponent<Rigidbody>(); p.y = 1f; rb.position = p; pm.transform.position = p; rb.linearVelocity = Vector3.zero; }
+            if (paso == 0 && t > 1.5) { paso++; var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Empezar(); File.WriteAllText(carpeta + "/puzzle_estado.txt", ""); var pr = Object.FindFirstObjectByType<PresentacionEnemigo>(); if (pr) pr.enabled = false; }
+            else if (paso == 1 && t > 2.5) { paso++; Poner(rj.zona.bounds.center); }
+            else if (paso == 2 && t > 6.0) { paso++; Log("reja cayo=" + rj.Usada + " y=" + rj.reja.position.y.ToString("0.00") + " codigo=" + string.Join("", pz.Codigo)); Poner(pz.transform.parent.Find("Panel Central").position + Vector3.left * 1.2f); }
+            else if (paso == 3 && t > 7.0) { paso++; pz.Enviar(); Log("enviado codigo erroneo; resuelto=" + pz.Resuelto); }
+            else if (paso == 4 && t > 9.0)
+            {
+                paso++;
+                for (int c = 0; c < 4; c++) for (int k = 0; k < 10 && pz.columnas[c].text != pz.Codigo[c].ToString(); k++) pz.Subir(c);
+                pz.Enviar(); Log("enviado codigo correcto; resuelto=" + pz.Resuelto);
+            }
+            else if (paso == 5 && t > 12.5) { paso++; ScreenCapture.CaptureScreenshot(carpeta + "/puzzle_cinematica.png"); Log("en la cinematica: camara puerta=" + (GameObject.Find("Camara Puerta Laberinto") != null) + " reja y=" + rj.reja.position.y.ToString("0.00")); }
+            else if (paso == 6 && t > 19.0) { paso++; Log("fin: reja y=" + rj.reja.position.y.ToString("0.00") + " movimiento=" + pm.enabled + " camara principal=" + (Camera.main != null && Camera.main.enabled)); EditorApplication.isPlaying = false; }
+            return;
+        }
+
         // Modo "reloj": entra al cruce del laberinto; Fede no debe verse hasta mirar el reloj
         if (SessionState.GetString("PruebaDialogo.Asset", "") == "reloj")
         {

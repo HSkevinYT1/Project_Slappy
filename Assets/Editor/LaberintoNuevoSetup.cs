@@ -20,7 +20,7 @@ using UnityEngine.AI;
 [InitializeOnLoad]
 public static partial class LaberintoNuevoSetup
 {
-    const string Version = "_laberinto v13";
+    const string Version = "_laberinto v14";
     const int N = 21;              // celdas por lado
     const float Celda = 4f;        // metros por celda
     const float Alto = 4.25f;      // alto de las paredes (igual que antes)
@@ -242,7 +242,7 @@ public static partial class LaberintoNuevoSetup
         var prefabArmario = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Armario.prefab");
         foreach (Transform c in new[] { paredes, elev, cas })
             for (int k = c.childCount - 1; k >= 0; k--) Undo.DestroyObjectImmediate(c.GetChild(k).gameObject);
-        foreach (string viejo in new[] { "Paneles", "Luces Laberinto", "Zona Segura (centro)", "Puntos Laberinto" })
+        foreach (string viejo in new[] { "Paneles", "Paneles Numero", "Puzzle Paneles", "Puzzle Contrasena", "Luces Laberinto", "Zona Segura (centro)", "Puntos Laberinto" })
         {
             Transform t = lab.Find(viejo);
             if (t) Undo.DestroyObjectImmediate(t.gameObject);
@@ -308,15 +308,12 @@ public static partial class LaberintoNuevoSetup
             Ajustar(techo, new Vector3(x0 + Grosor * 0.5f, Alto, z0 - Grosor * 0.5f), new Vector3(x0 + N * Celda + Grosor * 0.5f, Alto + 0.3f, z0 + N * Celda + Grosor * 0.5f));
         }
 
-        // Paneles (bloques blancos) en el centro de cada sala de cuadrante
-        Material blanco = MaterialPanel();
-        Transform paneles = Hijo(lab, "Paneles");
+        // Salas de cuadrante: solo su luz (los paneles de pared del puzzle los pone PuzzleContrasenaSetup)
         Transform luces = Hijo(lab, "Luces Laberinto");
         for (int k = 0; k < SalasPanel.Length; k++)
         {
             RectInt r = SalasPanel[k];
             Vector3 c = W(r.center.x, r.center.y);
-            Caja(paneles, "Panel " + (k + 1), c + new Vector3(-0.8f, 0f, -0.3f), c + new Vector3(0.8f, 2.2f, 0.3f), blanco, true);
             Luz(luces, "Luz Panel " + (k + 1), c + new Vector3(0f, 3.6f, 0f), new Color(0.85f, 0.9f, 1f), 9f, 3.5f);
         }
 
