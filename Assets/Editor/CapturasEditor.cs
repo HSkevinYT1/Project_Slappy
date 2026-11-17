@@ -334,3 +334,15 @@ public static class CapturasEditor
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+

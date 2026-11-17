@@ -431,6 +431,7 @@ public class LianasLaberinto : MonoBehaviour
             foreach (Transform t in cont.GetComponentsInChildren<Transform>(false))
             {
                 if (t == cont || !vistos.Add(t)) continue;
+                if (t.name == "Hitbox Paso Bajo") continue; // zona de interaccion bajo las paredes elevadas (no es pared)
 
                 Vector3 centro, tam;
                 BoxCollider bc = t.GetComponent<BoxCollider>();

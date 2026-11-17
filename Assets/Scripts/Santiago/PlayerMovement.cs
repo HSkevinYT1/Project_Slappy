@@ -5,6 +5,13 @@ public class PlayerMovement : MonoBehaviour
 {
     //modificar velocidad
     public float speed = 5f;
+    // Al mantener Shift se multiplica la velocidad (solo yendo hacia adelante)
+    public float multiplicadorCorrer = 1.7f;
+    // Segundos que tarda en llegar a la velocidad de correr (y en volver a caminar)
+    public float aceleracionCorrer = 0.25f;
+    public bool Corriendo { get; private set; }
+    private float factorCorrer = 1f;
+    private float adelante;
     // Guarda una referencia al Rigidbody del Player
     private Rigidbody rb;
     // Guarda la direccion en la cual se esta moviendo el Player.
@@ -40,11 +47,17 @@ public class PlayerMovement : MonoBehaviour
 
        //Movimiento horizontal 
         movement = (transform.right * x + transform.forward * z).normalized;
+        adelante = z;
     }
     void FixedUpdate()
     {
         // Multiplicala la direccion del jugador con la velocidad base que se tiene.
-        Vector3 velocity = movement * speed;
+        // Correr: Shift mantenido y avanzando hacia adelante. Sube y baja la velocidad con suavidad.
+        Corriendo = GameInput.Run && adelante > 0.1f;
+        float objetivo = Corriendo ? multiplicadorCorrer : 1f;
+        float paso = aceleracionCorrer > 0f ? Time.fixedDeltaTime / aceleracionCorrer * (multiplicadorCorrer - 1f) : 10f;
+        factorCorrer = Mathf.MoveTowards(factorCorrer, objetivo, paso);
+        Vector3 velocity = movement * speed * factorCorrer;
 
         // Modifica la velocidad del Rididbody
         rb.linearVelocity = new Vector3(

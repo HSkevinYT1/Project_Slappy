@@ -53,8 +53,12 @@ public class PresentacionEnemigo : MonoBehaviour
     public bool tutorialReloj = true;
     [Tooltip("Segundos de la escena antes de que salga el cartel")]
     public float relojTras = 1.2f;
-    [Tooltip("Si el jugador no presiona la tecla en este tiempo, el reloj se muestra solo")]
+    [Tooltip("Si el jugador no presiona la tecla en este tiempo, el reloj se muestra solo (0 = espera siempre a la tecla)")]
     public float esperaMaximaReloj = 10f;
+    [Tooltip("Con el tutorial del reloj, el enemigo no aparece ni camina hasta que se mira el reloj (tecla C)")]
+    public bool enemigoTrasReloj = true;
+    [Tooltip("Segundos que se sigue mirando despues de que el enemigo empieza a moverse")]
+    public float duracionCruce = 4.5f;
     [Tooltip("Segundos mirando el reloj antes de seguir")]
     public float mirarReloj = 3.2f;
     public string textoTutorial = "Presiona [{0}] para mirar tu reloj";
@@ -119,15 +123,35 @@ public class PresentacionEnemigo : MonoBehaviour
         enemigo.enabled = false;
         float velocidadAntes = agent != null ? agent.speed : 0f;
         bool camina = puntoDestino != null;
+        RelojJugador relojEsperado = RelojJugador.Instance;
+        bool esperarReloj = enemigoTrasReloj && tutorialReloj && relojEsperado != null;
         if (agent != null && agent.isOnNavMesh)
         {
             agent.Warp(puntoAparicion.position);
             agent.speed = velocidadEnemigo;
-            if (camina) { agent.isStopped = false; agent.SetDestination(puntoDestino.position); }
-            else { agent.ResetPath(); agent.isStopped = true; agent.velocity = Vector3.zero; }
+            agent.ResetPath(); agent.isStopped = true; agent.velocity = Vector3.zero;
         }
         else enemigo.transform.position = puntoAparicion.position;
-        if (!camina) enemigo.transform.rotation = Quaternion.Euler(0f, puntoAparicion.eulerAngles.y, 0f);
+        enemigo.transform.rotation = camina ? Quaternion.LookRotation(Vector3.ProjectOnPlane(puntoDestino.position - puntoAparicion.position, Vector3.up))
+                                            : Quaternion.Euler(0f, puntoAparicion.eulerAngles.y, 0f);
+        // Escondido hasta que el jugador mire el reloj
+        var visibles = new List<Renderer>();
+        var lucesEnemigo = new List<Light>();
+        if (esperarReloj)
+        {
+            foreach (Renderer r in enemigo.GetComponentsInChildren<Renderer>()) if (r.enabled) { r.enabled = false; visibles.Add(r); }
+            foreach (Light l in enemigo.GetComponentsInChildren<Light>()) if (l.enabled) { l.enabled = false; lucesEnemigo.Add(l); }
+        }
+        bool enemigoEnMarcha = false;
+        void Arrancar()
+        {
+            if (enemigoEnMarcha) return;
+            enemigoEnMarcha = true;
+            foreach (Renderer r in visibles) if (r != null) r.enabled = true;
+            foreach (Light l in lucesEnemigo) if (l != null) l.enabled = true;
+            if (camina && agent != null && agent.isOnNavMesh) { agent.isStopped = false; agent.SetDestination(puntoDestino.position); }
+        }
+        if (!esperarReloj) Arrancar();
         if (luzEnemigo != null) luzEnemigo.enabled = true;
         if (sonido != null) AudioSource.PlayClipAtPoint(sonido, camJugador.transform.position);
 
@@ -164,8 +188,8 @@ public class PresentacionEnemigo : MonoBehaviour
         // Mirarlo mientras camina (la camara lo sigue con suavidad). Mientras, el tutorial del reloj.
         RelojJugador reloj = RelojJugador.Instance;
         bool tutorialHecho = !tutorialReloj || reloj == null;
-        float vistoDesde = -1f;
-        for (float t = 0f; t < duracionMirar || !tutorialHecho; t += Time.deltaTime)
+        float vistoDesde = -1f, arrancoEn = esperarReloj ? -1f : 0f;
+        for (float t = 0f; t < duracionMirar || !tutorialHecho || arrancoEn < 0f || t < arrancoEn + duracionCruce; t += Time.deltaTime)
         {
             Quaternion mirar = Quaternion.LookRotation(Objetivo() - cam.transform.position);
             cam.transform.rotation = Quaternion.Slerp(cam.transform.rotation, mirar, 1f - Mathf.Exp(-3f * Time.deltaTime));
@@ -178,12 +202,14 @@ public class PresentacionEnemigo : MonoBehaviour
                     reloj.Desbloquear();
                     reloj.Tutorial(string.Format(textoTutorial, GameInput.KeyName("Reloj")));
                     // Lo miro (o paso demasiado tiempo: se muestra solo)
-                    if (reloj.Visible || t > relojTras + esperaMaximaReloj)
+                    if (reloj.Visible || (esperaMaximaReloj > 0f && t > relojTras + esperaMaximaReloj))
                     {
                         reloj.Mostrar(true);
                         reloj.Tutorial("");
                         reloj.Pista(textoPista, mirarReloj + 2.5f);
                         vistoDesde = t;
+                        // Recien ahora aparece el enemigo y cruza
+                        if (esperarReloj) { Arrancar(); arrancoEn = t; }
                     }
                 }
                 else if (t >= vistoDesde + mirarReloj) tutorialHecho = true;
@@ -191,6 +217,7 @@ public class PresentacionEnemigo : MonoBehaviour
             yield return null;
         }
         if (reloj != null) { reloj.Tutorial(""); if (tutorialReloj) reloj.Mostrar(false); }
+        Arrancar(); // por si acaso (sin reloj en la escena)
 
         // Volver a la vista del jugador
         Vector3 desde = cam.transform.position;

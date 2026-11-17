@@ -51,6 +51,23 @@ public static class PruebaDialogoEditor
     {
         double t = EditorApplication.timeSinceStartup - inicio;
         string carpeta = "Temp/Capturas";
+        // Modo "reloj": entra al cruce del laberinto; Fede no debe verse hasta mirar el reloj
+        if (SessionState.GetString("PruebaDialogo.Asset", "") == "reloj")
+        {
+            var pm = Object.FindFirstObjectByType<PlayerMovement>();
+            var pr = Object.FindFirstObjectByType<PresentacionEnemigo>();
+            void Log(string x) => File.AppendAllText(carpeta + "/reloj_estado.txt", x + System.Environment.NewLine);
+            bool Visible() { foreach (var r in pr.enemigo.GetComponentsInChildren<Renderer>()) if (r.enabled) return true; return false; }
+            if (paso == 0 && t > 1.5) { paso++; var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Empezar(); File.WriteAllText(carpeta + "/reloj_estado.txt", ""); }
+            else if (paso == 1 && t > 2.5) { paso++; var rj = Object.FindFirstObjectByType<RejasEntrada>(); Vector3 p = pr.zona.bounds.center; p.y = pm.transform.position.y > 2f ? 1f : pm.transform.position.y; var rb = pm.GetComponent<Rigidbody>(); rb.position = p; pm.transform.position = p; Log("en la zona; espera max=" + pr.esperaMaximaReloj); }
+            else if (paso == 2 && t > 6.0) { paso++; Log("3.5 s sin tecla: fede visible=" + Visible() + " en " + pr.enemigo.transform.position); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_antes.png"); }
+            else if (paso == 3 && t > 8.0) { paso++; RelojJugador.Instance.Mostrar(true); Log("se mira el reloj (como si pulsara C)"); }
+            else if (paso == 4 && t > 9.0) { paso++; Log("1 s despues: fede visible=" + Visible() + " en " + pr.enemigo.transform.position); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_despues.png"); }
+            else if (paso == 5 && t > 11.0) { paso++; Log("3 s despues: fede en " + pr.enemigo.transform.position); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_cruce.png"); }
+            else if (paso == 6 && t > 17.0) { paso++; Log("fin: cinematica terminada, movimiento=" + pm.enabled); EditorApplication.isPlaying = false; }
+            return;
+        }
+
         // Modo "brazos": el jugador pegado a una pared; los brazos no deben atravesarla
         if (SessionState.GetString("PruebaDialogo.Asset", "") == "brazos")
         {
@@ -109,7 +126,7 @@ public static class PruebaDialogoEditor
                 rb.linearVelocity = Vector3.zero; rb.position = p; pm.transform.position = p;
                 Log("cajas completas=" + (ct.cajasRequeridas && ct.cajasRequeridas.Completa));
             }
-            else if (paso == 5 && t > 8.0) { paso++; Log("2 s adentro sin cajas: teletransporte usado=" + ct.Usada); foreach (var c in ct.cajasRequeridas.cajas) c.Revisada = true; Log("cajas marcadas como revisadas"); }
+            else if (paso == 5 && t > 8.0) { paso++; Log("2 s adentro sin cajas: teletransporte usado=" + ct.Usada); foreach (var c in ct.cajasRequeridas.cajas) c.Revisada = true; ct.cajasRequeridas.alEncontrarLinterna?.Invoke(); var mu = GameObject.Find("zotano/muñeco ventriloco"); Log("cajas revisadas; muneco brilla=" + (mu && mu.GetComponent<Highlightable>() && mu.GetComponent<Highlightable>().IsHighlighted)); }
             else if (paso == 6 && t > 9.0) { paso++; Log("1 s despues: teletransporte usado=" + ct.Usada); }
             else if (paso == 7 && t > 12.5 && !File.Exists(carpeta + "/desmayo.png"))
             {
@@ -117,8 +134,31 @@ public static class PruebaDialogoEditor
                 var cb = GameObject.Find("Camara Brazos");
                 Log("durante el desmayo: camara de brazos activa=" + (cb && cb.GetComponent<Camera>().enabled));
             }
-            else if (paso == 7 && t > 22.0) { paso++; Log("despues del viaje: jugador en " + pm.transform.position + " fog activo=" + (fog && fog.activeSelf)); }
-            else if (paso == 8 && t > 23.0) { paso++; EditorApplication.isPlaying = false; }
+            else if (paso == 7 && t > 22.0)
+            {
+                paso++;
+                var mu = GameObject.Find("zotano/muñeco ventriloco");
+                var pa = GameObject.Find("Zona_Principal/Cabina_Telefonica (1)/Telefono/panel del telefono");
+                Log("despues del viaje: jugador en " + pm.transform.position + " muneco brilla=" + (mu && mu.GetComponent<Highlightable>().IsHighlighted) + " panel brilla=" + (pa && pa.GetComponent<Highlightable>().IsHighlighted));
+                ScreenCapture.CaptureScreenshot(carpeta + "/panel_brillo.png");
+                var cs = Object.FindFirstObjectByType<CabinaSalida>();
+                if (cs) cs.Abrir();
+            }
+            else if (paso == 8 && t > 24.0)
+            {
+                paso++;
+                var rb2 = pm.GetComponent<Rigidbody>();
+                Vector3 fuera = pm.transform.position + Vector3.left * 3f;
+                rb2.position = fuera; pm.transform.position = fuera;
+            }
+            else if (paso == 9 && t > 25.5)
+            {
+                paso++;
+                var dm = DialogueManager.Instance;
+                Log("al salir: dialogo activo=" + (dm && dm.IsActive) + " texto=" + (dm && dm.CurrentData ? dm.CurrentData.lineas[0] : "-"));
+                ScreenCapture.CaptureScreenshot(carpeta + "/aviso_correr.png");
+            }
+            else if (paso == 10 && t > 26.5) { paso++; EditorApplication.isPlaying = false; }
             return;
         }
 

@@ -23,6 +23,10 @@ public static class GameInput
     public static bool DragStarted => Pressed("Arrastrar");
     // Mirar / guardar el reloj de pulsera (C)
     public static bool Watch => Pressed("Reloj");
+    // Correr (mantener Shift, o el stick izquierdo apretado en mando)
+    public static bool Run =>
+        (Keyboard.current != null && (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed)) ||
+        (Gamepad.current != null && Gamepad.current.leftStickButton.isPressed);
 
     // Inventario: teclas 1, 2 y 3 (devuelve la ranura presionada o -1) y la rueda del mouse (-1, 0 o 1)
     public static int SlotPressed

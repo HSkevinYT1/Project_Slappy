@@ -18,9 +18,9 @@ using UnityEngine.AI;
 // el trigger de Volume, el enemigo, las baterias y la presentacion siguen funcionando (se reubican solos).
 // Se aplica solo una vez; rehacer: Tools > Laberinto > Nuevo trazado.
 [InitializeOnLoad]
-public static class LaberintoNuevoSetup
+public static partial class LaberintoNuevoSetup
 {
-    const string Version = "_laberinto v8";
+    const string Version = "_laberinto v13";
     const int N = 21;              // celdas por lado
     const float Celda = 4f;        // metros por celda
     const float Alto = 4.25f;      // alto de las paredes (igual que antes)
@@ -360,6 +360,32 @@ public static class LaberintoNuevoSetup
         zona.AddComponent<ZonaSeguraLianas>();
         Luz(luces, "Luz Centro", centro + Vector3.up * 3.7f, new Color(1f, 0.82f, 0.6f), 14f, 4f);
 
+        // Algunas luces indigo repartidas por los pasillos: un cristal que brilla colgado del techo y su luz
+        Material cristal = MaterialCristalIndigo();
+        var rndLuz = new System.Random(Semilla + 31);
+        int nLuz = 0;
+        for (int gj = 2; gj < N; gj += 5)
+        for (int gi = 2; gi < N; gi += 5)
+        {
+            // un poco corridas al azar para que no se note la cuadricula
+            int ci = Mathf.Clamp(gi + rndLuz.Next(-1, 2), 0, N - 1), cj = Mathf.Clamp(gj + rndLuz.Next(-1, 2), 0, N - 1);
+            if (EnSala(ci, cj)) continue;
+            Vector3 p = W(ci + 0.5f, cj + 0.5f, Alto - 0.45f);
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Undo.RegisterCreatedObjectUndo(go, "Cristal");
+            go.name = "Cristal Indigo " + (++nLuz);
+            Object.DestroyImmediate(go.GetComponent<Collider>());
+            go.transform.SetParent(luces, false);
+            go.transform.rotation = Quaternion.Euler(0f, rndLuz.Next(0, 360), 45f);
+            go.transform.position = p;
+            Vector3 ls2 = luces.lossyScale;
+            go.transform.localScale = new Vector3(0.2f / ls2.x, 0.45f / ls2.y, 0.2f / ls2.z);
+            var rc = go.GetComponent<Renderer>();
+            rc.sharedMaterial = cristal;
+            rc.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Luz(luces, "Luz Indigo " + nLuz, p + Vector3.down * 0.6f, new Color(0.38f, 0.12f, 1f), 9.5f, 6.5f);
+        }
+
         var inicio = new GameObject("Inicio Laberinto");
         inicio.transform.SetParent(lab, false);
         inicio.transform.position = W(0.5f, 10.5f);
@@ -384,6 +410,7 @@ public static class LaberintoNuevoSetup
         Rejas(lab, W(0, 10), W(0, 11), W(1.2f, 10f), W(3f, 11f), matPared);
         Texturas(lab, piso);
         TexturaTecho(techo);
+        Props(lab, x0, z0, atajos);
         Dependientes(lab, W(N * 0.5f, N * 0.5f));
         ConfigurarPresentacion(W(4f, 11f), W(5f, 12f), W(1.5f, 13.5f), W(6.8f, 13.5f), W(4.5f, 11.4f, 1.6f), W(4.5f, 13.5f, 1.3f));
         if (lianas) lianas.RegenerarVistaPrevia();
@@ -580,6 +607,8 @@ public static class LaberintoNuevoSetup
         pres.velocidadEnemigo = 2.4f;
         pres.duracionIr = 1.1f;
         pres.duracionMirar = 7.5f;
+        pres.esperaMaximaReloj = 0f;   // Fede solo aparece cuando el jugador mira el reloj (C)
+        pres.enemigoTrasReloj = true;
         if (pres.zona)
         {
             Undo.RecordObject(pres.zona.transform, "Zona");
@@ -794,6 +823,21 @@ public static class LaberintoNuevoSetup
         Undo.RegisterCreatedObjectUndo(go, nombre);
         go.transform.SetParent(padre, false);
         return go.transform;
+    }
+
+    static Material MaterialCristalIndigo()
+    {
+        const string ruta = "Assets/Laberinto/Materiales/Lab_CristalIndigo.mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(ruta);
+        if (m) return m;
+        System.IO.Directory.CreateDirectory("Assets/Laberinto/Materiales");
+        m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Lab_CristalIndigo" };
+        m.SetColor("_BaseColor", new Color(0.25f, 0.08f, 0.6f));
+        m.SetFloat("_Smoothness", 0.9f);
+        m.SetColor("_EmissionColor", new Color(0.38f, 0.12f, 1f) * 3f);
+        m.EnableKeyword("_EMISSION");
+        AssetDatabase.CreateAsset(m, ruta);
+        return m;
     }
 
     static void Luz(Transform padre, string nombre, Vector3 pos, Color color, float rango, float intensidad)
