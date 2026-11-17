@@ -17,7 +17,7 @@ using UnityEngine;
 public static class PuzzleContrasenaSetup
 {
     const string Nombre = "Puzzle Contrasena";
-    const string Version = "_contrasena v2";
+    const string Version = "_contrasena v7";
     const string Carpeta = "Assets/Laberinto";
     // Pared de cada sala donde va el panel (las salas en el orden de "Luz Panel 1..4")
     static readonly Vector3[] Paredes = { Vector3.left, Vector3.forward, Vector3.right, Vector3.back };
@@ -141,6 +141,25 @@ public static class PuzzleContrasenaSetup
         }
         puzzle.digitosPista = pistas;
 
+        // Brillo (contorno que se ve a traves de las paredes) mientras el jugador esta en la sala del panel central
+        var glow = MaterialBrillo();
+        var brillos = new Highlightable[4];
+        for (int k = 0; k < 4; k++)
+        {
+            Transform panel = raiz.Find("Panel Pared " + (k + 1));
+            if (!panel || !glow) continue;
+            // Se tienen que dibujar aunque esten detras de paredes (el occlusion culling los ocultaria)
+            foreach (Renderer r in panel.GetComponentsInChildren<Renderer>(true)) r.allowOcclusionWhenDynamic = false;
+            var h = panel.gameObject.AddComponent<Highlightable>();
+            var so = new SerializedObject(h);
+            so.FindProperty("outlineMaterial").objectReferenceValue = glow;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            brillos[k] = h;
+        }
+        puzzle.brilloPaneles = brillos;
+        Transform zonaSala = lab.Find("Zona Segura (centro)");
+        if (zonaSala) puzzle.salaCentral = zonaSala.GetComponent<BoxCollider>();
+
         // ---------------------------------------------------------------- Panel central
         Transform zona = lab.Find("Zona Segura (centro)");
         Vector3 centro = new Vector3(zona.position.x, 0f, zona.position.z);
@@ -168,6 +187,7 @@ public static class PuzzleContrasenaSetup
         }
         botones.Add(Boton(frente, puzzle, BotonContrasena.Accion.Enviar, 0, new Vector3(0f, -0.4f, -0.07f), new Vector2(0.6f, 0.12f), oscuro, grieta, "Enviar codigo", 0f, fuente));
         puzzle.columnas = columnas;
+        puzzle.sonidoBoton = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/SFX/sonido de botones laberinto.mp3");
         puzzle.botones = botones.ToArray();
         puzzle.luzEstado = frente.Find("LED").GetComponent<Renderer>();
         var luzConsola = new GameObject("Luz consola");
@@ -198,7 +218,9 @@ public static class PuzzleContrasenaSetup
             Undo.DestroyObjectImmediate(viejo);
 
         foreach (Transform t in raiz.GetComponentsInChildren<Transform>(true))
-            if (!t.GetComponent<BotonContrasena>()) GameObjectUtility.SetStaticEditorFlags(t.gameObject, StaticEditorFlags.BatchingStatic);
+            // Los paneles con brillo no pueden ser estaticos: el contorno se agrega como material en el juego
+            if (!t.GetComponent<BotonContrasena>() && !t.GetComponentInParent<Highlightable>())
+                GameObjectUtility.SetStaticEditorFlags(t.gameObject, StaticEditorFlags.BatchingStatic);
 
         EditorUtility.SetDirty(puzzle);
         EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);
@@ -312,6 +334,27 @@ public static class PuzzleContrasenaSetup
     }
 
     // ------------------------------------------------------------------ Materiales
+
+    // Copia del contorno (GlowMaterial) para los paneles: se dibuja encima de la niebla (Overlay),
+    // mas grueso (los paneles quedan lejos y se ven chicos) y en indigo
+    static Material MaterialBrillo()
+    {
+        const string ruta = Carpeta + "/Materiales/Panel_Brillo.mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(ruta);
+        if (!m)
+        {
+            var original = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/GlowMaterial.mat");
+            if (!original) return null;
+            System.IO.Directory.CreateDirectory(Carpeta + "/Materiales");
+            m = new Material(original) { name = "Panel_Brillo" };
+            AssetDatabase.CreateAsset(m, ruta);
+        }
+        m.renderQueue = 4000;
+        if (m.HasProperty("_OutlineWidth")) m.SetFloat("_OutlineWidth", 7f);
+        if (m.HasProperty("_GlowColor")) m.SetColor("_GlowColor", new Color(0.55f, 0.25f, 1f, 1f) * 3f);
+        EditorUtility.SetDirty(m);
+        return m;
+    }
 
     static Material Mat(string nombre, Color c, float suave, float metal, Color emision)
     {

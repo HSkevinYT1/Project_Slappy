@@ -16,10 +16,17 @@ public class PuzzleContrasena : MonoBehaviour
     [Header("Paneles de pista (en orden: el 1 muestra el primer digito)")]
     public TextMeshPro[] digitosPista;
 
+    [Header("Brillo de los paneles de pista")]
+    [Tooltip("Mientras el jugador este en esta zona (la habitacion del panel central) los paneles de pista brillan")]
+    public BoxCollider salaCentral;
+    public Highlightable[] brilloPaneles;
+
     [Header("Panel central")]
     public TextMeshPro[] columnas;
     public Renderer luzEstado;
     public Transform[] botones;
+    [Tooltip("Sonido al pulsar cualquier boton (vacio = un clic generado)")]
+    public AudioClip sonidoBoton;
 
     [Header("Cinematica de la puerta")]
     public Transform puntoCamara;
@@ -64,6 +71,22 @@ public class PuzzleContrasena : MonoBehaviour
         correcto = Tono("CorrectoPanel", new[] { 523f, 659f, 784f, 1047f }, 0.13f, false);
     }
 
+    Transform jugador;
+
+    void Update()
+    {
+        if (salaCentral == null || brilloPaneles == null) return;
+        if (jugador == null)
+        {
+            PlayerMovement pm = FindFirstObjectByType<PlayerMovement>();
+            if (pm == null) return;
+            jugador = pm.transform;
+        }
+        bool dentro = !Resuelto && salaCentral.bounds.Contains(jugador.position);
+        foreach (Highlightable h in brilloPaneles)
+            if (h != null && h.IsHighlighted != dentro) h.SetHighlighted(dentro);
+    }
+
     // Llamado por los botones
     public void Subir(int col) { if (Puede(col)) { valores[col] = (valores[col] + 1) % 10; Clic(); } }
     public void Bajar(int col) { if (Puede(col)) { valores[col] = (valores[col] + 9) % 10; Clic(); } }
@@ -71,6 +94,7 @@ public class PuzzleContrasena : MonoBehaviour
     public void Enviar()
     {
         if (Resuelto || ocupado) return;
+        fuente.PlayOneShot(sonidoBoton != null ? sonidoBoton : clic, 0.9f);
         bool bien = true;
         for (int i = 0; i < valores.Length; i++) if (valores[i] != Codigo[i]) bien = false;
         if (bien) Resolver();
@@ -88,7 +112,7 @@ public class PuzzleContrasena : MonoBehaviour
     void Clic()
     {
         Mostrar();
-        fuente.PlayOneShot(clic, 0.8f);
+        fuente.PlayOneShot(sonidoBoton != null ? sonidoBoton : clic, 0.9f);
     }
 
     void Mostrar()

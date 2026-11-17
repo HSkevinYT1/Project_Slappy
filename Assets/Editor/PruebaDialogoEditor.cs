@@ -51,6 +51,22 @@ public static class PruebaDialogoEditor
     {
         double t = EditorApplication.timeSinceStartup - inicio;
         string carpeta = "Temp/Capturas";
+        // Modo "brillo": dentro y fuera de la sala del panel central
+        if (SessionState.GetString("PruebaDialogo.Asset", "") == "brillo")
+        {
+            var pm = Object.FindFirstObjectByType<PlayerMovement>();
+            var pz = Object.FindFirstObjectByType<PuzzleContrasena>();
+            void Log(string x) => File.AppendAllText(carpeta + "/brillo_estado.txt", x + System.Environment.NewLine);
+            void Poner(Vector3 p, float yaw) { var rb = pm.GetComponent<Rigidbody>(); p.y = 1f; rb.position = p; rb.rotation = Quaternion.Euler(0f, yaw, 0f); pm.transform.SetPositionAndRotation(p, Quaternion.Euler(0f, yaw, 0f)); rb.linearVelocity = Vector3.zero; }
+            int Brillan() { int n = 0; foreach (var h in pz.brilloPaneles) if (h && h.IsHighlighted) n++; return n; }
+            if (paso == 0 && t > 1.5) { paso++; var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Empezar(); File.WriteAllText(carpeta + "/brillo_estado.txt", ""); var pr = Object.FindFirstObjectByType<PresentacionEnemigo>(); if (pr) pr.enabled = false; var rj = Object.FindFirstObjectByType<RejasEntrada>(); if (rj) rj.enabled = false; }
+            else if (paso == 1 && t > 2.5) { paso++; Poner(pz.salaCentral.bounds.center + new Vector3(-3f, 0f, 3f), -40f); }
+            else if (paso == 2 && t > 3.5) { paso++; Log("dentro de la sala: brillan=" + Brillan()); ScreenCapture.CaptureScreenshot(carpeta + "/brillo_dentro.png"); }
+            else if (paso == 3 && t > 4.5) { paso++; Poner(pz.salaCentral.bounds.center + new Vector3(-14f, 0f, 0f), 0f); }
+            else if (paso == 4 && t > 5.5) { paso++; Log("fuera de la sala: brillan=" + Brillan()); EditorApplication.isPlaying = false; }
+            return;
+        }
+
         // Modo "puzzle": la reja cae, codigo erroneo, codigo correcto y cinematica de la puerta
         if (SessionState.GetString("PruebaDialogo.Asset", "") == "puzzle")
         {
@@ -62,7 +78,14 @@ public static class PruebaDialogoEditor
             if (paso == 0 && t > 1.5) { paso++; var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Empezar(); File.WriteAllText(carpeta + "/puzzle_estado.txt", ""); var pr = Object.FindFirstObjectByType<PresentacionEnemigo>(); if (pr) pr.enabled = false; }
             else if (paso == 1 && t > 2.5) { paso++; Poner(rj.zona.bounds.center); }
             else if (paso == 2 && t > 6.0) { paso++; Log("reja cayo=" + rj.Usada + " y=" + rj.reja.position.y.ToString("0.00") + " codigo=" + string.Join("", pz.Codigo)); Poner(pz.transform.parent.Find("Panel Central").position + Vector3.left * 1.2f); }
-            else if (paso == 3 && t > 7.0) { paso++; pz.Enviar(); Log("enviado codigo erroneo; resuelto=" + pz.Resuelto); }
+            else if (paso == 3 && t > 7.0)
+            {
+                paso++; pz.Enviar(); Log("enviado codigo erroneo; resuelto=" + pz.Resuelto + " sonidoBoton=" + (pz.sonidoBoton ? pz.sonidoBoton.name : "ninguno"));
+                var lab = GameObject.Find("Laberinto/casilleros");
+                int con = 0, total = 0;
+                foreach (var e in lab.GetComponentsInChildren<Escondite>(true)) { total++; if (e.sonidoAbrir && e.sonidoCerrar) con++; }
+                Log("armarios del laberinto con sonido: " + con + "/" + total);
+            }
             else if (paso == 4 && t > 9.0)
             {
                 paso++;
