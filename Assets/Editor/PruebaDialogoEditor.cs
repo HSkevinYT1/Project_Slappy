@@ -46,6 +46,7 @@ public static class PruebaDialogoEditor
 
     static double ultimoLog;
     static bool capturada;
+    static bool sonidoVisto;
 
     static void Tick()
     {
@@ -104,12 +105,36 @@ public static class PruebaDialogoEditor
             var pr = Object.FindFirstObjectByType<PresentacionEnemigo>();
             void Log(string x) => File.AppendAllText(carpeta + "/reloj_estado.txt", x + System.Environment.NewLine);
             bool Visible() { foreach (var r in pr.enemigo.GetComponentsInChildren<Renderer>()) if (r.enabled) return true; return false; }
-            if (paso == 0 && t > 1.5) { paso++; var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Empezar(); File.WriteAllText(carpeta + "/reloj_estado.txt", ""); }
+            if (paso >= 4 && paso < 7 && !sonidoVisto && GameObject.Find("Sonido Presentacion") != null)
+            {
+                sonidoVisto = true;
+                Log("SONIDO a t=" + t.ToString("0.00") + " (reloj a t=8.0), fede en " + pr.enemigo.transform.position);
+                ScreenCapture.CaptureScreenshot(carpeta + "/reloj_sonido.png");
+            }
+            if (paso == 0 && t > 1.5) { paso++; sonidoVisto = false; var menu = Object.FindFirstObjectByType<MenuPrincipal>(); if (menu) menu.Empezar(); File.WriteAllText(carpeta + "/reloj_estado.txt", ""); }
             else if (paso == 1 && t > 2.5) { paso++; var rj = Object.FindFirstObjectByType<RejasEntrada>(); Vector3 p = pr.zona.bounds.center; p.y = pm.transform.position.y > 2f ? 1f : pm.transform.position.y; var rb = pm.GetComponent<Rigidbody>(); rb.position = p; pm.transform.position = p; Log("en la zona; espera max=" + pr.esperaMaximaReloj); }
-            else if (paso == 2 && t > 6.0) { paso++; Log("3.5 s sin tecla: fede visible=" + Visible() + " en " + pr.enemigo.transform.position); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_antes.png"); }
+            else if (paso == 2 && t > 6.0) { paso++; Log("3.5 s sin tecla: fede visible=" + Visible() + " sonando=" + (GameObject.Find("Sonido Presentacion") != null) + " clip=" + (pr.sonido ? pr.sonido.name : "-")); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_antes.png"); }
             else if (paso == 3 && t > 8.0) { paso++; RelojJugador.Instance.Mostrar(true); Log("se mira el reloj (como si pulsara C)"); }
-            else if (paso == 4 && t > 9.0) { paso++; Log("1 s despues: fede visible=" + Visible() + " en " + pr.enemigo.transform.position); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_despues.png"); }
-            else if (paso == 5 && t > 11.0) { paso++; Log("3 s despues: fede en " + pr.enemigo.transform.position); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_cruce.png"); }
+            else if (paso == 4 && t > 9.0) { paso++; Log("1 s despues: fede visible=" + Visible() + " sonando=" + (GameObject.Find("Sonido Presentacion") != null)); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_despues.png"); }
+            else if (paso == 5 && t > 11.0)
+            {
+                paso++; Log("3 s despues: fede en " + pr.enemigo.transform.position);
+                var cg = GameObject.Find("Camara Presentacion");
+                if (cg)
+                {
+                    var c = cg.GetComponent<Camera>();
+                    foreach (float alto in new[] { 0.3f, 0.9f })
+                    {
+                        Vector3 pp = pr.enemigo.transform.position + Vector3.up * alto;
+                        Vector3 vv = c.WorldToViewportPoint(pp);
+                        string hits = "";
+                        Vector3 o = cg.transform.position, dd = pp - o;
+                        foreach (RaycastHit h in Physics.RaycastAll(o, dd.normalized, dd.magnitude - 0.3f, ~0, QueryTriggerInteraction.Ignore))
+                            hits += h.collider.name + "(" + h.distance.ToString("0.0") + ") ";
+                        Log("  alto " + alto + ": viewport=" + vv + " golpes=" + hits);
+                    }
+                }
+                else Log("  no hay Camara Presentacion"); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_cruce.png"); }
             else if (paso == 6 && t > 17.0) { paso++; Log("fin: cinematica terminada, movimiento=" + pm.enabled); EditorApplication.isPlaying = false; }
             return;
         }

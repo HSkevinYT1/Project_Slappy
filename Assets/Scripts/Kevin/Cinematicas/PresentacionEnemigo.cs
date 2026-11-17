@@ -153,7 +153,7 @@ public class PresentacionEnemigo : MonoBehaviour
         }
         if (!esperarReloj) Arrancar();
         if (luzEnemigo != null) luzEnemigo.enabled = true;
-        if (sonido != null) AudioSource.PlayClipAtPoint(sonido, camJugador.transform.position);
+        // (el sonido suena cuando el enemigo aparece en pantalla, ver Arrancar)
 
         // Camara de la cinematica (copia de la del jugador)
         var camGo = new GameObject("Camara Presentacion");
@@ -188,9 +188,12 @@ public class PresentacionEnemigo : MonoBehaviour
         // Mirarlo mientras camina (la camara lo sigue con suavidad). Mientras, el tutorial del reloj.
         RelojJugador reloj = RelojJugador.Instance;
         bool tutorialHecho = !tutorialReloj || reloj == null;
+        bool sonoPresentacion = false;
         float vistoDesde = -1f, arrancoEn = esperarReloj ? -1f : 0f;
         for (float t = 0f; t < duracionMirar || !tutorialHecho || arrancoEn < 0f || t < arrancoEn + duracionCruce; t += Time.deltaTime)
         {
+            // Sonido de presentacion: cuando el enemigo entra a la vista (dentro de la pantalla y sin pared delante)
+            if (!sonoPresentacion && enemigoEnMarcha && EnVista(cam)) { sonoPresentacion = true; SonarPresentacion(); }
             Quaternion mirar = Quaternion.LookRotation(Objetivo() - cam.transform.position);
             cam.transform.rotation = Quaternion.Slerp(cam.transform.rotation, mirar, 1f - Mathf.Exp(-3f * Time.deltaTime));
             if (luzEnemigo != null) luzEnemigo.transform.position = enemigo.transform.position + Vector3.up * 2.2f;
@@ -241,6 +244,35 @@ public class PresentacionEnemigo : MonoBehaviour
         if (mandarLejos && jugador != null) enemigo.MandarLejos(jugador.position);
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         alTerminar?.Invoke();
+    }
+
+    // El enemigo se ve desde la camara: dentro de la pantalla y sin nada en medio (pecho o cabeza)
+    bool EnVista(Camera cam)
+    {
+        foreach (float alto in new[] { 0.3f, 0.9f })
+        {
+            Vector3 p = enemigo.transform.position + Vector3.up * alto;
+            Vector3 v = cam.WorldToViewportPoint(p);
+            if (v.z <= 0f || v.x < 0.02f || v.x > 0.98f || v.y < 0.02f || v.y > 0.98f) continue;
+            Vector3 o = cam.transform.position, d = p - o;
+            bool tapado = false;
+            foreach (RaycastHit h in Physics.RaycastAll(o, d.normalized, d.magnitude - 0.3f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (h.collider.transform.IsChildOf(enemigo.transform)) continue;
+                if (jugador != null && h.collider.transform.IsChildOf(jugador.root)) continue; // el propio jugador
+                tapado = true; break;
+            }
+            if (!tapado) return true;
+        }
+        return false;
+    }
+
+    void SonarPresentacion()
+    {
+        if (sonido == null) return;
+        var a = new GameObject("Sonido Presentacion").AddComponent<AudioSource>();
+        a.clip = sonido; a.spatialBlend = 0f; a.priority = 0; a.volume = 1f; a.Play();
+        Destroy(a.gameObject, sonido.length + 0.2f);
     }
 
     GameObject CrearFranjas(out RectTransform arriba, out RectTransform abajo)

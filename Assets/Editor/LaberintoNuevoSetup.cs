@@ -20,7 +20,7 @@ using UnityEngine.AI;
 [InitializeOnLoad]
 public static partial class LaberintoNuevoSetup
 {
-    const string Version = "_laberinto v14";
+    const string Version = "_laberinto v15";
     const int N = 21;              // celdas por lado
     const float Celda = 4f;        // metros por celda
     const float Alto = 4.25f;      // alto de las paredes (igual que antes)
@@ -409,7 +409,7 @@ public static partial class LaberintoNuevoSetup
         TexturaTecho(techo);
         Props(lab, x0, z0, atajos);
         Dependientes(lab, W(N * 0.5f, N * 0.5f));
-        ConfigurarPresentacion(W(4f, 11f), W(5f, 12f), W(1.5f, 13.5f), W(6.8f, 13.5f), W(4.5f, 11.4f, 1.6f), W(4.5f, 13.5f, 1.3f));
+        ConfigurarPresentacion(W(4f, 11f), W(5f, 12f), W(2.6f, 13.5f), W(6.8f, 13.5f), W(4.5f, 11.4f, 1.6f), W(4.5f, 13.5f, 1.3f));
         if (lianas) lianas.RegenerarVistaPrevia();
 
         EditorSceneManager.MarkSceneDirty(labGo.scene);
@@ -604,7 +604,10 @@ public static partial class LaberintoNuevoSetup
         pres.velocidadEnemigo = 2.4f;
         pres.duracionIr = 1.1f;
         pres.duracionMirar = 7.5f;
-        pres.esperaMaximaReloj = 0f;   // Fede solo aparece cuando el jugador mira el reloj (C)
+        pres.esperaMaximaReloj = 0f;
+        pres.duracionCruce = 5.5f;   // le da tiempo a cruzar todo el hueco visible
+        var sonidoFede = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/SFX/sonido presentacion de fede.mp3");
+        if (sonidoFede) pres.sonido = sonidoFede;   // Fede solo aparece cuando el jugador mira el reloj (C)
         pres.enemigoTrasReloj = true;
         if (pres.zona)
         {
