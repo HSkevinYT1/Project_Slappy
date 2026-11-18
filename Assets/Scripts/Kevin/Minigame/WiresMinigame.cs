@@ -29,6 +29,8 @@ public class WiresMinigame : MonoBehaviour
 
     [Header("Sonidos")]
     [SerializeField] private AudioClip connectClip;
+    [Tooltip("Si hay, al conectar suena uno de estos al azar (en lugar de Connect Clip)")]
+    [SerializeField] private AudioClip[] connectClips;
 
     // Caja que envuelve todos los trozos: la camara la usa para encuadrar el minijuego
     public Bounds StubsBounds { get; private set; }
@@ -276,7 +278,8 @@ public class WiresMinigame : MonoBehaviour
         dragFrom = null;
         SetHighlighted(null);
 
-        if (connectClip != null) AudioSource.PlayClipAtPoint(connectClip, target.tip);
+        AudioClip clipCable = connectClips != null && connectClips.Length > 0 ? connectClips[UnityEngine.Random.Range(0, connectClips.Length)] : connectClip;
+        if (clipCable != null) AudioSource.PlayClipAtPoint(clipCable, target.tip);
 
         connectedPairs++;
         if (connectedPairs < left.Count) return;

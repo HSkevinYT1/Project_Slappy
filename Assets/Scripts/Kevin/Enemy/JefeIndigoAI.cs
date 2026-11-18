@@ -38,6 +38,31 @@ public class JefeIndigoAI : MonoBehaviour
     public float loseSightGrace = 1.5f;
     public float catchDistance = 1.2f;
 
+    [Header("Mas rapido cuanto mas lejos esta el jugador")]
+    [Tooltip("Si el jugador esta lejos, el enemigo se mueve mas rapido (patrulla, busqueda y persecucion) para que no se haga aburrido")]
+    public bool acelerarConDistancia = false;
+    [Tooltip("A esta distancia (m) o menos se mueve a su velocidad normal")]
+    public float distanciaNormal = 8f;
+    [Tooltip("A esta distancia (m) o mas usa el multiplicador maximo")]
+    public float distanciaRapida = 40f;
+    [Tooltip("Cuanto mas rapido va con el jugador lejos (2 = el doble)")]
+    public float multiplicadorMaximo = 2.2f;
+
+    [Header("Sonidos")]
+    [Tooltip("Grito que suelta de vez en cuando mientras patrulla o busca (3D, desde el enemigo)")]
+    public AudioClip sonidoAmbiente;
+    [Tooltip("Segundos entre gritos de ambiente (al azar entre x e y)")]
+    public Vector2 intervaloAmbiente = new Vector2(18f, 40f);
+    [Tooltip("Grito cuando ve (o escucha) al jugador y empieza a perseguirlo")]
+    public AudioClip sonidoAlVer;
+    [Tooltip("Segundos minimos entre dos gritos de 'te vi'")]
+    public float esperaAlVer = 8f;
+    [Tooltip("Screamer al atrapar al jugador (lo reproduce la pantalla de muerte)")]
+    public AudioClip sonidoScreamer;
+    [Range(0f, 1f)] public float volumenSonidos = 1f;
+    [Tooltip("Hasta donde se oyen sus gritos (m)")]
+    public float distanciaSonido = 35f;
+
     public UnityEvent onPlayerSpotted;
     public UnityEvent onPlayerCaught;
 
@@ -60,6 +85,11 @@ public class JefeIndigoAI : MonoBehaviour
     private float lastSeenTime;
     private Vector3 lastKnownPosition;
     private Vector3 inicio;
+    // Velocidad del estado actual, antes del multiplicador por distancia
+    private float velocidadBase;
+    private AudioSource voz;
+    private float proximoAmbiente;
+    private float ultimoAlVer = -999f;
 
     void Start()
     {
@@ -95,6 +125,40 @@ public class JefeIndigoAI : MonoBehaviour
         EnterState(State.Patrol);
     }
 
+    AudioSource Voz()
+    {
+        if (voz != null) return voz;
+        voz = gameObject.AddComponent<AudioSource>();
+        voz.playOnAwake = false;
+        voz.spatialBlend = 1f;
+        voz.rolloffMode = AudioRolloffMode.Linear;
+        voz.minDistance = 3f;
+        voz.maxDistance = distanciaSonido;
+        voz.dopplerLevel = 0f;
+        return voz;
+    }
+
+    void Gritar(AudioClip clip)
+    {
+        if (clip == null) return;
+        AudioSource v = Voz();
+        v.maxDistance = distanciaSonido;
+        v.Stop();
+        v.clip = clip;
+        v.volume = volumenSonidos;
+        v.Play();
+    }
+
+    void SonidoAmbiente()
+    {
+        if (sonidoAmbiente == null) return;
+        if (proximoAmbiente <= 0f) { proximoAmbiente = Time.time + Random.Range(intervaloAmbiente.x, intervaloAmbiente.y) * 0.5f; return; }
+        if (Time.time < proximoAmbiente) return;
+        proximoAmbiente = Time.time + Random.Range(intervaloAmbiente.x, intervaloAmbiente.y);
+        if (CurrentState == State.Chase || (voz != null && voz.isPlaying)) return;
+        Gritar(sonidoAmbiente);
+    }
+
     void Update()
     {
         if (player == null || CurrentState == State.Caught || !agent.isOnNavMesh) return;
@@ -114,6 +178,18 @@ public class JefeIndigoAI : MonoBehaviour
             case State.Chase: UpdateChase(sees || hears); break;
             case State.Search: UpdateSearch(); break;
         }
+
+        if (CurrentState != State.Caught) agent.speed = velocidadBase * MultiplicadorDistancia();
+        SonidoAmbiente();
+    }
+
+    // 1 con el jugador cerca; sube hasta multiplicadorMaximo cuanto mas lejos esta
+    public float MultiplicadorDistancia()
+    {
+        if (!acelerarConDistancia || target == null) return 1f;
+        float d = Vector3.Distance(transform.position, target.position);
+        float k = Mathf.InverseLerp(distanciaNormal, Mathf.Max(distanciaNormal + 0.1f, distanciaRapida), d);
+        return Mathf.Lerp(1f, Mathf.Max(1f, multiplicadorMaximo), k);
     }
 
 
@@ -127,19 +203,24 @@ public class JefeIndigoAI : MonoBehaviour
         switch (next)
         {
             case State.Patrol:
-                agent.speed = patrolSpeed;
+                velocidadBase = patrolSpeed;
+                agent.speed = velocidadBase * MultiplicadorDistancia();
                 GoToNextPatrolPoint();
                 break;
             case State.Chase:
-                agent.speed = chaseSpeed;
+                velocidadBase = chaseSpeed;
+                agent.speed = velocidadBase * MultiplicadorDistancia();
+                if (Time.time - ultimoAlVer >= esperaAlVer) { ultimoAlVer = Time.time; Gritar(sonidoAlVer); }
                 onPlayerSpotted?.Invoke();
                 break;
             case State.Search:
-                agent.speed = searchSpeed;
+                velocidadBase = searchSpeed;
+                agent.speed = velocidadBase * MultiplicadorDistancia();
                 agent.SetDestination(lastKnownPosition);
                 break;
             case State.Caught:
                 agent.isStopped = true;
+                if (voz != null) voz.Stop();
                 onPlayerCaught?.Invoke();
                 Debug.Log(name + " atrapo al jugador");
                 break;

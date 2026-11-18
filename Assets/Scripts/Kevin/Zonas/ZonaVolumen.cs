@@ -17,6 +17,18 @@ public class ZonaVolumen : MonoBehaviour
     // Colliders del jugador que estan dentro (el jugador puede tener varios)
     private readonly HashSet<Collider> dentro = new HashSet<Collider>();
 
+    // El jugador esta dentro de esta area
+    public bool JugadorDentro => dentro.Count > 0;
+
+    // Un punto esta dentro de la caja de esta area
+    public bool Contiene(Vector3 punto)
+    {
+        BoxCollider box = GetComponent<BoxCollider>();
+        Vector3 local = transform.InverseTransformPoint(punto) - box.center;
+        Vector3 medio = box.size * 0.5f;
+        return Mathf.Abs(local.x) <= medio.x && Mathf.Abs(local.y) <= medio.y && Mathf.Abs(local.z) <= medio.z;
+    }
+
     void Awake()
     {
         GetComponent<BoxCollider>().isTrigger = true;

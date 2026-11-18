@@ -296,7 +296,9 @@ public class PantallaMuerte : MonoBehaviour
 
     void Golpe()
     {
-        AudioClip clip = sonidoMuerte;
+        // Si el enemigo que atrapo tiene su propio screamer, suena ese
+        JefeIndigoAI jefe = asesino != null ? asesino.GetComponentInParent<JefeIndigoAI>() : null;
+        AudioClip clip = jefe != null && jefe.sonidoScreamer != null ? jefe.sonidoScreamer : sonidoMuerte;
         if (clip == null)
         {
             // Golpe grave con ruido y un pitido agudo que se apaga

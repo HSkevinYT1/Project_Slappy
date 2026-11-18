@@ -1,16 +1,27 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.Rendering.Universal;
 
-// Reloj de pulsera del jugador. Con la tecla del reloj (C) se levanta la muneca y se ve en pantalla.
-// - Normal: marca la hora del juego.
-// - Con una entidad cerca (JefeIndigoAI o EstatuaAI) se vuelve loco: las agujas giran cada vez mas rapido,
-//   la esfera tiembla, el cristal se pone rojo y suena un tic-tac acelerado. Cuanto mas cerca, peor.
+// Reloj de pulsera del jugador: el modelo 3D "reloj de pulsera" (Assets/Models/Player/reloj) va en la muneca
+// izquierda de los brazos (objeto "Reloj 3D" bajo el hueso Forearm.L, lo coloca Tools > Jugador > Reloj 3D en la muneca).
+// Con la tecla del reloj (C) se levanta el brazo izquierdo y se mira el reloj.
+// - Normal: las agujas marcan la hora del juego.
+// - Con una entidad cerca (JefeIndigoAI o EstatuaAI) DE LA MISMA AREA (ZonaVolumen) que el jugador se vuelve loco
+//   (las de otras zonas no cuentan aunque esten cerca a traves de una pared): las agujas giran cada vez mas rapido,
+//   el brazo tiembla, la esfera se pone roja y brilla, y suena un tic-tac acelerado. Cuanto mas cerca, peor.
 // Se desbloquea en el tutorial de la presentacion del primer enemigo (o con "Desbloqueado al inicio").
 public class RelojJugador : MonoBehaviour
 {
     public static RelojJugador Instance { get; private set; }
+
+    // Nombres dentro del modelo (los pone el setup del editor)
+    public const string NombreReloj = "Reloj 3D";
+    public const string NombreAgujaHora = "Aguja Hora";
+    public const string NombreAgujaMinuto = "Aguja Minuto";
+    public const string NombreEsfera = "Esfera";
+    public const string NombreBrillo = "Brillo";
+    public const string HuesoBrazo = "LbowControl.L";
 
     public bool desbloqueadoAlInicio = false;
 
@@ -27,25 +38,50 @@ public class RelojJugador : MonoBehaviour
     public float giroMinimo = 40f;
     public float giroMaximo = 1400f;
     [Range(0f, 1f)] public float volumenTic = 0.6f;
+    [Tooltip("Tic-tac del reloj (en bucle mientras se mira). Vacio = tic-tac generado por codigo")]
+    public AudioClip sonidoManecillas;
+    [Tooltip("Cuanto se acelera el tic-tac con la entidad encima (2.5 = dos veces y media)")]
+    public float aceleracionManecillas = 2.5f;
+
+    [Header("Brazo al mirar el reloj")]
+    [Tooltip("Donde queda el reloj, en espacio de la camara (x derecha, y arriba, z adelante)")]
+    public Vector3 posicionMirar = new Vector3(-0.03f, -0.05f, 0.25f);
+    [Tooltip("Inclinacion del antebrazo (grados, positivo = la mano mas arriba)")]
+    public float inclinacionBrazo = 12f;
+    [Tooltip("Cuanto se inclina la esfera hacia arriba (grados)")]
+    public float inclinacionEsfera = 10f;
+    public float velocidadSubida = 3.2f;
 
     public bool Desbloqueado { get; private set; }
     public bool Visible { get; private set; }
     // 0 = ninguna entidad cerca, 1 = encima
     public float Cercania { get; private set; }
 
-    // Visual
+    // Modelo
+    Transform camara, brazo, reloj, aguHora, aguMinuto;
+    Camera camJugador, camConCapa;
+    int mascaraAntes;
+    Renderer esfera;
+    Light brillo;
+    Vector3 brazoPos;
+    Quaternion brazoRot;
+    MaterialPropertyBlock bloque;
+    Color esferaColor = new Color(0.9f, 0.86f, 0.74f);
+    float proximaBusquedaModelo;
+
+    // UI (solo textos)
     Canvas canvas;
-    RectTransform reloj, esfera, aguHora, aguMinuto;
-    Image brilloRojo, cristal;
-    TextMeshProUGUI digital, tutorialTexto, pista;
+    TextMeshProUGUI tutorialTexto, pista;
     CanvasGroup tutorialGrupo, pistaGrupo;
     float subida, hora, anguloHora, anguloMinuto, sentido = 1f, proximoCambio, proximoTic, tutorialAlfa, pistaTiempo;
-    AudioSource audioTic;
+    AudioSource audioTic, audioManecillas;
     AudioClip tic, tac;
     bool alterna;
     string tutorialMensaje;
 
     readonly List<Transform> entidades = new List<Transform>();
+    readonly List<ZonaVolumen> zonasJugador = new List<ZonaVolumen>();
+    ZonaVolumen[] zonas = new ZonaVolumen[0];
     float proximaBusqueda;
     Transform jugador;
 
@@ -61,12 +97,14 @@ public class RelojJugador : MonoBehaviour
         audioTic.ignoreListenerPause = false;
         tic = HUD.Clic("Tic", 3200f, 0.035f, 0.45f);
         tac = HUD.Clic("Tac", 2400f, 0.04f, 0.45f);
+        bloque = new MaterialPropertyBlock();
     }
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
         if (canvas != null) Destroy(canvas.gameObject);
+        if (brazo != null) { brazo.localPosition = brazoPos; brazo.localRotation = brazoRot; }
     }
 
     public void Desbloquear() => Desbloqueado = true;
@@ -80,7 +118,7 @@ public class RelojJugador : MonoBehaviour
     // Cartel de tutorial (abajo al centro). Vacio = se oculta
     public void Tutorial(string mensaje) => tutorialMensaje = mensaje;
 
-    // Texto corto debajo del reloj durante unos segundos
+    // Texto corto al lado del reloj durante unos segundos
     public void Pista(string mensaje, float segundos)
     {
         pista.text = mensaje;
@@ -97,12 +135,136 @@ public class RelojJugador : MonoBehaviour
         Cercania = CalcularCercania();
 
         float dt = Time.deltaTime;
-        subida = Mathf.MoveTowards(subida, Visible ? 1f : 0f, dt * 3.5f);
+        subida = Mathf.MoveTowards(subida, Visible ? 1f : 0f, dt * velocidadSubida);
         hora = (hora + dt * minutosPorSegundo / 60f) % 24f;
 
         Agujas(dt);
-        Animar(dt);
+        Textos(dt);
         Sonido();
+    }
+
+    // Despues de que la camara se movio (MouseLook, HeadBob, cinematicas): el brazo sube con la vista
+    void LateUpdate()
+    {
+        BuscarModelo();
+        if (brazo == null) return;
+        brazo.localPosition = brazoPos;
+        brazo.localRotation = brazoRot;
+        if (subida <= 0.0001f || !brazo.gameObject.activeInHierarchy) { QuitarCapa(); return; }
+
+        // Si una cinematica dibuja con otra camara (p. ej. la presentacion del enemigo), el reloj se pone
+        // delante de esa camara y esa camara dibuja tambien la capa de los brazos
+        Camera vista = CamaraVista();
+        float zoom = 1f;
+        if (vista != camJugador)
+        {
+            PonerCapa(vista);
+            zoom = Mathf.Tan(camJugador.fieldOfView * 0.5f * Mathf.Deg2Rad) / Mathf.Tan(vista.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        }
+        else QuitarCapa();
+
+        float e = subida * subida * (3f - 2f * subida);
+        float k = Cercania;
+        Vector3 temblor = k > 0.01f && Visible
+            ? new Vector3(Mathf.PerlinNoise(Time.time * 30f, 0f) - 0.5f, Mathf.PerlinNoise(0f, Time.time * 33f) - 0.5f, 0f) * (0.02f * k * k)
+            : Vector3.zero;
+        PoseMirar(brazo, reloj, vista.transform, (posicionMirar + temblor) * zoom, inclinacionBrazo + temblor.x * 300f, inclinacionEsfera, e);
+    }
+
+    // La camara que esta dibujando: la del jugador o, si esta apagada, la de la cinematica (la de mayor profundidad)
+    Camera CamaraVista()
+    {
+        if (camJugador.isActiveAndEnabled) return camJugador;
+        Camera mejor = null;
+        foreach (Camera c in Camera.allCameras)
+        {
+            if (c == camJugador || c.targetTexture != null) continue;
+            var d = c.GetUniversalAdditionalCameraData();
+            if (d != null && d.renderType == CameraRenderType.Overlay) continue;
+            if (mejor == null || c.depth > mejor.depth) mejor = c;
+        }
+        return mejor != null ? mejor : camJugador;
+    }
+
+    void PonerCapa(Camera c)
+    {
+        if (camConCapa == c) return;
+        QuitarCapa();
+        int capa = esfera != null ? esfera.gameObject.layer : reloj.gameObject.layer;
+        mascaraAntes = c.cullingMask;
+        c.cullingMask |= 1 << capa;
+        camConCapa = c;
+    }
+
+    void QuitarCapa()
+    {
+        if (camConCapa != null) camConCapa.cullingMask = mascaraAntes;
+        camConCapa = null;
+    }
+
+    // Lleva el brazo (rigido, desde su pose actual) a la pose de mirar el reloj, mezclado por e (0..1).
+    // Publico y estatico para poder previsualizarlo desde el editor.
+    public static void PoseMirar(Transform brazo, Transform reloj, Transform camara, Vector3 posicion, float inclinacionBrazo, float inclinacionEsfera, float e)
+    {
+        // Pose actual (reposo) del reloj
+        Vector3 pReloj = reloj.position;
+        Quaternion qReloj = reloj.rotation;
+        // Pose objetivo: el reloj delante de la camara, la esfera (+Y del modelo) mirando a los ojos y
+        // el antebrazo (+X del modelo, del codo a la mano) cruzando hacia la derecha
+        Vector3 objetivo = camara.TransformPoint(posicion);
+        Vector3 normal = Quaternion.AngleAxis(-inclinacionEsfera, camara.right) * (camara.position - objetivo).normalized;
+        Vector3 antebrazo = Quaternion.AngleAxis(-inclinacionBrazo, camara.forward) * camara.right;
+        antebrazo = (antebrazo - normal * Vector3.Dot(antebrazo, normal)).normalized;
+        Quaternion qObjetivo = Quaternion.LookRotation(Vector3.Cross(antebrazo, normal), normal);
+
+        Quaternion delta = qObjetivo * Quaternion.Inverse(qReloj);
+        Vector3 posFinal = objetivo + delta * (brazo.position - pReloj);
+        Quaternion rotFinal = delta * brazo.rotation;
+
+        // Sube desde abajo con un pequeno arco
+        Vector3 arco = -camara.up * (Mathf.Sin(e * Mathf.PI) * 0.03f);
+        brazo.SetPositionAndRotation(Vector3.Lerp(brazo.position, posFinal, e) + arco, Quaternion.Slerp(brazo.rotation, rotFinal, e));
+    }
+
+    // ------------------------------------------------------------------ Modelo
+
+    void BuscarModelo()
+    {
+        if (reloj != null || Time.unscaledTime < proximaBusquedaModelo) return;
+        proximaBusquedaModelo = Time.unscaledTime + 1f;
+        Transform j = jugador != null ? jugador : HUD.Jugador();
+        if (j == null) return;
+        foreach (Transform t in j.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name != NombreReloj) continue;
+            reloj = t;
+            break;
+        }
+        if (reloj == null) return;
+        for (Transform p = reloj.parent; p != null; p = p.parent)
+        {
+            if (p.name == HuesoBrazo) brazo = p;
+            Camera c = p.GetComponent<Camera>();
+            if (c != null) { camara = p; camJugador = c; break; }
+        }
+        if (brazo == null || camara == null) { reloj = null; brazo = null; return; }
+        brazoPos = brazo.localPosition;
+        brazoRot = brazo.localRotation;
+        aguHora = BuscarHijo(reloj, NombreAgujaHora);
+        aguMinuto = BuscarHijo(reloj, NombreAgujaMinuto);
+        Transform es = BuscarHijo(reloj, NombreEsfera);
+        esfera = es != null ? es.GetComponent<Renderer>() : null;
+        if (esfera != null && esfera.sharedMaterial != null && esfera.sharedMaterial.HasProperty("_BaseColor"))
+            esferaColor = esfera.sharedMaterial.GetColor("_BaseColor");
+        Transform b = BuscarHijo(reloj, NombreBrillo);
+        brillo = b != null ? b.GetComponent<Light>() : null;
+    }
+
+    static Transform BuscarHijo(Transform raiz, string nombre)
+    {
+        foreach (Transform t in raiz.GetComponentsInChildren<Transform>(true))
+            if (t.name == nombre) return t;
+        return null;
     }
 
     // ------------------------------------------------------------------ Entidades
@@ -114,16 +276,24 @@ public class RelojJugador : MonoBehaviour
         entidades.Clear();
         foreach (JefeIndigoAI e in FindObjectsByType<JefeIndigoAI>(FindObjectsSortMode.None)) entidades.Add(e.transform);
         foreach (EstatuaAI e in FindObjectsByType<EstatuaAI>(FindObjectsSortMode.None)) entidades.Add(e.transform);
+        zonas = FindObjectsByType<ZonaVolumen>(FindObjectsSortMode.None);
         if (jugador == null) jugador = HUD.Jugador();
     }
 
     float CalcularCercania()
     {
         if (jugador == null) return 0f;
+        // Solo cuentan las entidades del area (ZonaVolumen) en la que esta el jugador
+        zonasJugador.Clear();
+        foreach (ZonaVolumen z in zonas) if (z != null && z.isActiveAndEnabled && z.JugadorDentro) zonasJugador.Add(z);
+        if (zonasJugador.Count == 0) return 0f;
         float menor = float.MaxValue;
         foreach (Transform e in entidades)
         {
             if (e == null || !e.gameObject.activeInHierarchy) continue;
+            bool mismaZona = false;
+            foreach (ZonaVolumen z in zonasJugador) if (z.Contiene(e.position)) { mismaZona = true; break; }
+            if (!mismaZona) continue;
             float d = Vector3.Distance(jugador.position, e.position);
             if (d < menor) menor = d;
         }
@@ -131,14 +301,15 @@ public class RelojJugador : MonoBehaviour
         return Mathf.Clamp01(Mathf.InverseLerp(distanciaMaxima, distanciaMinima, menor));
     }
 
-    // ------------------------------------------------------------------ Agujas y animacion
+    // ------------------------------------------------------------------ Agujas y esfera
 
     void Agujas(float dt)
     {
         float k = Cercania;
         float minutos = hora * 60f;
-        float normalMin = -(minutos % 60f) * 6f;
-        float normalHora = -((hora % 12f) * 30f);
+        // Angulo en sentido horario desde las 12
+        float normalMin = (minutos % 60f) * 6f;
+        float normalHora = (hora % 12f) * 30f;
 
         if (k <= 0.001f)
         {
@@ -156,44 +327,33 @@ public class RelojJugador : MonoBehaviour
                 if (k > 0.45f && Random.value < 0.5f) sentido = -sentido;
             }
             float tiron = k > 0.6f ? (Mathf.PerlinNoise(Time.time * 9f, 1.3f) - 0.5f) * 120f * k : 0f;
-            anguloMinuto += (-velocidad * sentido) * dt + tiron * dt * 10f;
-            anguloHora += (velocidad * 0.37f * sentido) * dt;
+            anguloMinuto += (velocidad * sentido) * dt + tiron * dt * 10f;
+            anguloHora -= (velocidad * 0.37f * sentido) * dt;
         }
-        aguMinuto.localRotation = Quaternion.Euler(0f, 0f, anguloMinuto);
-        aguHora.localRotation = Quaternion.Euler(0f, 0f, anguloHora);
 
-        if (k > 0.05f)
+        // En el modelo las agujas apuntan a las 6 (-Z); giran sobre el eje de la esfera (+Y), horario visto de frente
+        if (aguMinuto != null) aguMinuto.localRotation = Quaternion.Euler(0f, 180f + anguloMinuto, 0f);
+        if (aguHora != null) aguHora.localRotation = Quaternion.Euler(0f, 180f + anguloHora, 0f);
+
+        // La esfera se pone roja y brilla, con pulso
+        float pulso = k * (0.6f + 0.4f * Mathf.Sin(Time.time * Mathf.Lerp(4f, 22f, k)));
+        if (esfera != null)
         {
-            // La pantallita digital tambien falla
-            string basura = "0123456789:-#?";
-            char[] c = new char[5];
-            for (int i = 0; i < 5; i++) c[i] = Random.value < k ? basura[Random.Range(0, basura.Length)] : (i == 2 ? ':' : '-');
-            digital.text = new string(c);
-            digital.color = Color.Lerp(new Color(0.55f, 1f, 0.6f), new Color(1f, 0.25f, 0.2f), k);
+            if (bloque == null) bloque = new MaterialPropertyBlock();
+            esfera.GetPropertyBlock(bloque);
+            bloque.SetColor("_BaseColor", Color.Lerp(esferaColor, new Color(1f, 0.25f, 0.18f), k));
+            bloque.SetColor("_EmissionColor", new Color(1f, 0.08f, 0.03f) * (2.5f * pulso));
+            esfera.SetPropertyBlock(bloque);
         }
-        else
+        if (brillo != null)
         {
-            int h = Mathf.FloorToInt(hora), m = Mathf.FloorToInt(minutos % 60f);
-            digital.text = h.ToString("00") + (Mathf.FloorToInt(Time.time * 2f) % 2 == 0 ? ":" : " ") + m.ToString("00");
-            digital.color = new Color(0.55f, 1f, 0.6f);
+            brillo.enabled = pulso > 0.01f && subida > 0.01f;
+            brillo.intensity = pulso * 0.6f;
         }
     }
 
-    void Animar(float dt)
+    void Textos(float dt)
     {
-        float e = subida * subida * (3f - 2f * subida);
-        float k = Cercania;
-        // Sube desde abajo a la izquierda, con un pequeno giro como si se levantara la muneca
-        Vector2 temblor = k > 0.01f && Visible
-            ? new Vector2(Mathf.PerlinNoise(Time.time * 30f, 0f) - 0.5f, Mathf.PerlinNoise(0f, Time.time * 33f) - 0.5f) * (22f * k * k)
-            : Vector2.zero;
-        reloj.anchoredPosition = new Vector2(Mathf.Lerp(120f, 300f, e), Mathf.Lerp(-420f, 250f, e)) + temblor;
-        reloj.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(35f, 8f, e) + temblor.x * 0.4f);
-        reloj.gameObject.SetActive(subida > 0.001f);
-
-        brilloRojo.color = new Color(1f, 0.1f, 0.05f, 0.55f * k * (0.6f + 0.4f * Mathf.Sin(Time.time * Mathf.Lerp(4f, 22f, k))));
-        cristal.color = Color.Lerp(new Color(0.8f, 0.9f, 1f, 0.08f), new Color(1f, 0.2f, 0.1f, 0.22f), k);
-
         // Tutorial
         bool hayTutorial = !string.IsNullOrEmpty(tutorialMensaje);
         if (hayTutorial) tutorialTexto.text = tutorialMensaje;
@@ -201,11 +361,12 @@ public class RelojJugador : MonoBehaviour
         tutorialGrupo.alpha = tutorialAlfa * (0.75f + 0.25f * Mathf.Sin(Time.time * 4f));
 
         pistaTiempo -= dt;
-        pistaGrupo.alpha = Mathf.MoveTowards(pistaGrupo.alpha, pistaTiempo > 0f ? 1f : 0f, dt * 3f);
+        pistaGrupo.alpha = Mathf.MoveTowards(pistaGrupo.alpha, pistaTiempo > 0f && subida > 0.6f ? 1f : 0f, dt * 3f);
     }
 
     void Sonido()
     {
+        if (sonidoManecillas != null) { SonidoManecillas(); return; }
         if (!Visible || subida < 0.5f || Time.timeScale == 0f) return;
         float k = Cercania;
         float intervalo = k > 0.01f ? Mathf.Lerp(0.35f, 0.045f, k) : 1f;
@@ -216,7 +377,36 @@ public class RelojJugador : MonoBehaviour
         audioTic.PlayOneShot(alterna ? tic : tac, volumenTic * (0.35f + 0.65f * Mathf.Max(0.3f, k)));
     }
 
-    // ------------------------------------------------------------------ UI
+    // "reloj manecillas" en bucle mientras el reloj esta levantado: con una entidad cerca se acelera y tiembla
+    void SonidoManecillas()
+    {
+        if (audioManecillas == null)
+        {
+            audioManecillas = gameObject.AddComponent<AudioSource>();
+            audioManecillas.playOnAwake = false;
+            audioManecillas.loop = true;
+            audioManecillas.spatialBlend = 0f;
+            audioManecillas.clip = sonidoManecillas;
+        }
+        bool sonar = subida > 0.05f && Time.timeScale > 0f;
+        if (!sonar)
+        {
+            if (audioManecillas.isPlaying) audioManecillas.Pause();
+            return;
+        }
+        if (!audioManecillas.isPlaying)
+        {
+            // Cada vez desde un punto distinto del audio, para que no suene siempre igual
+            if (audioManecillas.time <= 0f || Random.value < 0.5f) audioManecillas.time = Random.Range(0f, Mathf.Max(0f, sonidoManecillas.length - 5f));
+            audioManecillas.Play();
+        }
+        float k = Cercania;
+        float temblor = k > 0.5f ? (Mathf.PerlinNoise(Time.time * 6f, 4.2f) - 0.5f) * 0.6f * k : 0f;
+        audioManecillas.pitch = Mathf.Lerp(1f, Mathf.Max(1f, aceleracionManecillas), k * k) + temblor;
+        audioManecillas.volume = volumenTic * Mathf.Clamp01(subida * 1.5f) * (0.6f + 0.4f * k);
+    }
+
+    // ------------------------------------------------------------------ UI (solo textos; el reloj es el modelo 3D)
 
     void CrearUI()
     {
@@ -225,58 +415,8 @@ public class RelojJugador : MonoBehaviour
         g.interactable = false;
         g.blocksRaycasts = false;
 
-        reloj = HUD.Rect(canvas.transform, "Reloj", Vector2.zero, Vector2.zero, new Vector2(0.5f, 0.5f), new Vector2(300f, -420f), new Vector2(330f, 330f));
-
-        // Correa (arriba y abajo de la caja)
-        Color cuero = new Color(0.16f, 0.11f, 0.08f, 1f);
-        HUD.Imagen(HUD.Rect(reloj, "Correa Arriba", new Vector2(0.5f, 0.5f), new Vector2(0f, 230f), new Vector2(170f, 260f)), cuero);
-        HUD.Imagen(HUD.Rect(reloj, "Correa Abajo", new Vector2(0.5f, 0.5f), new Vector2(0f, -230f), new Vector2(170f, 260f)), cuero);
-        for (int i = 0; i < 3; i++)
-            HUD.Imagen(HUD.Rect(reloj, "Agujero", new Vector2(0.5f, 0.5f), new Vector2(0f, -200f - i * 36f), new Vector2(12f, 12f)), new Color(0.05f, 0.03f, 0.02f), HUD.Circulo());
-
-        // Caja metalica, esfera y brillo
-        brilloRojo = HUD.Imagen(HUD.Rect(reloj, "Brillo", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460f, 460f)), Color.clear, HUD.Circulo());
-        HUD.Imagen(HUD.Rect(reloj, "Caja", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f)), new Color(0.55f, 0.53f, 0.5f), HUD.Circulo());
-        HUD.Imagen(HUD.Rect(reloj, "Bisel", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(300f, 300f)), new Color(0.22f, 0.21f, 0.2f), HUD.Circulo());
-        HUD.Imagen(HUD.Rect(reloj, "Corona", new Vector2(0.5f, 0.5f), new Vector2(168f, 0f), new Vector2(22f, 40f)), new Color(0.5f, 0.48f, 0.45f));
-        esfera = HUD.Rect(reloj, "Esfera", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(270f, 270f));
-        HUD.Imagen(esfera, new Color(0.9f, 0.86f, 0.74f), HUD.Circulo());
-
-        // Marcas de las horas
-        for (int i = 0; i < 60; i++)
-        {
-            bool hora = i % 5 == 0;
-            RectTransform pivote = HUD.Rect(esfera, "Marca", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-            pivote.localRotation = Quaternion.Euler(0f, 0f, -i * 6f);
-            HUD.Imagen(HUD.Rect(pivote, "Raya", new Vector2(0.5f, 0.5f), new Vector2(0f, hora ? 112f : 120f), new Vector2(hora ? 6f : 2f, hora ? 22f : 9f)), new Color(0.12f, 0.1f, 0.08f));
-        }
-        string[] numeros = { "12", "3", "6", "9" };
-        for (int i = 0; i < 4; i++)
-        {
-            float a = i * Mathf.PI * 0.5f;
-            RectTransform n = HUD.Rect(esfera, "Numero", new Vector2(0.5f, 0.5f), new Vector2(Mathf.Sin(a), Mathf.Cos(a)) * 82f, new Vector2(60f, 40f));
-            HUD.Texto(n, "Texto", numeros[i], 30f, TextAlignmentOptions.Center, new Color(0.12f, 0.1f, 0.08f)).fontStyle = FontStyles.Bold;
-        }
-
-        // Pantallita digital
-        RectTransform lcd = HUD.Rect(esfera, "Digital", new Vector2(0.5f, 0.5f), new Vector2(0f, -50f), new Vector2(92f, 30f));
-        HUD.Imagen(lcd, new Color(0.05f, 0.08f, 0.06f));
-        digital = HUD.Texto(lcd, "Texto", "00:00", 22f, TextAlignmentOptions.Center, new Color(0.55f, 1f, 0.6f));
-
-        // Agujas (pivote en el centro)
-        aguHora = HUD.Rect(esfera, "Aguja Hora", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        HUD.Imagen(HUD.Rect(aguHora, "Barra", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.1f), Vector2.zero, new Vector2(10f, 72f)), new Color(0.08f, 0.07f, 0.06f));
-        aguMinuto = HUD.Rect(esfera, "Aguja Minuto", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        HUD.Imagen(HUD.Rect(aguMinuto, "Barra", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.1f), Vector2.zero, new Vector2(6f, 108f)), new Color(0.08f, 0.07f, 0.06f));
-        HUD.Imagen(HUD.Rect(esfera, "Centro", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(18f, 18f)), new Color(0.6f, 0.15f, 0.1f), HUD.Circulo());
-        cristal = HUD.Imagen(HUD.Rect(reloj, "Cristal", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(270f, 270f)), new Color(0.8f, 0.9f, 1f, 0.08f), HUD.Circulo());
-        // Reflejo
-        RectTransform reflejo = HUD.Rect(reloj, "Reflejo", new Vector2(0.5f, 0.5f), new Vector2(-50f, 60f), new Vector2(90f, 40f));
-        reflejo.localRotation = Quaternion.Euler(0f, 0f, 35f);
-        HUD.Imagen(reflejo, new Color(1f, 1f, 1f, 0.12f), HUD.Circulo());
-
-        // Pista al lado del reloj
-        RectTransform pistaR = HUD.Rect(reloj, "Pista", new Vector2(0.5f, 0.5f), new Vector2(430f, -20f), new Vector2(460f, 90f));
+        // Pista a la derecha del reloj
+        RectTransform pistaR = HUD.Rect(canvas.transform, "Pista", new Vector2(0.5f, 0.5f), new Vector2(420f, -40f), new Vector2(520f, 110f));
         pistaGrupo = pistaR.gameObject.AddComponent<CanvasGroup>();
         pistaGrupo.alpha = 0f;
         pista = HUD.Texto(pistaR, "Texto", "", 28f, TextAlignmentOptions.MidlineLeft, new Color(1f, 0.85f, 0.8f));

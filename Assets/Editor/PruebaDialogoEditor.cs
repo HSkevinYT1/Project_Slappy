@@ -161,7 +161,10 @@ public static class PruebaDialogoEditor
             else if (paso == 1 && t > 2.5) { paso++; var rj = Object.FindFirstObjectByType<RejasEntrada>(); Vector3 p = pr.zona.bounds.center; p.y = pm.transform.position.y > 2f ? 1f : pm.transform.position.y; var rb = pm.GetComponent<Rigidbody>(); rb.position = p; pm.transform.position = p; Log("en la zona; espera max=" + pr.esperaMaximaReloj); }
             else if (paso == 2 && t > 6.0) { paso++; Log("3.5 s sin tecla: fede visible=" + Visible() + " sonando=" + (GameObject.Find("Sonido Presentacion") != null) + " clip=" + (pr.sonido ? pr.sonido.name : "-")); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_antes.png"); }
             else if (paso == 3 && t > 8.0) { paso++; RelojJugador.Instance.Mostrar(true); Log("se mira el reloj (como si pulsara C)"); }
-            else if (paso == 4 && t > 9.0) { paso++; Log("1 s despues: fede visible=" + Visible() + " sonando=" + (GameObject.Find("Sonido Presentacion") != null)); ScreenCapture.CaptureScreenshot(carpeta + "/reloj_despues.png"); }
+            else if (paso == 4 && t > 9.0) { paso++; Log("1 s despues: fede visible=" + Visible() + " sonando=" + (GameObject.Find("Sonido Presentacion") != null));
+                { Transform r3 = null; foreach (var tt in pm.transform.root.GetComponentsInChildren<Transform>(true)) if (tt.name == RelojJugador.NombreReloj) r3 = tt;
+                  Log("reloj3d=" + (r3 ? r3.gameObject.activeInHierarchy + " capa=" + r3.GetComponentInChildren<Renderer>(true).gameObject.layer + " pos=" + r3.position : "NO") + " cercania=" + RelojJugador.Instance.Cercania.ToString("0.00"));
+                  foreach (var cc in Camera.allCameras) Log("  cam " + cc.name + " depth=" + cc.depth + " mask=" + cc.cullingMask + " pos=" + cc.transform.position); } ScreenCapture.CaptureScreenshot(carpeta + "/reloj_despues.png"); }
             else if (paso == 5 && t > 11.0)
             {
                 paso++; Log("3 s despues: fede en " + pr.enemigo.transform.position);

@@ -317,9 +317,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   wireThickness: 0.4
-  pickPadding: 10
+  pickMargin: 0.015
   hoverBrighten: 0.45
   connectClip: {fileID: 0}
+  connectClips:
+  - {fileID: 8300000, guid: 16835ba56970bfd428a91060e079dfef, type: 3}
+  - {fileID: 8300000, guid: 4627a7c74f3716e49a98ada93304f052, type: 3}
+  - {fileID: 8300000, guid: eadad755c71130541ba041509069ed1e, type: 3}
 --- !u!114 &9172324548203754077
 MonoBehaviour:
   m_ObjectHideFlags: 0
