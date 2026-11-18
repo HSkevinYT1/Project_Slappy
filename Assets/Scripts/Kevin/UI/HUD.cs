@@ -12,7 +12,7 @@ public static class HUD
 {
     // Cuanto mas grande se ve la UI (1 = como estaba). Afecta a los Canvas con "Scale With Screen Size",
     // al texto de interaccion y a todo el HUD nuevo.
-    public static float Escala = 1.3f;
+    public static float Escala = 1.5f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AlCargar()
@@ -37,6 +37,9 @@ public static class HUD
             if (!Object.FindFirstObjectByType<RelojJugador>(FindObjectsInactive.Include)) go.AddComponent<RelojJugador>();
             if (!Object.FindFirstObjectByType<PantallaMuerte>(FindObjectsInactive.Include)) go.AddComponent<PantallaMuerte>();
         }
+        // Barra de estamina y menu de pausa (si la escena no trae uno propio, se construye por codigo)
+        if (!Object.FindFirstObjectByType<EstaminaUI>(FindObjectsInactive.Include)) new GameObject("HUD Estamina").AddComponent<EstaminaUI>();
+        if (!Object.FindFirstObjectByType<PauseMenu>(FindObjectsInactive.Include)) new GameObject("Menu de Pausa").AddComponent<PauseMenu>();
 
         // UI mas grande: los Canvas que escalan con la pantalla usan una resolucion de referencia mas chica
         foreach (CanvasScaler cs in Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include, FindObjectsSortMode.None))
@@ -186,6 +189,49 @@ public static class HUD
         s = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
         circulos[clave] = s;
         return s;
+    }
+
+    static Sprite vineta;
+
+    // Vineta: transparente en el centro y negra hacia los bordes (para pantallas de muerte, pausa...)
+    public static Sprite Vineta()
+    {
+        if (vineta != null) return vineta;
+        const int n = 256;
+        var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        var px = new Color32[n * n];
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float dx = (x + 0.5f) / n * 2f - 1f, dy = (y + 0.5f) / n * 2f - 1f;
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / 1.4142f;
+                float a = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.35f, 1f, d));
+                px[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+        tex.SetPixels32(px);
+        tex.Apply();
+        vineta = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+        return vineta;
+    }
+
+    static Texture2D ruido;
+
+    // Textura de ruido (grano de pelicula). Usar en un RawImage moviendo su uvRect cada frame
+    public static Texture2D Ruido()
+    {
+        if (ruido != null) return ruido;
+        const int n = 128;
+        ruido = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Point };
+        var px = new Color32[n * n];
+        var rnd = new System.Random(11);
+        for (int i = 0; i < px.Length; i++)
+        {
+            byte v = (byte)rnd.Next(0, 256);
+            px[i] = new Color32(v, v, v, 255);
+        }
+        ruido.SetPixels32(px);
+        ruido.Apply();
+        return ruido;
     }
 
     // Sonido corto generado por codigo (tic del reloj, golpe...)

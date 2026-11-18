@@ -341,14 +341,15 @@ public class RelojJugador : MonoBehaviour
         {
             if (bloque == null) bloque = new MaterialPropertyBlock();
             esfera.GetPropertyBlock(bloque);
-            bloque.SetColor("_BaseColor", Color.Lerp(esferaColor, new Color(1f, 0.25f, 0.18f), k));
-            bloque.SetColor("_EmissionColor", new Color(1f, 0.08f, 0.03f) * (2.5f * pulso));
+            // Brillo suave: con mucha emision el bloom tapa las agujas
+            bloque.SetColor("_BaseColor", Color.Lerp(esferaColor, new Color(0.7f, 0.2f, 0.16f), k * 0.85f));
+            bloque.SetColor("_EmissionColor", new Color(1f, 0.08f, 0.03f) * (0.35f * pulso));
             esfera.SetPropertyBlock(bloque);
         }
         if (brillo != null)
         {
             brillo.enabled = pulso > 0.01f && subida > 0.01f;
-            brillo.intensity = pulso * 0.6f;
+            brillo.intensity = pulso * 0.2f;
         }
     }
 

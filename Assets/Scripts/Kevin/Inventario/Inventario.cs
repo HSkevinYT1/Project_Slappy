@@ -187,7 +187,7 @@ public class Inventario : MonoBehaviour
     // Compacta, alineada a la derecha (como Valorant): de derecha a izquierda van la tecla, el icono y el texto.
     // Las ranuras vacias quedan como una linea finita con su numero; la seleccionada tiene fondo y una barra roja.
 
-    const float Ancho = 250f, AltoLleno = 52f, AltoVacio = 28f, Separacion = 6f, Margen = 28f;
+    const float Ancho = 280f, AltoLleno = 56f, AltoVacio = 30f, Separacion = 6f, Margen = 28f;
     // Altura del centro de la lista respecto al centro de la pantalla (negativo = mas abajo)
     const float AlturaLista = -60f;
     const float AltoTotal = 3f * AltoLleno + 2f * Separacion;
@@ -216,26 +216,26 @@ public class Inventario : MonoBehaviour
             // Tecla
             RectTransform teclaR = HUD.Rect(f.raiz, "Tecla", new Vector2(1f, 0.5f), new Vector2(-12f, 0f), new Vector2(22f, 22f));
             HUD.Borde(teclaR, new Color(1f, 1f, 1f, 0.45f), 1.5f);
-            f.tecla = HUD.Texto(teclaR, "Numero", (i + 1).ToString(), 15f, TextAlignmentOptions.Center, Color.white);
+            f.tecla = HUD.Texto(teclaR, "Numero", (i + 1).ToString(), 17f, TextAlignmentOptions.Center, Color.white);
 
             // Icono (placeholder: marco con la inicial, o el sprite del objeto)
             RectTransform iconoR = HUD.Rect(f.raiz, "Icono", new Vector2(1f, 0.5f), new Vector2(-44f, 0f), new Vector2(40f, 40f));
             f.iconoMarco = HUD.Imagen(iconoR, new Color(1f, 1f, 1f, 0.08f));
             f.icono = HUD.Imagen(HUD.Llenar(iconoR, "Sprite", 4f), Color.white);
             f.icono.preserveAspect = true;
-            f.letra = HUD.Texto(iconoR, "Inicial", "", 22f, TextAlignmentOptions.Center, Color.white);
+            f.letra = HUD.Texto(iconoR, "Inicial", "", 24f, TextAlignmentOptions.Center, Color.white);
 
             // Texto a la izquierda del icono: nombre arriba, bateria abajo (solo linterna)
             f.bloqueTexto = HUD.Rect(f.raiz, "Texto", new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(-96f, 0f), new Vector2(-104f, -8f));
             RectTransform nombreR = HUD.Rect(f.bloqueTexto, "Nombre", new Vector2(0f, 0.5f), new Vector2(1f, 1f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
-            f.nombre = HUD.Texto(nombreR, "Texto", "", 17f, TextAlignmentOptions.BottomRight, Color.white);
+            f.nombre = HUD.Texto(nombreR, "Texto", "", 20f, TextAlignmentOptions.BottomRight, Color.white);
             f.nombre.fontStyle = FontStyles.UpperCase | FontStyles.Bold;
             f.nombre.characterSpacing = 6f;
             f.nombre.overflowMode = TextOverflowModes.Ellipsis;
 
             f.bateria = HUD.Rect(f.bloqueTexto, "Bateria", new Vector2(1f, 0f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, -2f), new Vector2(90f, 0f));
             RectTransform pctR = HUD.Rect(f.bateria, "Porcentaje", new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(-30f, 0f), new Vector2(-30f, 0f));
-            f.porcentaje = HUD.Texto(pctR, "Texto", "100%", 13f, TextAlignmentOptions.MidlineRight, Color.white);
+            f.porcentaje = HUD.Texto(pctR, "Texto", "100%", 15f, TextAlignmentOptions.MidlineRight, Color.white);
             RectTransform pila = HUD.Rect(f.bateria, "Pila", new Vector2(1f, 0.5f), new Vector2(-3f, 0f), new Vector2(22f, 11f));
             HUD.Borde(pila, new Color(1f, 1f, 1f, 0.75f), 1.5f);
             HUD.Imagen(HUD.Rect(f.bateria, "Polo", new Vector2(1f, 0.5f), Vector2.zero, new Vector2(2.5f, 5f)), new Color(1f, 1f, 1f, 0.75f));
@@ -248,7 +248,7 @@ public class Inventario : MonoBehaviour
         }
 
         RectTransform ayudaR = HUD.Rect(canvas.transform, "Ayuda", new Vector2(1f, 0.5f), new Vector2(-Margen, 0f), new Vector2(Ancho, 18f));
-        ayuda = HUD.Texto(ayudaR, "Texto", "", 12f, TextAlignmentOptions.MidlineRight, new Color(1f, 1f, 1f, 0.4f));
+        ayuda = HUD.Texto(ayudaR, "Texto", "", 15f, TextAlignmentOptions.MidlineRight, new Color(1f, 1f, 1f, 0.4f));
     }
 
     static Sprite blanco;

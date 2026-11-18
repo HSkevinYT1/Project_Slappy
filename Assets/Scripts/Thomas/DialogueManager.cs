@@ -37,6 +37,8 @@ public class DialogueManager : MonoBehaviour
     [SerializeField] private Color colorExaminar = new Color(0.82f, 0.82f, 0.82f);
     [Tooltip("Sombra/contorno negro para que se lea sobre cualquier fondo")]
     [SerializeField] private bool sombra = true;
+    [Tooltip("Multiplica el tamano de letra de los subtitulos (el HUD agranda toda la UI; los dialogos se dejan mas chicos)")]
+    [SerializeField] private float escalaTexto = 0.6f;
 
     // Estado de lectura para otros scripts
     public bool IsActive { get; private set; }
@@ -67,6 +69,12 @@ public class DialogueManager : MonoBehaviour
         grupo.blocksRaycasts = false;
         grupo.interactable = false;
         if (sombra) AplicarSombra();
+        if (dialogueText != null && escalaTexto > 0f && !Mathf.Approximately(escalaTexto, 1f))
+        {
+            dialogueText.fontSize *= escalaTexto;
+            dialogueText.fontSizeMin *= escalaTexto;
+            dialogueText.fontSizeMax *= escalaTexto;
+        }
         dialoguePanel.SetActive(false);
     }
 

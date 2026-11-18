@@ -43,10 +43,14 @@ public class PantallaMuerte : MonoBehaviour
 
     // UI
     Canvas canvas;
-    Image rojo, negro;
-    CanvasGroup panel;
-    TextMeshProUGUI tituloTexto, fraseTexto;
+    Image rojo, negro, vineta;
+    RawImage grano;
+    CanvasGroup panel, botones;
+    RectTransform botonesR;
+    TextMeshProUGUI tituloTexto, fraseTexto, infoTexto;
+    TextMeshProUGUI[] fantasmas;
     Button botonReintentar;
+    float proximoGlitch;
 
     readonly List<Behaviour> apagados = new List<Behaviour>();
     readonly HashSet<Object> suscritos = new HashSet<Object>();
@@ -94,6 +98,40 @@ public class PantallaMuerte : MonoBehaviour
             Suscribir();
             if (!Muerto && !HUD.Oculto && jugador != null) PuntoDeControl();
         }
+        if (Muerto) EfectosPanel();
+    }
+
+    // Grano de pelicula que se mueve y el titulo que "falla" de vez en cuando (en tiempo real)
+    void EfectosPanel()
+    {
+        if (grano != null && grano.color.a > 0f)
+            grano.uvRect = new Rect(Random.value, Random.value, 3f, 3f * Screen.height / Mathf.Max(1f, Screen.width));
+        if (!panel.gameObject.activeSelf) return;
+
+        float t = Time.unscaledTime;
+        bool falla = t < proximoGlitch + 0.12f && t >= proximoGlitch;
+        if (t >= proximoGlitch + 0.12f) proximoGlitch = t + Random.Range(0.8f, 2.6f);
+        for (int i = 0; i < fantasmas.Length; i++)
+        {
+            float lado = i == 0 ? -1f : 1f;
+            float fuerza = falla ? Random.Range(6f, 16f) : 2f + Mathf.Sin(t * 2.3f + i) * 1.5f;
+            fantasmas[i].rectTransform.anchoredPosition = new Vector2(lado * fuerza, falla ? Random.Range(-4f, 4f) : 0f);
+            fantasmas[i].characterSpacing = tituloTexto.characterSpacing;
+            Color c = fantasmas[i].color;
+            c.a = (falla ? 0.55f : 0.22f) * panel.alpha;
+            fantasmas[i].color = c;
+        }
+        tituloTexto.rectTransform.anchoredPosition = falla ? new Vector2(Random.Range(-3f, 3f), 0f) : Vector2.zero;
+    }
+
+    // Nombre del area donde murio (el trigger se llama "Trigger Cloacas", etc.)
+    static string NombreZona()
+    {
+        VolumenZonas vz = FindFirstObjectByType<VolumenZonas>();
+        ZonaVolumen z = vz != null ? vz.ZonaActual : null;
+        if (z == null) return "Zona Principal";
+        string n = z.name;
+        return n.StartsWith("Trigger ") ? n.Substring(8) : n;
     }
 
     // ------------------------------------------------------------------ Puntos de control
@@ -192,29 +230,38 @@ public class PantallaMuerte : MonoBehaviour
                 camT.rotation = Quaternion.Slerp(desde, hacia, k) * Quaternion.Euler(sacudida.y * 40f, sacudida.x * 40f, (Mathf.PerlinNoise(t * 25f, 3f) - 0.5f) * 14f * f);
             }
             rojo.color = new Color(0.7f, 0f, 0f, Mathf.Lerp(0.75f, 0.35f, t / 1.1f));
+            vineta.color = new Color(0f, 0f, 0f, Mathf.Clamp01(t / 0.3f) * 0.85f);
             yield return null;
         }
 
         // A negro
+        string zona = NombreZona();
         for (float t = 0f; t < 1f; t += Time.deltaTime / 1.1f)
         {
             negro.color = new Color(0f, 0f, 0f, t * t);
             rojo.color = new Color(0.7f, 0f, 0f, 0.35f * (1f - t));
+            grano.color = new Color(1f, 1f, 1f, 0.03f * t);
             yield return null;
         }
-        negro.color = Color.black;
+        negro.color = new Color(0.02f, 0f, 0f, 1f);
         rojo.color = Color.clear;
 
-        // Cartel
-        fraseTexto.text = frases != null && frases.Length > 0 ? frases[Random.Range(0, frases.Length)] : "";
+        // Cartel: el titulo aparece abriendose, la frase se escribe letra a letra y despues entran los botones
+        string frase = frases != null && frases.Length > 0 ? frases[Random.Range(0, frases.Length)] : "";
+        fraseTexto.text = "";
         tituloTexto.text = titulo;
+        foreach (TextMeshProUGUI f in fantasmas) f.text = titulo;
+        int seg = Mathf.FloorToInt(Time.timeSinceLevelLoad);
+        infoTexto.text = $"{zona.ToUpperInvariant()}   ·   SOBREVIVISTE {seg / 60}:{seg % 60:00}";
+        infoTexto.alpha = 0f;
+        botones.alpha = 0f;
+        botones.interactable = false;
         panel.gameObject.SetActive(true);
         panel.interactable = true;
         panel.blocksRaycasts = true;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         AsegurarEventSystem();
-        if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(botonReintentar.gameObject);
         for (float t = 0f; t < 1f; t += Time.unscaledDeltaTime / 1.2f)
         {
             panel.alpha = t;
@@ -222,6 +269,27 @@ public class PantallaMuerte : MonoBehaviour
             yield return null;
         }
         panel.alpha = 1f;
+
+        for (int i = 1; i <= frase.Length; i++)
+        {
+            fraseTexto.text = frase.Substring(0, i);
+            yield return new WaitForSecondsRealtime(frase[i - 1] == ' ' ? 0.02f : 0.035f);
+        }
+
+        Vector2 llegada = botonesR.anchoredPosition, salida = llegada + new Vector2(0f, -30f);
+        for (float t = 0f; t < 1f; t += Time.unscaledDeltaTime / 0.5f)
+        {
+            float k = 1f - (1f - t) * (1f - t);
+            botones.alpha = k;
+            infoTexto.alpha = k * 0.7f;
+            botonesR.anchoredPosition = Vector2.Lerp(salida, llegada, k);
+            yield return null;
+        }
+        botones.alpha = 1f;
+        infoTexto.alpha = 0.7f;
+        botonesR.anchoredPosition = llegada;
+        botones.interactable = true;
+        if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(botonReintentar.gameObject);
     }
 
     // Boton Reintentar
@@ -239,6 +307,8 @@ public class PantallaMuerte : MonoBehaviour
         for (float t = 1f; t > 0f; t -= Time.unscaledDeltaTime / 0.4f) { panel.alpha = t; yield return null; }
         panel.alpha = 0f;
         panel.gameObject.SetActive(false);
+        vineta.color = Color.clear;
+        grano.color = Color.clear;
 
         // Jugador al punto de control
         if (jugador != null && hayPunto)
@@ -272,6 +342,7 @@ public class PantallaMuerte : MonoBehaviour
 
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         apagados.Clear();
+        if (jugador != null && jugador.TryGetComponent(out PlayerMovement pm)) pm.RellenarEstamina();
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         Muerto = false;
@@ -326,7 +397,7 @@ public class PantallaMuerte : MonoBehaviour
         Destroy(go, clip.length + 0.2f);
     }
 
-    static void AsegurarEventSystem()
+    public static void AsegurarEventSystem()
     {
         if (EventSystem.current != null || FindFirstObjectByType<EventSystem>() != null) return;
         var go = new GameObject("EventSystem");
@@ -341,26 +412,49 @@ public class PantallaMuerte : MonoBehaviour
         canvas = HUD.CrearCanvas("HUD Muerte", 200);
         rojo = HUD.Imagen(HUD.Llenar(canvas.transform, "Rojo"), Color.clear);
         negro = HUD.Imagen(HUD.Llenar(canvas.transform, "Negro"), Color.clear);
+        // Vineta oscura (rojiza) en los bordes y grano de pelicula por encima
+        vineta = HUD.Imagen(HUD.Llenar(canvas.transform, "Vineta"), Color.clear, HUD.Vineta());
+        RectTransform granoR = HUD.Llenar(canvas.transform, "Grano");
+        grano = granoR.gameObject.AddComponent<RawImage>();
+        grano.texture = HUD.Ruido();
+        grano.color = Color.clear;
+        grano.raycastTarget = false;
 
         RectTransform p = HUD.Llenar(canvas.transform, "Panel");
         panel = p.gameObject.AddComponent<CanvasGroup>();
         panel.alpha = 0f;
-        // Vineta roja suave
-        HUD.Imagen(HUD.Rect(p, "Halo", new Vector2(0.5f, 0.5f), new Vector2(0f, 60f), new Vector2(1400f, 700f)), new Color(0.35f, 0f, 0f, 0.35f), HUD.Circulo());
 
-        RectTransform t = HUD.Rect(p, "Titulo", new Vector2(0.5f, 0.5f), new Vector2(0f, 110f), new Vector2(1200f, 160f));
-        tituloTexto = HUD.Texto(t, "Texto", titulo, 120f, TextAlignmentOptions.Center, new Color(0.85f, 0.08f, 0.06f));
+        // Titulo con dos copias desplazadas que tiemblan (efecto de falla)
+        RectTransform t = HUD.Rect(p, "Titulo", new Vector2(0.5f, 0.5f), new Vector2(0f, 130f), new Vector2(1300f, 180f));
+        Color[] coloresFantasma = { new Color(0.55f, 0f, 0f, 0.25f), new Color(0.9f, 0.85f, 0.8f, 0.25f) };
+        fantasmas = new TextMeshProUGUI[2];
+        for (int i = 0; i < 2; i++)
+        {
+            fantasmas[i] = HUD.Texto(t, "Fantasma " + (i + 1), titulo, 140f, TextAlignmentOptions.Center, coloresFantasma[i]);
+            fantasmas[i].fontStyle = FontStyles.Bold;
+        }
+        tituloTexto = HUD.Texto(t, "Texto", titulo, 140f, TextAlignmentOptions.Center, new Color(0.85f, 0.08f, 0.06f));
         tituloTexto.fontStyle = FontStyles.Bold;
         tituloTexto.characterSpacing = 14f;
+        tituloTexto.outlineWidth = 0.12f;
+        tituloTexto.outlineColor = new Color32(20, 0, 0, 255);
 
-        RectTransform f = HUD.Rect(p, "Frase", new Vector2(0.5f, 0.5f), new Vector2(0f, 10f), new Vector2(1000f, 50f));
-        fraseTexto = HUD.Texto(f, "Texto", "", 32f, TextAlignmentOptions.Center, new Color(0.85f, 0.8f, 0.78f));
+        RectTransform f = HUD.Rect(p, "Frase", new Vector2(0.5f, 0.5f), new Vector2(0f, 15f), new Vector2(1100f, 56f));
+        fraseTexto = HUD.Texto(f, "Texto", "", 36f, TextAlignmentOptions.Center, new Color(0.88f, 0.82f, 0.8f));
         fraseTexto.fontStyle = FontStyles.Italic;
 
-        HUD.Imagen(HUD.Rect(p, "Linea", new Vector2(0.5f, 0.5f), new Vector2(0f, -40f), new Vector2(520f, 2f)), new Color(0.85f, 0.1f, 0.08f, 0.6f));
+        HUD.Imagen(HUD.Rect(p, "Linea", new Vector2(0.5f, 0.5f), new Vector2(0f, -32f), new Vector2(620f, 2f)), new Color(0.85f, 0.1f, 0.08f, 0.6f));
 
-        botonReintentar = HUD.Boton(p, "Reintentar", "Reintentar", new Vector2(-170f, -120f), new Vector2(300f, 70f), Reintentar);
-        HUD.Boton(p, "Volver al inicio", "Volver al inicio", new Vector2(170f, -120f), new Vector2(300f, 70f), VolverAlInicio);
+        // Donde murio y cuanto aguanto
+        RectTransform info = HUD.Rect(p, "Info", new Vector2(0.5f, 0.5f), new Vector2(0f, -62f), new Vector2(1000f, 34f));
+        infoTexto = HUD.Texto(info, "Texto", "", 22f, TextAlignmentOptions.Center, new Color(0.8f, 0.75f, 0.72f));
+        infoTexto.characterSpacing = 8f;
+
+        // Botones (entran despues de la frase)
+        botonesR = HUD.Rect(p, "Botones", new Vector2(0.5f, 0.5f), new Vector2(0f, -150f), new Vector2(720f, 80f));
+        botones = botonesR.gameObject.AddComponent<CanvasGroup>();
+        botonReintentar = HUD.Boton(botonesR, "Reintentar", "Reintentar", new Vector2(-185f, 0f), new Vector2(330f, 76f), Reintentar);
+        HUD.Boton(botonesR, "Volver al inicio", "Volver al inicio", new Vector2(185f, 0f), new Vector2(330f, 76f), VolverAlInicio);
 
         panel.interactable = false;
         panel.blocksRaycasts = false;

@@ -26,6 +26,16 @@ public class ProgresoCaminos : MonoBehaviour
 
     public Tramo TramoActual => zonaActual >= 0 && zonaActual < tramos.Length ? tramos[zonaActual] : null;
 
+    [Tooltip("Al completar una zona su puerta sigue abierta para poder volver; se cierra cuando el jugador ya la cruzo " +
+             "hacia la Zona Principal y esta a estos metros de ella")]
+    public float metrosParaCerrar = 2f;
+
+    // Tramo recien completado cuya puerta sigue abierta hasta que el jugador sale (-1 = ninguno)
+    int pendienteCerrar = -1;
+    // Lado de la puerta (segun su eje azul) en el que estaba el jugador al completar la zona = lado de la zona
+    float ladoZona;
+    Transform jugador;
+
     void Awake() => Instance = this;
 
     void Start() => Aplicar(true);
@@ -34,9 +44,47 @@ public class ProgresoCaminos : MonoBehaviour
 
     public void IrAZona(int indice)
     {
+        int anterior = zonaActual;
         zonaActual = Mathf.Clamp(indice, 0, tramos.Length);
+
+        // Avanzar: la puerta de la zona que se acaba de terminar se queda abierta hasta que el jugador salga
+        pendienteCerrar = -1;
+        if (zonaActual > anterior && anterior >= 0 && anterior < tramos.Length && tramos[anterior].puerta != null && Jugador() != null)
+        {
+            ladoZona = Lado(tramos[anterior].puerta.transform);
+            if (Mathf.Abs(ladoZona) > 0.01f) pendienteCerrar = anterior;
+        }
+
         Aplicar(false);
         alCambiarZona?.Invoke(zonaActual);
+    }
+
+    void Update()
+    {
+        if (pendienteCerrar < 0 || Jugador() == null) return;
+        PuertaDeslizante puerta = tramos[pendienteCerrar].puerta;
+        if (puerta == null) { pendienteCerrar = -1; return; }
+
+        // Ya cruzo la puerta hacia el otro lado (la Zona Principal) y se alejo un poco: se cierra detras de el
+        float lado = Lado(puerta.transform);
+        if (Mathf.Sign(lado) != Mathf.Sign(ladoZona) && Mathf.Abs(lado) >= metrosParaCerrar)
+        {
+            pendienteCerrar = -1;
+            puerta.Cerrar();
+        }
+    }
+
+    // Distancia con signo del jugador al plano de la puerta (positivo = delante de su eje azul)
+    float Lado(Transform puerta)
+    {
+        Vector3 d = jugador.position - puerta.position;
+        return Vector3.Dot(d, puerta.forward);
+    }
+
+    Transform Jugador()
+    {
+        if (jugador == null) jugador = HUD.Jugador();
+        return jugador;
     }
 
     // Por nombre (ej: "Cloacas"), para usarlo desde un UnityEvent
@@ -53,7 +101,7 @@ public class ProgresoCaminos : MonoBehaviour
         {
             bool activo = i == zonaActual;
             if (tramos[i].marca != null) tramos[i].marca.SetEncendida(activo);
-            if (tramos[i].puerta != null) tramos[i].puerta.SetAbierta(activo, instantaneo);
+            if (tramos[i].puerta != null) tramos[i].puerta.SetAbierta(activo || i == pendienteCerrar, instantaneo);
         }
     }
 }

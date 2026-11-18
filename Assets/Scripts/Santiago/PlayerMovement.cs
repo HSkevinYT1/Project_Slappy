@@ -10,6 +10,22 @@ public class PlayerMovement : MonoBehaviour
     // Segundos que tarda en llegar a la velocidad de correr (y en volver a caminar)
     public float aceleracionCorrer = 0.25f;
     public bool Corriendo { get; private set; }
+
+    [Header("Estamina")]
+    [Tooltip("Segundos que se puede correr con la estamina llena")]
+    public float segundosCorriendo = 6f;
+    [Tooltip("Segundos que tarda en llenarse otra vez desde vacia")]
+    public float segundosRecuperar = 4f;
+    [Tooltip("Segundos sin correr antes de empezar a recuperar")]
+    public float esperaRecuperar = 0.8f;
+    [Tooltip("Al vaciarse, no se puede volver a correr hasta tener esta fraccion (0..1)")]
+    [Range(0f, 1f)] public float minimoTrasAgotarse = 0.3f;
+    // 0 = vacia, 1 = llena (la lee la barra del HUD)
+    public float Estamina { get; private set; } = 1f;
+    // Se vacio y todavia no recupero el minimo
+    public bool Agotado { get; private set; }
+    private float ultimoCorrer = -999f;
+
     private float factorCorrer = 1f;
     private float adelante;
     // Guarda una referencia al Rigidbody del Player
@@ -53,7 +69,8 @@ public class PlayerMovement : MonoBehaviour
     {
         // Multiplicala la direccion del jugador con la velocidad base que se tiene.
         // Correr: Shift mantenido y avanzando hacia adelante. Sube y baja la velocidad con suavidad.
-        Corriendo = GameInput.Run && adelante > 0.1f;
+        Corriendo = GameInput.Run && adelante > 0.1f && !Agotado;
+        ActualizarEstamina(Time.fixedDeltaTime);
         float objetivo = Corriendo ? multiplicadorCorrer : 1f;
         float paso = aceleracionCorrer > 0f ? Time.fixedDeltaTime / aceleracionCorrer * (multiplicadorCorrer - 1f) : 10f;
         factorCorrer = Mathf.MoveTowards(factorCorrer, objetivo, paso);
@@ -65,6 +82,30 @@ public class PlayerMovement : MonoBehaviour
         rb.linearVelocity.y,
         velocity.z
     );
+    }
+
+    // Correr gasta estamina; al soltar Shift (tras una pausa corta) se recupera.
+    // Si se vacia, queda "agotado" y no puede correr hasta recuperar un minimo.
+    void ActualizarEstamina(float dt)
+    {
+        if (Corriendo)
+        {
+            ultimoCorrer = Time.time;
+            Estamina = Mathf.Max(0f, Estamina - dt / Mathf.Max(0.1f, segundosCorriendo));
+            if (Estamina <= 0f) { Agotado = true; Corriendo = false; }
+        }
+        else if (Time.time - ultimoCorrer >= esperaRecuperar)
+        {
+            Estamina = Mathf.Min(1f, Estamina + dt / Mathf.Max(0.1f, segundosRecuperar));
+        }
+        if (Agotado && Estamina >= minimoTrasAgotarse) Agotado = false;
+    }
+
+    // Llena la estamina (ej: al reaparecer tras morir)
+    public void RellenarEstamina()
+    {
+        Estamina = 1f;
+        Agotado = false;
     }
 
     //esto es de prueba :v

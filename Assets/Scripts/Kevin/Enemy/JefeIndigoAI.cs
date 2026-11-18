@@ -72,6 +72,17 @@ public class JefeIndigoAI : MonoBehaviour
     [Tooltip("Sin area: radio alrededor de donde empieza")]
     public float radioArea = 60f;
 
+    [Header("Acercarse si el jugador esta lejos")]
+    [Tooltip("Si pasa mucho tiempo patrullando lejos del jugador (en la misma area), reaparece mas cerca, " +
+             "siempre fuera de la vista del jugador y fuera del alcance del reloj, para que el reloj no salte de golpe")]
+    public bool acercarseSiLejos = false;
+    [Tooltip("Segundos patrullando lejos antes de reaparecer mas cerca (al azar entre x e y)")]
+    public Vector2 esperaAcercarse = new Vector2(20f, 35f);
+    [Tooltip("Metros extra por fuera del alcance del reloj donde reaparece (el reloj empieza a notarlo un poco despues)")]
+    public float margenReloj = 4f;
+    [Tooltip("Sin reloj en la escena: a esta distancia (m) del jugador reaparece")]
+    public float distanciaAcercarse = 30f;
+
     public State CurrentState { get; private set; } = State.Patrol;
 
     private NavMeshAgent agent;
@@ -181,6 +192,99 @@ public class JefeIndigoAI : MonoBehaviour
 
         if (CurrentState != State.Caught) agent.speed = velocidadBase * MultiplicadorDistancia();
         SonidoAmbiente();
+        AcercarseSiLejos();
+    }
+
+    // ------------------------------------------------------------------ Acercarse si esta lejos
+
+    private float tiempoLejos;
+    private float esperaActual = -1f;
+    private float proximoIntento;
+    private Camera camJugador;
+
+    // Distancia a la que reaparece: justo por fuera de lo que detecta el reloj
+    float DistanciaAcercarse()
+    {
+        RelojJugador reloj = RelojJugador.Instance;
+        return reloj != null ? reloj.distanciaMaxima + margenReloj : distanciaAcercarse;
+    }
+
+    void AcercarseSiLejos()
+    {
+        if (!acercarseSiLejos || CurrentState != State.Patrol || PantallaMuerte.Muerto || Escondite.JugadorEscondido) { tiempoLejos = 0f; return; }
+        // Se revisa cada medio segundo (Area() busca las zonas de la escena)
+        if (Time.time < proximoIntento) return;
+        proximoIntento = Time.time + 0.5f;
+
+        float lejos = DistanciaAcercarse();
+        // Solo si el jugador esta en su misma area (no lo trae al Laberinto si el jugador esta en otra zona)
+        Bounds area = Area();
+        Vector3 pj = target.position;
+        bool mismaArea = pj.x >= area.min.x && pj.x <= area.max.x && pj.z >= area.min.z && pj.z <= area.max.z;
+        if (!mismaArea || Vector3.Distance(transform.position, pj) <= lejos + 2f) { tiempoLejos = 0f; return; }
+
+        if (esperaActual < 0f) esperaActual = Random.Range(esperaAcercarse.x, Mathf.Max(esperaAcercarse.x, esperaAcercarse.y));
+        tiempoLejos += 0.5f;
+        if (tiempoLejos < esperaActual) return;
+
+        // Que el jugador no lo vea desaparecer
+        if (VisibleParaJugador(transform.position)) return;
+        if (!PuntoCercaDelJugador(lejos, area, out Vector3 punto)) return;
+
+        agent.Warp(punto);
+        agent.velocity = Vector3.zero;
+        tiempoLejos = 0f;
+        esperaActual = -1f;
+        // Desde alli camina hacia donde anda el jugador (sin saber exactamente donde esta)
+        agent.SetDestination(RandomNavPoint(pj, 8f));
+        waitTimer = 0f;
+    }
+
+    // Un punto del NavMesh a "distancia" del jugador, dentro del area, al que se llega caminando desde el jugador
+    // y que el jugador no esta viendo
+    bool PuntoCercaDelJugador(float distancia, Bounds area, out Vector3 punto)
+    {
+        punto = default;
+        var camino = new NavMeshPath();
+        Vector3 pj = target.position;
+        for (int i = 0; i < 24; i++)
+        {
+            Vector2 dir = Random.insideUnitCircle.normalized;
+            Vector3 p = pj + new Vector3(dir.x, 0f, dir.y) * Random.Range(distancia, distancia + 6f);
+            if (p.x < area.min.x || p.x > area.max.x || p.z < area.min.z || p.z > area.max.z) continue;
+            if (!NavMesh.SamplePosition(p, out NavMeshHit hit, 3f, NavMesh.AllAreas)) continue;
+            // Que no quede mas cerca de lo pedido (el reloj lo notaria de golpe)
+            if (Vector3.Distance(hit.position, pj) < distancia) continue;
+            if (!NavMesh.CalculatePath(hit.position, pj, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete) continue;
+            if (VisibleParaJugador(hit.position)) continue;
+            punto = hit.position;
+            return true;
+        }
+        return false;
+    }
+
+    // El jugador podria ver este punto: esta en pantalla y no hay pared en medio
+    bool VisibleParaJugador(Vector3 pies)
+    {
+        if (camJugador == null) camJugador = Camera.main;
+        if (camJugador == null) return false;
+        Vector3 desde = camJugador.transform.position;
+        Vector3[] puntos = { pies + Vector3.up * 0.3f, pies + Vector3.up * eyeHeight };
+        foreach (Vector3 p in puntos)
+        {
+            Vector3 vp = camJugador.WorldToViewportPoint(p);
+            if (vp.z <= 0f || vp.x < -0.1f || vp.x > 1.1f || vp.y < -0.1f || vp.y > 1.1f) continue;
+            Vector3 d = p - desde;
+            bool tapado = false;
+            foreach (RaycastHit h in Physics.RaycastAll(desde, d.normalized, d.magnitude, obstacleMask, QueryTriggerInteraction.Ignore))
+            {
+                if (h.collider.transform.IsChildOf(transform) || IsPlayer(h.collider)) continue;
+                tapado = true;
+                break;
+            }
+            if (!tapado) return true;
+        }
+        return false;
     }
 
     // 1 con el jugador cerca; sube hasta multiplicadorMaximo cuanto mas lejos esta

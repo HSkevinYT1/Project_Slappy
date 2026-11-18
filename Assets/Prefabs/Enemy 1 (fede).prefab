@@ -216,6 +216,10 @@ MonoBehaviour:
       m_Calls: []
   areaEnemigo: {fileID: 0}
   radioArea: 60
+  acercarseSiLejos: 1
+  esperaAcercarse: {x: 20, y: 35}
+  margenReloj: 4
+  distanciaAcercarse: 30
 --- !u!114 &660367879303063577
 MonoBehaviour:
   m_ObjectHideFlags: 0
