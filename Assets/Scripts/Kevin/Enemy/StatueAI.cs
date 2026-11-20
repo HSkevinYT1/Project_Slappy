@@ -63,25 +63,40 @@ public class EstatuaAI : MonoBehaviour
         if (playerCamera == null && player != null) playerCamera = player.GetComponentInChildren<Camera>();
         if (playerCamera == null) Debug.LogWarning(name + ": no encuentro la camara del jugador. Asignala o ponle la etiqueta 'MainCamera'.");
 
-        // Si el enemigo esta un poco separado del NavMesh, lo pega al punto mas cercano
-        if (!agent.isOnNavMesh && NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 3f, NavMesh.AllAreas))
-            agent.Warp(hit.position);
-        if (!agent.isOnNavMesh)
-        {
-            Debug.LogError(name + ": no esta sobre un NavMesh. Haz Bake en el NavMesh Surface y coloca al enemigo encima de la zona azul.");
-            return;
-        }
-
         agent.updatePosition = false;
         agent.updateRotation = false;
         agent.speed = moveSpeed;
 
-        EnterState(State.Frozen);
+        if (PegarAlNavMesh()) EnterState(State.Frozen);
+        else Debug.LogError(name + ": no esta sobre un NavMesh. Haz Bake en el NavMesh Surface (Tools > Enemigos y Zonas > Hornear NavMesh) y coloca al enemigo encima de la zona azul.", this);
     }
+
+    // Si el enemigo esta un poco separado del NavMesh, lo pega al punto mas cercano
+    bool PegarAlNavMesh()
+    {
+        if (!agent.isOnNavMesh && NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+        {
+            // Con updatePosition el Warp tambien mueve el transform (a la altura correcta segun baseOffset)
+            agent.updatePosition = true;
+            agent.Warp(hit.position);
+            agent.updatePosition = false;
+        }
+        return agent.isOnNavMesh;
+    }
+
+    private float proximoIntentoNavMesh;
 
     void Update()
     {
-        if (player == null || playerCamera == null || CurrentState == State.Caught || !agent.isOnNavMesh) return;
+        if (player == null || playerCamera == null || CurrentState == State.Caught) return;
+        // Sin NavMesh debajo (ej: todavia no se cargo) lo reintenta cada segundo en vez de quedarse muerta
+        if (!agent.isOnNavMesh)
+        {
+            if (Time.time < proximoIntentoNavMesh) return;
+            proximoIntentoNavMesh = Time.time + 1f;
+            if (!PegarAlNavMesh()) return;
+            EnterState(State.Frozen);
+        }
 
         bool seen = IsSeenByPlayer();
 

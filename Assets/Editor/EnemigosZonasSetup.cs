@@ -42,6 +42,9 @@ public static class EnemigosZonasSetup
         public int cantidad = 1;
         public float separacion = 8f;
         public float distanciaEntrada = 15f;  // que no aparezcan pegados a la entrada
+        // Recinto cerrado por paredes: los enemigos solo aparecen DENTRO de ellas (ver ZonaCerrada).
+        // En las Cloacas el piso de agua sobresale unos metros por fuera de las paredes y tiene NavMesh ahi tambien.
+        public bool cerrada;
     }
 
     static readonly Area[] Areas =
@@ -52,7 +55,7 @@ public static class EnemigosZonasSetup
                    perfil = "Assets/Volumenes/Level2Volume.asset", prefab = Prefabs + "Enemy 2 (gato).prefab" },
         new Area { raiz = "Cloacas", pisos = new[] { "Piso", "agua" },
                    perfil = "Assets/Volumenes/Level3Volume.asset", prefab = PrefabEstatua,
-                   cantidad = EstatuasCloacas, separacion = 10f, distanciaEntrada = 10f },
+                   cantidad = EstatuasCloacas, separacion = 10f, distanciaEntrada = 10f, cerrada = true },
         new Area { raiz = "Zona Roja",
                    pisos = new[] { "Isla", "Faro/Piso 1/Suelo", "Faro/Piso 2/Suelo", "Faro/Piso 3 - Linterna/Suelo",
                                    "Faro/Piso 1/Escalera de caracol (1 a 2)", "Faro/Piso 2/Escalera de caracol (2 a 3)" },
@@ -62,9 +65,89 @@ public static class EnemigosZonasSetup
     // Lo llama ZonasSetup al abrir/compilar la escena
     internal static void AutoAplicar()
     {
-        if (EditorApplication.isPlayingOrWillChangePlaymode || GameObject.Find(Raiz)) return;
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+        // Ya armado: rehornea los NavMesh que se hayan perdido y revisa que las estatuas de las Cloacas
+        // no hayan quedado por fuera de las paredes
+        if (GameObject.Find(Raiz)) { HornearFaltantes(); RecolocarCloacas(false); return; }
         foreach (Area a in Areas) if (!GameObject.Find(a.raiz)) return;
         Aplicar();
+    }
+
+    [MenuItem("Tools/Enemigos y Zonas/Recolocar estatuas de las Cloacas (dentro de las paredes)")]
+    static void RecolocarMenu()
+    {
+        if (!RecolocarCloacas(true))
+            EditorUtility.DisplayDialog("Cloacas", "No encontre \"Cloacas\" o \"" + Raiz + "/Enemigos/Enemigos Cloacas\".", "OK");
+    }
+
+    // Mueve las estatuas que ya existen (sin recrearlas, asi la llave y la cerradura siguen conectadas) a puntos
+    // del NavMesh que esten DENTRO de las paredes de las Cloacas. Sin forzar: solo si alguna quedo por fuera.
+    internal static bool RecolocarCloacas(bool forzar)
+    {
+        Area a = null;
+        foreach (Area x in Areas) if (x.cerrada) a = x;
+        GameObject area = a != null ? GameObject.Find(a.raiz) : null;
+        GameObject grupoGo = GameObject.Find(Raiz + "/Enemigos/Enemigos " + (a != null ? a.raiz : ""));
+        if (!area || !grupoGo) return false;
+        Transform grupo = grupoGo.transform;
+
+        Physics.SyncTransforms();
+        var estatuas = new List<Transform>();
+        foreach (Transform t in grupo) if (t.GetComponent<EstatuaAI>()) estatuas.Add(t);
+        if (estatuas.Count == 0) return false;
+
+        LlaveAleatoria llave = grupo.GetComponentInChildren<LlaveAleatoria>(true);
+        bool llaveSinRecinto = llave && llave.recinto != area.transform;
+
+        var fuera = new List<string>();
+        foreach (Transform e in estatuas) if (!ZonaCerrada.Dentro(area.transform, Pies(e))) fuera.Add(e.name);
+        if (!forzar && fuera.Count == 0)
+        {
+            if (llaveSinRecinto) { Undo.RecordObject(llave, "Llave recinto"); llave.recinto = area.transform; EditorSceneManager.MarkSceneDirty(area.scene); }
+            return true;
+        }
+
+        var pedido = new Area { raiz = a.raiz, pisos = a.pisos, cantidad = estatuas.Count, separacion = a.separacion,
+                                distanciaEntrada = a.distanciaEntrada, cerrada = true };
+        Vector3 entrada = PuntoEntrada(area.transform);
+        List<Vector3> puntos = BuscarPuntos(pedido, area.transform, entrada);
+        if (puntos.Count == 0)
+        {
+            Debug.LogWarning("[Enemigos y Zonas] Cloacas: no encontre puntos del NavMesh dentro de las paredes. " +
+                             "Prueba Tools > Enemigos y Zonas > Hornear NavMesh (solo pisos).", area);
+            return true;
+        }
+
+        for (int i = 0; i < estatuas.Count && i < puntos.Count; i++)
+        {
+            Transform e = estatuas[i];
+            Undo.RecordObject(e, "Recolocar estatuas");
+            float alto = e.TryGetComponent(out NavMeshAgent agent) ? agent.baseOffset : 0f;
+            e.position = puntos[i] + Vector3.up * alto;
+            Vector3 mirar = entrada - puntos[i];
+            mirar.y = 0f;
+            if (mirar.sqrMagnitude > 0.01f) e.rotation = Quaternion.LookRotation(mirar);
+        }
+
+        if (llave)
+        {
+            Undo.RecordObject(llave, "Recolocar estatuas");
+            Undo.RecordObject(llave.transform, "Recolocar estatuas");
+            llave.recinto = area.transform;
+            // En el editor se ve en la mano de la primera; al jugar elige una al azar
+            if (llave.manos != null && llave.manos.Length > 0 && llave.manos[0]) llave.transform.position = llave.manos[0].position;
+        }
+
+        EditorSceneManager.MarkSceneDirty(area.scene);
+        Debug.Log("[Enemigos y Zonas] Cloacas: " + Mathf.Min(estatuas.Count, puntos.Count) + " estatuas recolocadas dentro de las paredes" +
+                  (fuera.Count > 0 ? " (estaban por fuera: " + string.Join(", ", fuera) + ")" : "") + ". Guarda la escena (Ctrl+S).", grupo);
+        return true;
+    }
+
+    static Vector3 Pies(Transform enemigo)
+    {
+        float alto = enemigo.TryGetComponent(out NavMeshAgent agent) ? agent.baseOffset : 0f;
+        return enemigo.position - Vector3.up * alto;
     }
 
     [MenuItem("Tools/Enemigos y Zonas/Rehacer todo (NavMesh, enemigos, llave y triggers)")]
@@ -142,6 +225,24 @@ public static class EnemigosZonasSetup
 
             GuardarNavMesh(surface);
         }
+    }
+
+    // Areas cuya NavMeshSurface apunta a un NavMesh que ya no existe (ej: el NavMesh-*.asset se borro del repositorio).
+    // Sin NavMesh los enemigos no se pueden mover. Se rehornean con los ajustes y modificadores que ya tienen.
+    static void HornearFaltantes()
+    {
+        bool hubo = false;
+        foreach (Area a in Areas)
+        {
+            GameObject g = GameObject.Find(a.raiz);
+            NavMeshSurface s = g ? g.GetComponent<NavMeshSurface>() : null;
+            if (!s || s.navMeshData != null) continue;
+            if (!hubo) Physics.SyncTransforms();
+            hubo = true;
+            Debug.Log("[Enemigos y Zonas] " + a.raiz + " no tenia NavMesh (se perdio el archivo): horneando de nuevo.", g);
+            GuardarNavMesh(s);
+        }
+        if (hubo) EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
     }
 
     static void GuardarNavMesh(NavMeshSurface surface)
@@ -264,7 +365,7 @@ public static class EnemigosZonasSetup
                 if (mano) manos.Add(mano);
             }
 
-            if (a.prefab == PrefabEstatua) CrearLlave(grupo.transform, manos);
+            if (a.prefab == PrefabEstatua) CrearLlave(grupo.transform, manos, a.cerrada ? area.transform : null);
             Debug.Log("[Enemigos y Zonas] " + a.raiz + ": " + puntos.Count + " x " + prefab.name, grupo);
         }
     }
@@ -305,6 +406,7 @@ public static class EnemigosZonasSetup
         Transform faro = area.Find("Faro");
         bool cercaFaro = a.raiz == "Zona Roja" && faro;
 
+        if (a.cerrada) Physics.SyncTransforms();
         var rnd = new System.Random(a.raiz.GetHashCode() & 0x7fffffff);
         var candidatos = new List<Vector3>();
         var camino = new NavMeshPath();
@@ -322,6 +424,7 @@ public static class EnemigosZonasSetup
             Vector3 q = hit.position;
             if (q.x < pisos.min.x || q.x > pisos.max.x || q.z < pisos.min.z || q.z > pisos.max.z) continue;
             if (Plano(q - entrada) < a.distanciaEntrada) continue;
+            if (a.cerrada && !ZonaCerrada.Dentro(area, q)) continue;
             if (exigirCamino && !cercaFaro && (!NavMesh.CalculatePath(entrada, q, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete)) continue;
             candidatos.Add(q);
         }
@@ -342,7 +445,7 @@ public static class EnemigosZonasSetup
 
     // ------------------------------------------------------------------- Llave
 
-    static void CrearLlave(Transform grupo, List<Transform> manos)
+    static void CrearLlave(Transform grupo, List<Transform> manos, Transform recinto)
     {
         var llave = GameObject.CreatePrimitive(PrimitiveType.Cube);
         llave.name = "Llave Cloacas";
@@ -371,6 +474,7 @@ public static class EnemigosZonasSetup
 
         var aleatoria = llave.AddComponent<LlaveAleatoria>();
         aleatoria.manos = manos.ToArray();
+        aleatoria.recinto = recinto;
     }
 
     static Material CrearMaterialLlave()

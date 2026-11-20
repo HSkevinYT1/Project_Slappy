@@ -39,13 +39,36 @@ public static class ZonaPrincipalEstacionSetup
             var ya = zona.transform.Find(Nombre);
             if (!ya) { Crear(); return; }
             if (!ya.Find(MarcaLuces)) LucesComoSotano(ya.gameObject);
+            else if (!ya.Find(MarcaSilencio)) SilenciarLuces(ya.gameObject);
         };
     }
 
     // ================================================================== Luces con el efecto del sotano
-    // Todas las luces de la estacion fallan y suenan como el foco del sotano (LuzParpadeante, con sus mismos ajustes
-    // y sonidos). El brillo de su pieza (tubo, letrero, vidrio) sigue a la luz.
+    // Todas las luces de la estacion fallan como el foco del sotano (LuzParpadeante, con sus mismos ajustes).
+    // El brillo de su pieza (tubo, letrero, vidrio) sigue a la luz. Van SIN sonido: el zumbido y las chispas
+    // del foco fallando solo se oyen en la tienda/sotano (con sonido se oian por toda la Zona Principal y sus pasillos).
+    // Para devolverle el sonido a una luz: marcar "Con Sonido" en su LuzParpadeante.
     const string MarcaLuces = "_luces como sotano";
+    const string MarcaSilencio = "_luces sin sonido";
+
+    // Una sola vez (las estaciones armadas antes copiaron tambien el sonido del sotano)
+    static void SilenciarLuces(GameObject raiz)
+    {
+        int n = 0;
+        foreach (LuzParpadeante lp in raiz.GetComponentsInChildren<LuzParpadeante>(true))
+        {
+            if (!lp.conSonido) continue;
+            Undo.RecordObject(lp, "Luces sin sonido");
+            lp.conSonido = false;
+            EditorUtility.SetDirty(lp);
+            n++;
+        }
+        var marca = new GameObject(MarcaSilencio);
+        Undo.RegisterCreatedObjectUndo(marca, "Luces sin sonido");
+        marca.transform.SetParent(raiz.transform, false);
+        EditorSceneManager.MarkSceneDirty(raiz.scene);
+        Debug.Log($"[Estacion] {n} luces de la estacion siguen parpadeando pero sin sonido (el foco fallando solo suena en la tienda/sotano). Guarda la escena (Ctrl+S).", raiz);
+    }
 
     [MenuItem("Tools/Zona Principal/Luces como el sotano")]
     static void LucesComoSotanoMenu()
@@ -68,6 +91,7 @@ public static class ZonaPrincipalEstacionSetup
             if (!lp) lp = Undo.AddComponent<LuzParpadeante>(l.gameObject);
             else Undo.RecordObject(lp, "Luces como el sotano");
             if (modelo) EditorUtility.CopySerialized(modelo, lp);
+            lp.conSonido = false;   // parpadea como el del sotano, pero sin su sonido
             // Pieza que brilla con la luz: la mas cercana con emision dentro del mismo grupo
             Renderer foco = null; float mejor = float.MaxValue;
             Transform grupo = l.transform.parent ? l.transform.parent : l.transform;
@@ -87,7 +111,7 @@ public static class ZonaPrincipalEstacionSetup
         Undo.RegisterCreatedObjectUndo(marca, "Luces como el sotano");
         marca.transform.SetParent(raiz.transform, false);
         EditorSceneManager.MarkSceneDirty(raiz.scene);
-        Debug.Log($"[Estacion] {n} luces con el efecto y el sonido del foco del sotano{(modelo ? " (copiado de " + modelo.name + ")" : " (no se encontro el del sotano: valores por defecto)")}. Guarda la escena (Ctrl+S).", raiz);
+        Debug.Log($"[Estacion] {n} luces con el efecto del foco del sotano (sin sonido){(modelo ? " (copiado de " + modelo.name + ")" : " (no se encontro el del sotano: valores por defecto)")}. Guarda la escena (Ctrl+S).", raiz);
     }
 
     [MenuItem("Tools/Zona Principal/Estacion de metro")]
@@ -220,6 +244,7 @@ public static class ZonaPrincipalEstacionSetup
                     lp.foco = dif.GetComponent<Renderer>();
                     lp.brilloFoco = new Color(0.85f, 0.95f, 1f) * 1.6f;
                     lp.probApagon = 0.45f;
+                    lp.conSonido = false;
                 }
             }
     }

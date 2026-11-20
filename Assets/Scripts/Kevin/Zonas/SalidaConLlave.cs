@@ -16,14 +16,21 @@ public class SalidaConLlave : MonoBehaviour
     public ReceptorObjeto cerradura;
     [Tooltip("Area de la zona. El jugador tiene que estar dentro para que se cierre la reja")]
     public ZonaVolumen area;
+    [Tooltip("Opcional: raiz del recinto cerrado (ej: Cloacas). La reja solo se cierra si el jugador esta DENTRO de sus paredes")]
+    public Transform recinto;
     [Tooltip("Metros hacia adentro (contra el eje azul de la reja) que tiene que avanzar el jugador para que se cierre")]
     public float metrosParaCerrar = 6f;
     public AudioClip sonidoCerrar;
     public AudioClip sonidoAbrir;
     [Range(0f, 1f)] public float volumen = 1f;
 
-    [TextArea] public string avisoCerrar = "La reja se cerro detras de ti... una de esas cosas tiene la llave.";
-    [TextArea] public string avisoAbrir = "La reja se abre. Ya puedes salir.";
+    [Header("Mision (cartel arriba a la izquierda)")]
+    [Tooltip("Al cerrarse la reja")]
+    public string misionBuscar = "Busca la llave";
+    [Tooltip("Con la llave en el inventario")]
+    public string misionUsar = "Usa la llave en la cerradura de la reja";
+    [Tooltip("Con la reja abierta (se quita al salir del area)")]
+    public string misionSalir = "Sal de las cloacas";
 
     public UnityEvent alAbrir;
 
@@ -31,26 +38,69 @@ public class SalidaConLlave : MonoBehaviour
     public bool Abierta { get; private set; }
 
     Transform jugador;
+    float proximaRevision;
+    bool mostrandoSalir;
 
     void Awake()
     {
-        if (cerradura != null) cerradura.alRecibir.AddListener(_ => Abrir());
+        if (cerradura != null)
+        {
+            // Si se rehizo la llave (Tools > Enemigos y Zonas > Rehacer todo) la referencia se pierde:
+            // sin ella la cerradura aceptaria cualquier objeto, asi que se busca la llave de nuevo
+            if (cerradura.objetoEsperado == null)
+            {
+                LlaveAleatoria llave = FindFirstObjectByType<LlaveAleatoria>(FindObjectsInactive.Include);
+                if (llave != null) cerradura.objetoEsperado = llave.GetComponent<Grabbable>();
+            }
+            cerradura.alRecibir.AddListener(_ => Abrir());
+        }
     }
 
     void Update()
     {
-        if (Cerrada || Abierta || reja == null) return;
+        if (reja == null) return;
         if (jugador == null) { jugador = HUD.Jugador(); if (jugador == null) return; }
+
+        // Ya abierta: el cartel de "salir" se quita cuando el jugador deja el area
+        if (Abierta)
+        {
+            if (mostrandoSalir && area != null && !area.Contiene(jugador.position))
+            {
+                mostrandoSalir = false;
+                if (MisionHUD.Actual == misionSalir) MisionHUD.Ocultar();
+            }
+            return;
+        }
+        // Encerrado: buscar la llave, y con la llave en el inventario, usarla en la cerradura
+        if (Cerrada)
+        {
+            MisionHUD.Mostrar(TieneLaLlave() ? misionUsar : misionBuscar);
+            return;
+        }
         if (area != null && !area.Contiene(jugador.position)) return;
 
         // El eje azul de la reja apunta hacia afuera de la zona
         float adentro = -Vector3.Dot(jugador.position - reja.transform.position, reja.transform.forward);
         if (adentro < metrosParaCerrar) return;
 
+        // Que este de verdad dentro de las paredes (no rodeando el recinto por fuera)
+        if (recinto != null)
+        {
+            if (Time.time < proximaRevision) return;
+            proximaRevision = Time.time + 0.25f;
+            if (!ZonaCerrada.Dentro(recinto, jugador.position)) return;
+        }
+
         Cerrada = true;
         reja.Cerrar();
         Sonar(sonidoCerrar);
-        if (!string.IsNullOrEmpty(avisoCerrar)) HUD.Aviso(avisoCerrar, 5f);
+        MisionHUD.Mostrar(misionBuscar);
+    }
+
+    bool TieneLaLlave()
+    {
+        Grabbable llave = cerradura != null ? cerradura.objetoEsperado : null;
+        return llave != null && Inventario.Instance != null && Inventario.Instance.IndiceDe(llave) >= 0;
     }
 
     // La llama la cerradura al recibir la llave (o un UnityEvent)
@@ -60,7 +110,8 @@ public class SalidaConLlave : MonoBehaviour
         Abierta = true;
         if (reja != null) reja.Abrir();
         Sonar(sonidoAbrir);
-        if (!string.IsNullOrEmpty(avisoAbrir)) HUD.Aviso(avisoAbrir, 4f);
+        MisionHUD.Mostrar(misionSalir);
+        mostrandoSalir = true;
 
         ProgresoCaminos p = ProgresoCaminos.Instance;
         if (p != null && p.TramoActual != null && p.TramoActual.nombre == zona) p.CompletarZonaActual();

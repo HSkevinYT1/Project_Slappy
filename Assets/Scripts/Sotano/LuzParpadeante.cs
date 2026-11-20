@@ -30,6 +30,8 @@ public class LuzParpadeante : MonoBehaviour
     public Vector2 duracionApagon = new Vector2(0.4f, 1.6f);
 
     [Header("Sonido")]
+    [Tooltip("Desmarcado: la luz parpadea igual pero en silencio (ej: las luces de la estacion, para que el foco fallando solo se oiga en la tienda/sotano).")]
+    public bool conSonido = true;
     [Tooltip("Zumbido suave de fondo, en bucle (suena siempre que la luz esta encendida). Vacio = se genera por codigo.")]
     public AudioClip zumbido;
     [Tooltip("Chisporroteo electrico en bucle que SOLO suena durante las fallas. Vacio = se genera por codigo.")]
@@ -60,7 +62,7 @@ public class LuzParpadeante : MonoBehaviour
         intensidadBase = luz.intensity;
         bloque = new MaterialPropertyBlock();
         proximaFalla = Time.time + Random.Range(entreFallas.x, entreFallas.y);
-        PrepararSonido();
+        if (conSonido) PrepararSonido();
     }
 
     void Update()
@@ -128,6 +130,12 @@ public class LuzParpadeante : MonoBehaviour
 
     void Sonar(float nivel)
     {
+        if (!conSonido)
+        {
+            if (fuenteZumbido) fuenteZumbido.volume = 0f;
+            if (fuenteChisporroteo) fuenteChisporroteo.volume = 0f;
+            return;
+        }
         // Tras recompilar en Play las fuentes de sonido se pierden: se vuelven a armar.
         if (!fuenteZumbido && !fuenteChispas)
         {

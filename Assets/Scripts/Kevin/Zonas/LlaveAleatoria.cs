@@ -8,6 +8,8 @@ public class LlaveAleatoria : MonoBehaviour
 {
     // Manos posibles (un hijo "Mano" de cada estatua)
     public Transform[] manos;
+    [Tooltip("Opcional: recinto cerrado (ej: Cloacas). Solo se eligen estatuas que esten DENTRO de sus paredes")]
+    public Transform recinto;
 
     // Sonido de la llave. Vacio = un tintineo metalico generado por codigo
     public AudioClip sonido;
@@ -33,20 +35,24 @@ public class LlaveAleatoria : MonoBehaviour
     // Pone la llave en la mano de una estatua al azar
     public void ElegirMano()
     {
-        int validas = 0;
-        foreach (Transform m in manos) if (m != null) validas++;
-        if (validas == 0)
+        var validas = new System.Collections.Generic.List<Transform>();
+        foreach (Transform m in manos) if (m != null) validas.Add(m);
+        if (validas.Count == 0)
         {
             Debug.LogWarning(name + ": no tiene manos asignadas, se queda donde esta.", this);
             return;
         }
 
-        int elegida = Random.Range(0, validas);
-        foreach (Transform m in manos)
+        // Solo estatuas dentro de las paredes del recinto (si alguna quedo por fuera, el jugador nunca la alcanzaria)
+        if (recinto != null)
         {
-            if (m == null) continue;
-            if (elegida-- == 0) { ManoActual = m; break; }
+            var dentro = validas.FindAll(m => ZonaCerrada.Dentro(recinto, new Vector3(m.position.x, recinto.position.y, m.position.z)));
+            if (dentro.Count > 0) validas = dentro;
+            else Debug.LogWarning(name + ": ninguna estatua esta dentro de " + recinto.name +
+                                  ". Usa Tools > Enemigos y Zonas > Recolocar estatuas de las Cloacas.", this);
         }
+
+        ManoActual = validas[Random.Range(0, validas.Count)];
 
         transform.SetParent(ManoActual, false);
         transform.localPosition = Vector3.zero;
