@@ -125,7 +125,7 @@ public static class TexturasZonasSetup
 
     static readonly Dictionary<string, Mesh> mallas = new Dictionary<string, Mesh>();
 
-    static Mesh MallaUVMetros(MeshFilter mf)
+    internal static Mesh MallaUVMetros(MeshFilter mf)
     {
         Mesh orig = mf.sharedMesh;
         if (orig.name.StartsWith("UVM_")) return orig;
