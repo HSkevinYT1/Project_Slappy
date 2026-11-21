@@ -24,10 +24,23 @@ public class PuzzlePalancas : MonoBehaviour
     public string nombreCamara = "CAM 04  -  SALA DE ENERGIA";
     [Tooltip("Material con el shader Slappy/CamaraSeguridad")]
     public Material filtroCamara;
-    [Tooltip("La manija que le falta a la palanca rota")]
+    [Tooltip("La manija que le falta a la palanca rota (si hay una rota)")]
     public Grabbable pieza;
     [Tooltip("Tramo de ProgresoCaminos que se completa")]
     public string zona = "Backrooms";
+
+    [Header("Boton y portal (al bajar todas)")]
+    [Tooltip("Boton debajo de los focos: se desbloquea (y brilla) al bajar la ultima palanca")]
+    public Interactable boton;
+    public Transform botonPulsador;
+    public Renderer luzBoton;
+    public Highlightable brilloBoton;
+    [Tooltip("Donde deja el portal al jugador (la salida de la zona, mirando hacia la estacion)")]
+    public Transform salida;
+    public Material materialPortal;
+
+    public bool BotonListo { get; private set; }
+    public bool PortalAbierto { get; private set; }
 
     [Header("Focos")]
     [ColorUsage(false, true)] public Color colorApagado = new Color(0.25f, 0.03f, 0.02f);
@@ -42,8 +55,8 @@ public class PuzzlePalancas : MonoBehaviour
     public float prenderTras = 0.8f;
 
     [Header("Pensamientos")]
-    [TextArea] public string trasPrimera = "Algo se encendió en algún lado... Ese tablero cuenta las palancas.";
-    [TextArea] public string trasTodas = "Las cuatro. Eso debería abrir algo.";
+    [TextArea] public string trasPrimera = "Hay más de una palanca, al parecer.";
+    [TextArea] public string trasTodas = "";
 
     public int Activadas { get; private set; }
     public int Total => palancas != null ? palancas.Length : 0;
@@ -70,6 +83,12 @@ public class PuzzlePalancas : MonoBehaviour
         foreach (Palanca p in palancas) if (p != null) p.puzzle = this;
         for (int i = 0; i < Cuantos(); i++) Foco(i, 0f);
         Contador();
+        if (boton != null)
+        {
+            boton.onInteract.AddListener(_ => Presionar());
+            boton.enabled = false;
+        }
+        LuzBoton(0f);
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
@@ -96,6 +115,13 @@ public class PuzzlePalancas : MonoBehaviour
         Activadas++;
         StartCoroutine(Prender(i));
         Contador();
+        // La ultima: tambien se ve como se desbloquea el boton de abajo (brilla)
+        if (Completo)
+        {
+            yield return new WaitForSeconds(0.7f);
+            DesbloquearBoton();
+            yield return new WaitForSeconds(0.9f);
+        }
         yield return new WaitForSeconds(Mathf.Max(0.5f, duracionCamara - prenderTras));
 
         VistaSeguridad.Instancia.Cerrar();
@@ -110,8 +136,64 @@ public class PuzzlePalancas : MonoBehaviour
     void Completar()
     {
         Pensamiento.Decir("palancas.todas", 0.3f, trasTodas);
-        ProgresoCaminos p = ProgresoCaminos.Instance;
-        if (p != null && p.TramoActual != null && p.TramoActual.nombre == zona) p.CompletarZonaActual();
+        // Sin boton (version vieja): se completa ya. Con boton: al cruzar el portal
+        if (boton == null)
+        {
+            ProgresoCaminos p = ProgresoCaminos.Instance;
+            if (p != null && p.TramoActual != null && p.TramoActual.nombre == zona) p.CompletarZonaActual();
+        }
+    }
+
+    // ------------------------------------------------------------------ Boton y portal
+
+    void DesbloquearBoton()
+    {
+        if (boton == null || BotonListo) return;
+        BotonListo = true;
+        boton.enabled = true;
+        LuzBoton(1f);
+        if (brilloBoton != null) brilloBoton.Show();
+    }
+
+    void LuzBoton(float k)
+    {
+        if (luzBoton == null) return;
+        luzBoton.GetPropertyBlock(bloque);
+        bloque.SetColor("_EmissionColor", Color.Lerp(new Color(0.05f, 0.01f, 0.01f), new Color(0.4f, 2.6f, 0.9f), k));
+        bloque.SetColor("_BaseColor", Color.Lerp(new Color(0.15f, 0.05f, 0.05f), new Color(0.5f, 1f, 0.6f), k));
+        luzBoton.SetPropertyBlock(bloque);
+    }
+
+    void Presionar()
+    {
+        if (!BotonListo || PortalAbierto) return;
+        PortalAbierto = true;
+        boton.enabled = false;
+        if (brilloBoton != null) brilloBoton.Hide();
+        StartCoroutine(AbrirPortal());
+    }
+
+    // El pulsador se hunde y aparece el portal detras del jugador
+    IEnumerator AbrirPortal()
+    {
+        if (botonPulsador != null)
+        {
+            Vector3 p0 = botonPulsador.localPosition;
+            for (float t = 0f; t < 0.12f; t += Time.deltaTime) { botonPulsador.localPosition = p0 - Vector3.forward * 0.02f * (t / 0.12f); yield return null; }
+            botonPulsador.localPosition = p0 - Vector3.forward * 0.02f;
+        }
+        LuzBoton(0.25f);
+        yield return new WaitForSeconds(0.5f);
+
+        Transform j = HUD.Jugador();
+        if (j == null) yield break;
+        Vector3 atras = -j.forward; atras.y = 0f; atras.Normalize();
+        float dist = 2.2f;
+        if (Physics.Raycast(j.position + Vector3.up * 1f, atras, out RaycastHit h, dist + 0.6f, ~0, QueryTriggerInteraction.Ignore))
+            dist = Mathf.Max(1.1f, h.distance - 0.6f);
+        Vector3 pos = j.position + atras * dist;
+        if (Physics.Raycast(pos + Vector3.up * 1f, Vector3.down, out RaycastHit hs, 3f, ~0, QueryTriggerInteraction.Ignore)) pos.y = hs.point.y;
+        PortalSalida.Crear(pos, Quaternion.LookRotation(-atras, Vector3.up), salida, zona, materialPortal);
     }
 
     // El foco titila y se queda prendido

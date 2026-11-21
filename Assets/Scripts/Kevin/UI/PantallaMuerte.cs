@@ -181,9 +181,12 @@ public class PantallaMuerte : MonoBehaviour
 
     // ------------------------------------------------------------------ Muerte
 
+    // Debug (PanelDebug): los enemigos no matan
+    public static bool Invencible;
+
     public void Morir(Transform enemigo)
     {
-        if (Muerto || reintentando) return;
+        if (Muerto || reintentando || Invencible) return;
         if (jugador == null) { jugador = HUD.Jugador(); if (jugador != null) cuerpo = jugador.GetComponent<Rigidbody>(); }
         StartCoroutine(Secuencia(enemigo));
     }
@@ -215,10 +218,18 @@ public class PantallaMuerte : MonoBehaviour
 
         Golpe();
 
+        // Algunos enemigos tienen su propia muerte (ej: el gato de los Backrooms te tira al suelo y se sube encima)
+        MuerteGato especial = enemigo != null ? enemigo.GetComponentInParent<MuerteGato>() : null;
+        if (especial != null && camT != null)
+        {
+            vineta.color = new Color(0f, 0f, 0f, 0.6f);
+            yield return especial.Animar(camT, cuerpo != null ? cuerpo.transform : null);
+        }
+
         // Se gira hacia el enemigo de golpe, con un destello rojo y temblor
         Quaternion desde = camT != null ? camT.rotation : Quaternion.identity;
         Vector3 cabeza = enemigo != null ? enemigo.position + Vector3.up * 1.2f : Vector3.zero;
-        for (float t = 0f; t < 1.1f; t += Time.deltaTime)
+        for (float t = 0f; t < 1.1f && especial == null; t += Time.deltaTime)
         {
             float k = Mathf.Clamp01(t / 0.3f);
             k = 1f - (1f - k) * (1f - k);

@@ -5,20 +5,27 @@ using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 
-// Minijuego de las palancas de los Backrooms (ver PuzzlePalancas): todo dentro de "Backrooms/Palancas".
-// - 4 palancas en paredes, repartidas por el mapa (lejos unas de otras). La segunda mas cercana a la entrada esta
-//   ROTA: le falta la manija.
-// - "Manija de palanca": en el suelo, donde terminan las indicaciones ocultas de la piedra ("Destino Indicaciones").
-// - "Tablero": en una pared a media distancia, con 4 focos y un contador.
-// - "Camara Seguridad": en lo alto, unos metros enfrente del tablero, mirandolo (su hijo "Punto de vista" es desde
-//   donde se ve la cinematica; se puede mover y girar).
-// Se aplica sola una vez; rehacer: Tools > Backrooms > Palancas. Ctrl+Z deshace. Despues guarda la escena.
+// Los Backrooms segun el guion (ver BackroomsGuion y PuzzlePalancas). Todo dentro de "Backrooms/Palancas":
+// - "Habitacion Cadaver": el cadaver (con la piedra encima y el gato de sombra al principio), el tablero de focos con
+//   el boton debajo, la camara de seguridad que lo mira, la primera palanca y, en otra pared, el MAPA oculto (solo
+//   se ve con la piedra) con las palancas marcadas.
+// - Las otras 3 palancas repartidas por el mapa, cada una con una marca oculta encima.
+// - "Muro Entrada": la pared que aparece donde estaba la puerta al entrar.
+// - "Salida Portal": donde deja el portal (fuera de la entrada, mirando a la estacion).
+// - Las viejas flechas ocultas ("Indicaciones Ocultas") se apagan. El gato (Enemy 2) recibe un modelo de sombra.
+// Se aplica sola (y rehace la version anterior); rehacer: Tools > Backrooms > Palancas. Despues guarda la escena.
 [InitializeOnLoad]
 public static class BackroomsPalancasSetup
 {
     const string Nombre = "Palancas";
+    const string Version = "_guion v2";
     const string Carpeta = "Assets/Backrooms/Palancas";
+    const string PrefabGato = "Assets/Prefabs/Enemy 2 (gato).prefab";
+    const string ModeloGato = "Assets/Modelos De enemigos/monstruos/gatp.obj";
+    const string ModeloCadaver = "Assets/Modelos De enemigos/Walking (2).fbx";
+    const string ModeloGema = "Assets/Models/Props/Gema especial.fbx";
     const int Cantidad = 4;
     const float AltoPalanca = 1.15f, AltoTablero = 1.5f;
 
@@ -32,7 +39,14 @@ public static class BackroomsPalancasSetup
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         GameObject br = GameObject.Find("Backrooms");
-        if (!br || !br.transform.Find("Inicio") || br.transform.Find(Nombre)) return;
+        if (!br || !br.transform.Find("Inicio")) return;
+        Transform viejo = br.transform.Find(Nombre);
+        if (viejo && viejo.Find(Version)) return;
+        if (viejo)
+        {
+            Debug.Log("[Backrooms] Rehaciendo las palancas segun el guion nuevo.", br);
+            Undo.DestroyObjectImmediate(viejo.gameObject);
+        }
         Aplicar(br.transform);
     }
 
@@ -50,6 +64,7 @@ public static class BackroomsPalancasSetup
 
     static void Aplicar(Transform br)
     {
+        ModeloSombraGato();
         Physics.SyncTransforms();
         var rejilla = new BackroomsVistaSetup.Rejilla(br);
         Vector3 inicioPos = br.Find("Inicio").position;
@@ -59,10 +74,18 @@ public static class BackroomsPalancasSetup
         foreach (float d in dist) if (d < float.MaxValue && d > max) max = d;
         if (max < 10f) { Debug.LogWarning("[Backrooms] Los Backrooms son muy chicos para las palancas.", br); return; }
 
-        Transform destino = br.Find("Destino Indicaciones");
-        Transform caramelo = br.Find("Caramelo Agujereado");
+        // Las flechas viejas (llevaban a la manija de la palanca rota, que ya no existe): se apagan
+        Material pintura = AssetDatabase.LoadAssetAtPath<Material>("Assets/Backrooms/Vista/PinturaFlecha.mat");
+        Transform flechas = br.Find("Indicaciones Ocultas");
+        if (flechas)
+        {
+            Renderer rf = flechas.GetComponentInChildren<Renderer>(true);
+            if (rf != null && rf.sharedMaterial != null) pintura = rf.sharedMaterial;
+            Undo.RecordObject(flechas.gameObject, "Indicaciones");
+            flechas.gameObject.SetActive(false);
+        }
 
-        // Celdas junto a una pared (cada 4 celdas para no probar todas)
+        // Paredes posibles (cada 4 celdas para no probar todas)
         var paredes = new List<Pared>();
         for (int i = 0; i < dist.Length; i += 4)
         {
@@ -70,81 +93,189 @@ public static class BackroomsPalancasSetup
             if (BuscarPared(br, rejilla.Centro(i), rejilla.radio, out Vector3 p, out Vector3 n))
                 paredes.Add(new Pared { punto = p, normal = n, celda = i, dist = dist[i] });
         }
-        if (paredes.Count < Cantidad + 1) { Debug.LogWarning("[Backrooms] No encontre paredes para las palancas.", br); return; }
+        if (paredes.Count < Cantidad + 2) { Debug.LogWarning("[Backrooms] No encontre paredes para las palancas.", br); return; }
 
-        var rnd = new System.Random(1234);
-        // Tablero: a media distancia y con sitio enfrente para la camara
+        // ---- La habitacion del cadaver: el tablero (con sitio para la camara) a media distancia
         Pared tablero = default;
         Vector3 posCam = default;
-        bool hayTablero = false;
+        bool hay = false;
         paredes.Sort((a, b) => Mathf.Abs(a.dist - max * 0.45f).CompareTo(Mathf.Abs(b.dist - max * 0.45f)));
         foreach (Pared w in paredes)
-            if (PoseCamara(w, out posCam)) { tablero = w; hayTablero = true; break; }
-        if (!hayTablero) { Debug.LogWarning("[Backrooms] No encontre una pared con sitio para la camara de seguridad.", br); return; }
+            if (PoseCamara(w, out posCam) && Libre(w.punto + w.normal * 2.4f)) { tablero = w; hay = true; break; }
+        if (!hay) { Debug.LogWarning("[Backrooms] No encontre una habitacion con sitio para el tablero y la camara.", br); return; }
+        Vector3 centro = tablero.punto + tablero.normal * 2.4f;
+        Vector3 ojos = centro + Vector3.up * 1.4f;
 
-        // Palancas: repartidas (cada una lo mas lejos posible de las demas, del tablero y de la manija)
-        var elegidas = new List<Pared>();
-        var evitar = new List<Vector3> { tablero.punto, inicioPos };
-        if (destino) evitar.Add(destino.position);
-        if (caramelo) evitar.Add(caramelo.position);
-        for (int k = 0; k < Cantidad; k++)
+        // Primera palanca: en la misma habitacion (se ve desde el centro), en otra pared
+        Pared primera = default; hay = false; float mejor = float.MaxValue;
+        foreach (Pared w in paredes)
         {
-            Pared mejor = default; float mejorPuntos = float.MinValue;
+            float d = Plano(w.punto - tablero.punto);
+            if (d < 2.2f || d > 8f) continue;
+            if (Vector3.Dot(w.normal, tablero.normal) > 0.9f && d < 2f) continue;
+            if (Physics.Linecast(ojos, w.punto + Vector3.up * AltoPalanca + w.normal * 0.3f, ~0, QueryTriggerInteraction.Ignore)) continue;
+            float puntos = Mathf.Abs(d - 4f);
+            if (puntos < mejor) { mejor = puntos; primera = w; hay = true; }
+        }
+        if (!hay) { Debug.LogWarning("[Backrooms] No hay pared para la primera palanca en la habitacion del tablero.", br); return; }
+
+        // Mapa: otra pared de la habitacion, lo mas lejos del tablero
+        Pared mapa = default; bool hayMapa = false; float lejos = -1f;
+        foreach (Pared w in paredes)
+        {
+            float d = Plano(w.punto - centro);
+            if (d < 1.2f || d > 7f || Plano(w.punto - primera.punto) < 1.6f || Plano(w.punto - tablero.punto) < 1.8f) continue;
+            if (Physics.Linecast(ojos, w.punto + Vector3.up * 1.55f + w.normal * 0.3f, ~0, QueryTriggerInteraction.Ignore)) continue;
+            float dt = Plano(w.punto - tablero.punto);
+            if (dt > lejos) { lejos = dt; mapa = w; hayMapa = true; }
+        }
+
+        // Las otras palancas: repartidas lejos de la habitacion y entre si
+        var elegidas = new List<Pared> { primera };
+        var evitar = new List<Vector3> { inicioPos, centro };
+        var rnd = new System.Random(1234);
+        for (int k = 1; k < Cantidad; k++)
+        {
+            Pared mejorP = default; float mejorPuntos = float.MinValue;
             foreach (Pared w in paredes)
             {
-                if (w.dist < max * 0.15f) continue;
+                if (w.dist < max * 0.15f || Plano(w.punto - centro) < 9f) continue;
                 float cerca = float.MaxValue;
                 foreach (Vector3 e in evitar) cerca = Mathf.Min(cerca, Plano(w.punto - e));
                 foreach (Pared e in elegidas) cerca = Mathf.Min(cerca, Plano(w.punto - e.punto));
                 if (cerca < 6f) continue;
                 float puntos = cerca + (float)rnd.NextDouble() * 2f;
-                if (puntos > mejorPuntos) { mejorPuntos = puntos; mejor = w; }
+                if (puntos > mejorPuntos) { mejorPuntos = puntos; mejorP = w; }
             }
             if (mejorPuntos == float.MinValue) break;
-            elegidas.Add(mejor);
+            elegidas.Add(mejorP);
         }
         if (elegidas.Count < Cantidad) Debug.LogWarning("[Backrooms] Solo hubo sitio para " + elegidas.Count + " palancas.", br);
-        // De la mas cercana a la entrada a la mas lejana; la segunda es la rota
-        elegidas.Sort((a, b) => a.dist.CompareTo(b.dist));
-        int rota = Mathf.Min(1, elegidas.Count - 1);
 
+        // ---- Materiales
         Directory.CreateDirectory(Carpeta);
         Material metal = Mat("Metal", new Color(0.23f, 0.23f, 0.22f), 0.55f, 0.45f);
         Material oscuro = Mat("Panel", new Color(0.07f, 0.07f, 0.075f), 0.3f, 0.2f);
         Material rojo = Mat("Pomo", new Color(0.7f, 0.06f, 0.05f), 0.6f, 0f);
         Material foco = Mat("Foco", new Color(0.18f, 0.05f, 0.04f), 0.8f, 0f, true);
         Material led = Mat("Led", new Color(1f, 0.1f, 0.08f), 0.5f, 0f, true, new Color(3f, 0.2f, 0.15f));
+        Material boton = Mat("Boton", new Color(0.15f, 0.05f, 0.05f), 0.7f, 0f, true);
+        Material sangre = Mat("Sangre", new Color(0.18f, 0.01f, 0.01f), 0.85f, 0f);
+        Material portal = Mat("Portal", new Color(0.25f, 0.15f, 0.6f), 0.9f, 0f, true, new Color(1.4f, 0.9f, 4f));
         Material filtro = MaterialFiltro();
 
         var raiz = new GameObject(Nombre);
         Undo.RegisterCreatedObjectUndo(raiz, "Palancas");
         raiz.transform.SetParent(br, true);
-        raiz.transform.position = tablero.punto;
+        raiz.transform.position = centro;
+        new GameObject(Version).transform.SetParent(raiz.transform, false);
         var puzzle = raiz.AddComponent<PuzzlePalancas>();
+        var guion = raiz.AddComponent<BackroomsGuion>();
 
-        // Manija suelta (en el destino de las indicaciones)
-        Vector3 suelo = destino ? destino.position : rejilla.Centro(inicio);
-        if (Physics.Raycast(suelo + Vector3.up * 1f, Vector3.down, out RaycastHit hs, 3f, ~0, QueryTriggerInteraction.Ignore)) suelo = hs.point;
-        Grabbable pieza = CrearPieza(raiz.transform, suelo, metal, rojo);
-
+        // ---- Palancas (ninguna rota en el guion nuevo)
         var palancas = new List<Palanca>();
         for (int i = 0; i < elegidas.Count; i++)
-            palancas.Add(CrearPalanca(raiz.transform, "Palanca " + (i + 1), elegidas[i], i == rota, pieza, metal, oscuro, rojo));
+            palancas.Add(CrearPalanca(raiz.transform, "Palanca " + (i + 1), elegidas[i], metal, oscuro, rojo));
 
-        CrearTablero(raiz.transform, tablero, metal, oscuro, foco, puzzle, palancas.Count);
+        CrearTablero(raiz.transform, tablero, metal, oscuro, foco, boton, puzzle, palancas.Count);
         Transform vista = CrearCamara(raiz.transform, posCam, tablero, metal, oscuro, led);
 
+        // ---- Habitacion: cadaver, piedra, gato, mapa
+        Transform cuarto = new GameObject("Habitacion Cadaver").transform;
+        cuarto.SetParent(raiz.transform, false);
+        cuarto.position = centro;
+        var caja = cuarto.gameObject.AddComponent<BoxCollider>();
+        caja.isTrigger = true;
+        cuarto.gameObject.layer = 2;
+        caja.center = Vector3.up * 1.5f;
+        caja.size = new Vector3(Medida(centro, Vector3.right), 3f, Medida(centro, Vector3.forward));
+
+        Vector3 lado = Vector3.Cross(Vector3.up, tablero.normal).normalized;
+        Bounds cuerpo = CrearCadaver(cuarto, centro, lado, sangre);
+        MoverPiedra(br, cuerpo);
+
+        var puntoGato = new GameObject("Punto Gato").transform;
+        puntoGato.SetParent(cuarto, false);
+        puntoGato.SetPositionAndRotation(new Vector3(cuerpo.center.x, centro.y, cuerpo.center.z), Quaternion.LookRotation(-tablero.normal));
+
+        // A donde sale corriendo: lo mas lejos caminando de la habitacion
+        Transform huida = new GameObject("Huida Gato").transform;
+        huida.SetParent(raiz.transform, false);
+        huida.position = centro;
+        if (rejilla.Celda(centro, out int celdaCuarto))
+        {
+            float[] dc = rejilla.Distancias(celdaCuarto);
+            int lejana = celdaCuarto; float m = 0f;
+            for (int i = 0; i < dc.Length; i++) if (dc[i] < float.MaxValue && dc[i] > m) { m = dc[i]; lejana = i; }
+            huida.position = rejilla.Centro(lejana);
+        }
+
+        // Mapa oculto con las palancas marcadas, y marcas ocultas sobre las demas palancas
+        Mesh quad = Resources.GetBuiltinResource<Mesh>("Quad.fbx");
+        if (pintura != null)
+        {
+            if (hayMapa)
+            {
+                Texture2D tex = TexturaMapa(rejilla, dist, elegidas, centro);
+                Material mm = MaterialPintura("Mapa", pintura, tex);
+                Inscripcion(cuarto, quad, mm, "Mapa Oculto", mapa.punto + Vector3.up * 1.55f, mapa.normal, 1.4f);
+            }
+            else Debug.LogWarning("[Backrooms] No encontre pared libre para el mapa en la habitacion.", raiz);
+            Material mx = MaterialPintura("Marca X", pintura, TexturaX());
+            for (int i = 1; i < elegidas.Count; i++)
+                Inscripcion(raiz.transform, quad, mx, "Marca Palanca " + (i + 1), elegidas[i].punto + Vector3.up * (AltoPalanca + 0.6f), elegidas[i].normal, 0.45f);
+        }
+
+        // ---- Entrada (pared que aparece) y salida del portal
+        Transform entrada = br.Find("Entrada Pasillo");
+        if (!entrada) entrada = br.Find("Inicio");
+        GameObject muro = CrearMuroEntrada(raiz.transform, br, entrada);
+        Vector3 fuera = entrada.forward; fuera.y = 0f; fuera.Normalize();
+        var salida = new GameObject("Salida Portal").transform;
+        salida.SetParent(raiz.transform, false);
+        Vector3 ps = entrada.position + fuera * 2.5f;
+        if (Physics.Raycast(ps + Vector3.up * 1.5f, Vector3.down, out RaycastHit hs, 4f, ~0, QueryTriggerInteraction.Ignore)) ps.y = hs.point.y + 0.05f;
+        salida.SetPositionAndRotation(ps, Quaternion.LookRotation(fuera, Vector3.up));
+
+        // ---- Referencias
         puzzle.palancas = palancas.ToArray();
         puzzle.camaraSeguridad = vista;
         puzzle.filtroCamara = filtro;
-        puzzle.pieza = pieza;
+        puzzle.salida = salida;
+        puzzle.materialPortal = portal;
+        guion.entrada = entrada;
+        guion.muroEntrada = muro;
+        guion.habitacion = caja;
+        guion.puntoGato = puntoGato;
+        guion.huidaGato = huida;
+        guion.origenGrito = huida;
+        guion.gato = BuscarGato();
+        if (!guion.gato) Debug.LogWarning("[Backrooms] No encontre el gato (Enemy 2) en la escena.", raiz);
 
         EditorSceneManager.MarkSceneDirty(br.gameObject.scene);
-        Debug.Log("[Backrooms] Palancas listas: " + palancas.Count + " palancas (la " + (rota + 1) + " rota, su manija en \"Destino Indicaciones\"), " +
-                  "tablero y camara de seguridad. Se pueden mover. Guarda la escena (Ctrl+S).", raiz);
+        Debug.Log("[Backrooms] Listo segun el guion: habitacion del cadaver (gato, piedra, tablero, camara, mapa oculto), " +
+                  palancas.Count + " palancas, boton y portal, y la pared de la entrada. Se pueden mover. Guarda la escena (Ctrl+S).", raiz);
     }
 
     static float Plano(Vector3 v) => new Vector2(v.x, v.z).magnitude;
+
+    static bool Libre(Vector3 suelo) => !Physics.CheckCapsule(suelo + Vector3.up * 0.4f, suelo + Vector3.up * 1.6f, 0.3f, ~0, QueryTriggerInteraction.Ignore);
+
+    // Ancho de la habitacion en una direccion (de pared a pared, a la altura del pecho), entre 4 y 14 m
+    static float Medida(Vector3 centro, Vector3 dir)
+    {
+        Vector3 o = centro + Vector3.up * 1.2f;
+        float a = Physics.Raycast(o, dir, out RaycastHit h1, 8f, ~0, QueryTriggerInteraction.Ignore) ? h1.distance : 6f;
+        float b = Physics.Raycast(o, -dir, out RaycastHit h2, 8f, ~0, QueryTriggerInteraction.Ignore) ? h2.distance : 6f;
+        return Mathf.Clamp(a + b, 4f, 14f);
+    }
+
+    static JefeIndigoAI BuscarGato()
+    {
+        foreach (JefeIndigoAI e in Object.FindObjectsByType<JefeIndigoAI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (e.name.ToLowerInvariant().Contains("gato")) return e;
+        return null;
+    }
 
     // Pared a menos de medio metro del borde de la celda (hacia uno de los 4 lados)
     static bool BuscarPared(Transform br, Vector3 celda, float radio, out Vector3 punto, out Vector3 normal)
@@ -214,10 +345,9 @@ public static class BackroomsPalancasSetup
         return m;
     }
 
-    static Palanca CrearPalanca(Transform padre, string nombre, Pared w, bool rota, Grabbable pieza, Material metal, Material oscuro, Material rojo)
+    static Palanca CrearPalanca(Transform padre, string nombre, Pared w, Material metal, Material oscuro, Material rojo)
     {
         var go = new GameObject(nombre);
-        Undo.RegisterCreatedObjectUndo(go, nombre);
         go.transform.SetParent(padre, false);
         go.transform.SetPositionAndRotation(w.punto + Vector3.up * AltoPalanca + w.normal * 0.01f, Quaternion.LookRotation(w.normal));
 
@@ -239,76 +369,40 @@ public static class BackroomsPalancasSetup
         col.size = new Vector3(0.32f, 0.7f, 0.4f);
 
         var inter = go.AddComponent<Interactable>();
-        inter.SetPrompt(rota ? "Revisar palanca" : "Bajar palanca");
+        inter.SetPrompt("Bajar palanca");
         var p = go.AddComponent<Palanca>();
         p.pivote = pivote;
         p.manija = manija;
-        p.rota = rota;
+        p.rota = false;
         p.anguloArriba = 40f;
         p.anguloAbajo = 140f;
         pivote.localRotation = Quaternion.Euler(40f, 0f, 0f);
-        if (rota)
-        {
-            manija.SetActive(false);
-            var r = go.AddComponent<ReceptorObjeto>();
-            r.objetoEsperado = pieza;
-            r.prompt = "Poner la manija";
-            r.puntoMano = pivote;
-            r.ocultarAlRecibir = true;
-        }
         return p;
     }
 
-    static Grabbable CrearPieza(Transform padre, Vector3 suelo, Material metal, Material rojo)
-    {
-        var go = new GameObject("Manija de palanca");
-        Undo.RegisterCreatedObjectUndo(go, "Manija");
-        go.transform.SetParent(padre, true);
-        // Tirada en el suelo
-        go.transform.SetPositionAndRotation(suelo + Vector3.up * 0.04f, Quaternion.Euler(0f, Random.Range(0f, 360f), 90f));
-        Transform m = Manija(go.transform, "Modelo", metal, rojo).transform;
-        m.localPosition = new Vector3(0f, -0.2f, 0f);
-        var col = go.AddComponent<BoxCollider>();
-        col.center = Vector3.zero;
-        col.size = new Vector3(0.14f, 0.5f, 0.14f);
-        var rb = go.AddComponent<Rigidbody>();
-        rb.isKinematic = true;
-        rb.mass = 0.4f;
-        var inter = go.AddComponent<Interactable>();
-        inter.SetPrompt("Recoger manija");
-        var grab = go.AddComponent<Grabbable>();
-        if (inter.onInteract == null) inter.onInteract = new UnityEngine.Events.UnityEvent<PlayerInteractor>();
-        UnityEventTools.AddPersistentListener(inter.onInteract, grab.PickUp);
-        var oi = go.AddComponent<ObjetoInventario>();
-        oi.nombre = "Manija";
-        oi.inicial = "M";
-        return grab;
-    }
-
-    static void CrearTablero(Transform padre, Pared w, Material metal, Material oscuro, Material foco, PuzzlePalancas puzzle, int n)
+    static void CrearTablero(Transform padre, Pared w, Material metal, Material oscuro, Material foco, Material matBoton, PuzzlePalancas puzzle, int n)
     {
         var go = new GameObject("Tablero");
-        Undo.RegisterCreatedObjectUndo(go, "Tablero");
         go.transform.SetParent(padre, false);
         go.transform.SetPositionAndRotation(w.punto + Vector3.up * AltoTablero + w.normal * 0.01f, Quaternion.LookRotation(w.normal));
-        Cubo(go.transform, "Marco", new Vector3(0f, 0f, 0.02f), new Vector3(1.42f, 0.86f, 0.04f), metal);
-        Cubo(go.transform, "Panel", new Vector3(0f, 0f, 0.045f), new Vector3(1.3f, 0.74f, 0.02f), oscuro);
+        Cubo(go.transform, "Marco", new Vector3(0f, -0.06f, 0.02f), new Vector3(1.42f, 0.98f, 0.04f), metal);
+        Cubo(go.transform, "Panel", new Vector3(0f, -0.06f, 0.045f), new Vector3(1.3f, 0.86f, 0.02f), oscuro);
         var col = go.AddComponent<BoxCollider>();
-        col.center = new Vector3(0f, 0f, 0.04f);
-        col.size = new Vector3(1.42f, 0.86f, 0.08f);
+        col.center = new Vector3(0f, -0.06f, 0.04f);
+        col.size = new Vector3(1.42f, 0.98f, 0.08f);
 
         var focos = new List<Renderer>();
         var luces = new List<Light>();
         for (int i = 0; i < n; i++)
         {
             float x = Mathf.Lerp(-0.45f, 0.45f, n > 1 ? i / (float)(n - 1) : 0.5f);
-            Cubo(go.transform, "Aro " + (i + 1), new Vector3(x, -0.02f, 0.06f), new Vector3(0.2f, 0.012f, 0.2f), metal, PrimitiveType.Cylinder)
+            Cubo(go.transform, "Aro " + (i + 1), new Vector3(x, 0.05f, 0.06f), new Vector3(0.2f, 0.012f, 0.2f), metal, PrimitiveType.Cylinder)
                 .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            GameObject f = Cubo(go.transform, "Foco " + (i + 1), new Vector3(x, -0.02f, 0.08f), Vector3.one * 0.15f, foco, PrimitiveType.Sphere);
+            GameObject f = Cubo(go.transform, "Foco " + (i + 1), new Vector3(x, 0.05f, 0.08f), Vector3.one * 0.15f, foco, PrimitiveType.Sphere);
             focos.Add(f.GetComponent<Renderer>());
             var lg = new GameObject("Luz " + (i + 1));
             lg.transform.SetParent(go.transform, false);
-            lg.transform.localPosition = new Vector3(x, -0.02f, 0.3f);
+            lg.transform.localPosition = new Vector3(x, 0.05f, 0.3f);
             var l = lg.AddComponent<Light>();
             l.type = LightType.Point;
             l.color = new Color(1f, 0.85f, 0.5f);
@@ -320,8 +414,30 @@ public static class BackroomsPalancasSetup
         puzzle.focos = focos.ToArray();
         puzzle.lucesFocos = luces.ToArray();
 
-        Texto(go.transform, "Titulo", new Vector3(0f, 0.25f, 0.058f), "ENERGÍA", 0.85f, new Color(0.85f, 0.82f, 0.7f));
-        puzzle.contador = Texto(go.transform, "Contador", new Vector3(0f, -0.27f, 0.058f), "0 / " + n, 0.7f, new Color(1f, 0.85f, 0.4f));
+        Texto(go.transform, "Titulo", new Vector3(0f, 0.28f, 0.058f), "ENERGÍA", 0.85f, new Color(0.85f, 0.82f, 0.7f));
+        puzzle.contador = Texto(go.transform, "Contador", new Vector3(0f, -0.13f, 0.058f), "0 / " + n, 0.55f, new Color(1f, 0.85f, 0.4f));
+
+        // Boton debajo de los focos: bloqueado hasta bajar todas (entonces se ilumina y brilla)
+        var b = new GameObject("Boton");
+        b.transform.SetParent(go.transform, false);
+        b.transform.localPosition = new Vector3(0f, -0.36f, 0.05f);
+        Cubo(b.transform, "Base", new Vector3(0f, 0f, 0.01f), new Vector3(0.2f, 0.012f, 0.2f), metal, PrimitiveType.Cylinder)
+            .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        var pulsador = Cubo(b.transform, "Pulsador", new Vector3(0f, 0f, 0.035f), new Vector3(0.13f, 0.03f, 0.13f), matBoton, PrimitiveType.Cylinder);
+        pulsador.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        var bc = b.AddComponent<BoxCollider>();
+        bc.center = new Vector3(0f, 0f, 0.04f);
+        bc.size = new Vector3(0.22f, 0.22f, 0.1f);
+        var inter = b.AddComponent<Interactable>();
+        inter.SetPrompt("Presionar botón");
+        var brillo = b.AddComponent<Highlightable>();
+        var so = new SerializedObject(brillo);
+        so.FindProperty("outlineMaterial").objectReferenceValue = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/GlowMaterial.mat");
+        so.ApplyModifiedPropertiesWithoutUndo();
+        puzzle.boton = inter;
+        puzzle.botonPulsador = pulsador.transform;
+        puzzle.luzBoton = pulsador.GetComponent<Renderer>();
+        puzzle.brilloBoton = brillo;
     }
 
     static TextMeshPro Texto(Transform padre, string nombre, Vector3 pos, string texto, float tam, Color color)
@@ -345,7 +461,6 @@ public static class BackroomsPalancasSetup
     {
         Vector3 mira = w.punto + Vector3.up * AltoTablero;
         var go = new GameObject("Camara Seguridad");
-        Undo.RegisterCreatedObjectUndo(go, "Camara Seguridad");
         go.transform.SetParent(padre, false);
         go.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(mira - pos));
         Cubo(go.transform, "Cuerpo", new Vector3(0f, 0f, -0.05f), new Vector3(0.16f, 0.13f, 0.3f), oscuro);
@@ -353,7 +468,6 @@ public static class BackroomsPalancasSetup
         Cubo(go.transform, "Lente", new Vector3(0f, 0f, 0.11f), new Vector3(0.08f, 0.025f, 0.08f), metal, PrimitiveType.Cylinder)
             .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
         Cubo(go.transform, "Led", new Vector3(0.05f, 0.04f, 0.1f), Vector3.one * 0.015f, led, PrimitiveType.Sphere);
-        // Soporte hasta el techo
         float techo = Physics.Raycast(pos, Vector3.up, out RaycastHit h, 3f, ~0, QueryTriggerInteraction.Ignore) ? h.distance : 0.3f;
         var soporte = Cubo(go.transform, "Soporte", Vector3.zero, new Vector3(0.03f, techo, 0.03f), metal);
         soporte.transform.position = pos + Vector3.up * (techo * 0.5f);
@@ -367,13 +481,367 @@ public static class BackroomsPalancasSetup
         return vista;
     }
 
-    // ------------------------------------------------------------------ Materiales
+    // Cuerpo tirado boca arriba en medio de la habitacion, con un charco de sangre. Devuelve sus limites
+    static Bounds CrearCadaver(Transform padre, Vector3 suelo, Vector3 lado, Material sangre)
+    {
+        Bounds b = new Bounds(suelo + Vector3.up * 0.15f, new Vector3(0.5f, 0.3f, 1.7f));
+        var modelo = AssetDatabase.LoadAssetAtPath<GameObject>(ModeloCadaver);
+        if (modelo != null)
+        {
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(modelo, padre);
+            go.name = "Cadaver";
+            foreach (Animator a in go.GetComponentsInChildren<Animator>()) a.enabled = false;
+            foreach (Collider c in go.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+            go.transform.SetPositionAndRotation(suelo, Quaternion.identity);
+            go.transform.localScale = Vector3.one;
+            // De pie mide ~1.75 m
+            if (Limites(go.transform, out Bounds parado) && parado.size.y > 0.01f) go.transform.localScale = Vector3.one * (1.75f / parado.size.y);
+            // Boca arriba, a lo largo de la pared del tablero
+            go.transform.rotation = Quaternion.LookRotation(-lado, Vector3.up) * Quaternion.Euler(-90f, 0f, 0f);
+            if (Limites(go.transform, out Bounds echado))
+            {
+                go.transform.position += new Vector3(suelo.x - echado.center.x, suelo.y + 0.02f - echado.min.y, suelo.z - echado.center.z);
+                Limites(go.transform, out b);
+            }
+        }
+        else Debug.LogWarning("[Backrooms] No encuentro " + ModeloCadaver + " para el cadaver.");
+
+        var charco = Cubo(padre, "Sangre", new Vector3(0f, 0f, 0f), new Vector3(1.3f, 0.004f, 0.9f), sangre, PrimitiveType.Cylinder);
+        charco.transform.position = new Vector3(b.center.x, suelo.y + 0.006f, b.center.z);
+        charco.transform.rotation = Quaternion.LookRotation(lado, Vector3.up);
+        return b;
+    }
+
+    // La piedra (antes caramelo) pasa a estar encima del cadaver, con el modelo de la gema
+    static void MoverPiedra(Transform br, Bounds cuerpo)
+    {
+        Transform piedra = br.Find("Caramelo Agujereado");
+        if (!piedra) { Debug.LogWarning("[Backrooms] No encontre la piedra (\"Caramelo Agujereado\").", br); return; }
+        Undo.RecordObject(piedra, "Piedra");
+        piedra.position = new Vector3(cuerpo.center.x, cuerpo.max.y + 0.03f, cuerpo.center.z);
+        if (piedra.TryGetComponent(out Interactable inter)) { Undo.RecordObject(inter, "Piedra"); inter.SetPrompt("Recoger piedra"); }
+
+        var gema = AssetDatabase.LoadAssetAtPath<GameObject>(ModeloGema);
+        if (gema == null || piedra.Find("Gema")) return;
+        // El modelo del caramelo (toroide) se cambia por el de la gema
+        if (piedra.TryGetComponent(out MeshRenderer mr)) Undo.DestroyObjectImmediate(mr);
+        if (piedra.TryGetComponent(out MeshFilter mf)) Undo.DestroyObjectImmediate(mf);
+        var g = (GameObject)PrefabUtility.InstantiatePrefab(gema, piedra);
+        g.name = "Gema";
+        foreach (Collider c in g.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+        g.transform.localPosition = Vector3.zero;
+        g.transform.localRotation = Quaternion.identity;
+        g.transform.localScale = Vector3.one;
+        if (Limites(g.transform, out Bounds bg) && bg.size.magnitude > 0.0001f)
+        {
+            float tam = Mathf.Max(bg.size.x, bg.size.y, bg.size.z);
+            g.transform.localScale = Vector3.one * (0.09f / Mathf.Max(0.0001f, tam / Mathf.Max(0.0001f, piedra.lossyScale.x)));
+            Limites(g.transform, out bg);
+            g.transform.position += piedra.position - bg.center;
+        }
+        Undo.RegisterCreatedObjectUndo(g, "Gema");
+    }
+
+    // Quad pintado en una pared, que solo se ve con la piedra (MarcaOculta)
+    static void Inscripcion(Transform padre, Mesh quad, Material mat, string nombre, Vector3 punto, Vector3 normal, float tam)
+    {
+        var go = new GameObject(nombre);
+        go.transform.SetParent(padre, false);
+        go.AddComponent<MeshFilter>().sharedMesh = quad;
+        var r = go.AddComponent<MeshRenderer>();
+        r.sharedMaterial = mat;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        r.receiveShadows = false;
+        go.transform.SetPositionAndRotation(punto + normal * 0.016f, Quaternion.LookRotation(-normal, Vector3.up));   // el Quad se ve desde su -Z
+        go.transform.Rotate(0f, 0f, Random.Range(-4f, 4f), Space.Self);
+        go.transform.localScale = new Vector3(tam, tam, 1f);
+        go.AddComponent<MarcaOculta>();
+    }
+
+    // Pared que tapa la puerta de la entrada (escondida hasta la cinematica). Se busca el hueco en el muro con rayos
+    static GameObject CrearMuroEntrada(Transform padre, Transform br, Transform entrada)
+    {
+        Vector3 fuera = entrada.forward; fuera.y = 0f; fuera.Normalize();
+        Vector3 lado = Vector3.Cross(Vector3.up, fuera);
+        Vector3 baseR = entrada.position + Vector3.up * 1f;
+        const float paso = 0.05f, rango = 8f, largo = 12f;
+        int n = Mathf.RoundToInt(rango * 2f / paso) + 1;
+        var dist = new float[n];
+        var conocidas = new List<float>();
+        Material matPared = null;
+        for (int i = 0; i < n; i++)
+        {
+            dist[i] = largo;
+            if (Physics.Raycast(baseR + lado * (-rango + i * paso), -fuera, out RaycastHit h, largo, ~0, QueryTriggerInteraction.Ignore) && h.collider.transform.IsChildOf(br))
+            {
+                dist[i] = h.distance;
+                conocidas.Add(h.distance);
+                if (matPared == null && h.collider.TryGetComponent(out Renderer rr)) matPared = rr.sharedMaterial;
+            }
+        }
+        float ancho = 8.1f, alto = 4.25f, muro = 0.5f, centroLado = 0f;
+        if (conocidas.Count > n / 3)
+        {
+            conocidas.Sort();
+            muro = conocidas[conocidas.Count / 2];
+            float mejorD = float.MaxValue;
+            int ini = -1;
+            for (int i = 0; i <= n; i++)
+            {
+                bool hueco = i < n && dist[i] > muro + 1f;
+                if (hueco && ini < 0) ini = i;
+                if (hueco || ini < 0) continue;
+                float a = (i - ini) * paso, c = -rango + (ini + i - 1) * 0.5f * paso;
+                ini = -1;
+                if (a < 0.7f || a > 10f) continue;
+                if (Mathf.Abs(c) < mejorD) { mejorD = Mathf.Abs(c); centroLado = c; ancho = a + 0.2f; }
+            }
+            Vector3 p = entrada.position + lado * centroLado - fuera * (muro + 0.05f);
+            alto = Physics.Raycast(p + Vector3.up * 0.3f, Vector3.up, out RaycastHit ht, 5f, ~0, QueryTriggerInteraction.Ignore) ? ht.distance + 0.35f : 3f;
+        }
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = "Muro Entrada";
+        go.transform.SetParent(padre, false);
+        Vector3 pos = entrada.position + lado * centroLado - fuera * (muro + 0.12f) + Vector3.up * (alto * 0.5f);
+        go.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(fuera, Vector3.up));
+        go.transform.localScale = new Vector3(ancho, alto, 0.3f);
+        if (matPared != null) go.GetComponent<Renderer>().sharedMaterial = matPared;
+        go.SetActive(false);
+        return go;
+    }
+
+    // ------------------------------------------------------------------ Mapa y marcas
+
+    // Plano de los Backrooms visto desde arriba: el contorno de lo que se puede caminar, una X en cada palanca
+    // y un circulo en la habitacion donde esta el mapa
+    static Texture2D TexturaMapa(BackroomsVistaSetup.Rejilla rejilla, float[] dist, List<Pared> palancas, Vector3 aqui)
+    {
+        const int N = 256;
+        float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+        for (int i = 0; i < dist.Length; i++)
+        {
+            if (dist[i] == float.MaxValue) continue;
+            Vector3 c = rejilla.Centro(i);
+            minX = Mathf.Min(minX, c.x); maxX = Mathf.Max(maxX, c.x); minZ = Mathf.Min(minZ, c.z); maxZ = Mathf.Max(maxZ, c.z);
+        }
+        float lado = Mathf.Max(maxX - minX, maxZ - minZ) * 1.08f;
+        float cx = (minX + maxX) * 0.5f, cz = (minZ + maxZ) * 0.5f;
+        Vector2Int Px(Vector3 p) => new Vector2Int(Mathf.RoundToInt(((p.x - cx) / lado + 0.5f) * (N - 1)), Mathf.RoundToInt(((p.z - cz) / lado + 0.5f) * (N - 1)));
+
+        var piso = new bool[N * N];
+        for (int i = 0; i < dist.Length; i++)
+        {
+            if (dist[i] == float.MaxValue) continue;
+            Vector2Int q = Px(rejilla.Centro(i));
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    int x = q.x + dx, z = q.y + dz;
+                    if (x >= 0 && z >= 0 && x < N && z < N) piso[z * N + x] = true;
+                }
+        }
+        var px = new Color32[N * N];
+        var rnd = new System.Random(7);
+        for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++)
+            {
+                byte a = 0;
+                if (piso[z * N + x])
+                {
+                    bool borde = false;
+                    for (int dx = -1; dx <= 1 && !borde; dx++)
+                        for (int dz = -1; dz <= 1 && !borde; dz++)
+                        {
+                            int xx = x + dx, zz = z + dz;
+                            if (xx < 0 || zz < 0 || xx >= N || zz >= N || !piso[zz * N + xx]) borde = true;
+                        }
+                    // Trazo de tiza: bordes fuertes, el piso apenas, con un poco de ruido
+                    a = (byte)(borde ? 200 + rnd.Next(55) : 25 + rnd.Next(15));
+                }
+                px[z * N + x] = new Color32(255, 255, 255, a);
+            }
+        void Pintar(int x, int z, int r, byte a)
+        {
+            for (int dx = -r; dx <= r; dx++)
+                for (int dz = -r; dz <= r; dz++)
+                {
+                    int xx = x + dx, zz = z + dz;
+                    if (xx < 0 || zz < 0 || xx >= N || zz >= N || dx * dx + dz * dz > r * r) continue;
+                    px[zz * N + xx] = new Color32(255, 255, 255, a);
+                }
+        }
+        foreach (Pared p in palancas)
+        {
+            Vector2Int q = Px(p.punto);
+            for (int t = -7; t <= 7; t++) { Pintar(q.x + t, q.y + t, 1, 255); Pintar(q.x + t, q.y - t, 1, 255); }
+        }
+        Vector2Int h = Px(aqui);
+        for (int s = 0; s < 72; s++)
+        {
+            float ang = s / 72f * Mathf.PI * 2f;
+            Pintar(h.x + Mathf.RoundToInt(Mathf.Cos(ang) * 14f), h.y + Mathf.RoundToInt(Mathf.Sin(ang) * 14f), 1, 255);
+        }
+
+        var tex = new Texture2D(N, N, TextureFormat.RGBA32, true);
+        tex.SetPixels32(px);
+        tex.Apply();
+        return GuardarTextura(tex, "MapaOculto");
+    }
+
+    static Texture2D TexturaX()
+    {
+        const int N = 128;
+        var px = new Color32[N * N];
+        for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++)
+            {
+                float d1 = Mathf.Abs(x - z), d2 = Mathf.Abs(x - (N - 1 - z));
+                bool dentro = x > 14 && x < N - 14 && z > 14 && z < N - 14;
+                byte a = (byte)(dentro && Mathf.Min(d1, d2) < 6f ? 255 : 0);
+                px[z * N + x] = new Color32(255, 255, 255, a);
+            }
+        var tex = new Texture2D(N, N, TextureFormat.RGBA32, true);
+        tex.SetPixels32(px);
+        tex.Apply();
+        return GuardarTextura(tex, "MarcaX");
+    }
+
+    static Texture2D GuardarTextura(Texture2D tex, string nombre)
+    {
+        string ruta = Carpeta + "/" + nombre + ".png";
+        File.WriteAllBytes(ruta, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.ImportAsset(ruta);
+        if (AssetImporter.GetAtPath(ruta) is TextureImporter ti)
+        {
+            ti.alphaIsTransparency = true;
+            ti.wrapMode = TextureWrapMode.Clamp;
+            ti.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(ruta);
+    }
+
+    // Misma pintura que las indicaciones ocultas, con otra imagen
+    static Material MaterialPintura(string nombre, Material baseMat, Texture2D tex)
+    {
+        string ruta = Carpeta + "/Pintura" + nombre + ".mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(ruta);
+        if (m == null)
+        {
+            m = new Material(baseMat);
+            AssetDatabase.CreateAsset(m, ruta);
+        }
+        if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+        if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
+        EditorUtility.SetDirty(m);
+        return m;
+    }
+
+    // ------------------------------------------------------------------ Gato de sombra
+
+    // Al prefab del gato (una capsula) le pone el modelo "gatp" todo negro, con ojos que brillan
+    static void ModeloSombraGato()
+    {
+        if (!AssetDatabase.LoadAssetAtPath<GameObject>(PrefabGato)) return;
+        var modelo = AssetDatabase.LoadAssetAtPath<GameObject>(ModeloGato);
+        if (!modelo) { Debug.LogWarning("[Backrooms] No encuentro " + ModeloGato); return; }
+        GameObject root = PrefabUtility.LoadPrefabContents(PrefabGato);
+        try
+        {
+            if (root.transform.Find("Modelo")) return;
+            Material sombra = Mat("SombraGato", new Color(0.004f, 0.004f, 0.006f), 0.15f, 0f);
+            Material ojo = Mat("OjoGato", new Color(1f, 0.9f, 0.4f), 0.9f, 0f, true, new Color(5f, 4f, 1.2f));
+
+            var m = (GameObject)PrefabUtility.InstantiatePrefab(modelo, root.transform);
+            m.name = "Modelo";
+            foreach (Collider c in m.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+            foreach (Renderer r in m.GetComponentsInChildren<Renderer>())
+            {
+                var mats = new Material[r.sharedMaterials.Length];
+                for (int i = 0; i < mats.Length; i++) mats[i] = sombra;
+                r.sharedMaterials = mats;
+            }
+            m.transform.localPosition = Vector3.zero;
+            m.transform.localScale = Vector3.one;
+            // Que la cabeza mire hacia adelante (+Z): es el extremo del eje largo con los vertices mas altos
+            m.transform.localRotation = Quaternion.Euler(0f, HaciaAdelante(m), 0f);
+
+            var agent = root.GetComponent<NavMeshAgent>();
+            float pies = agent ? -agent.baseOffset : -1f;
+            if (Limites(m.transform, out Bounds b) && b.size.z > 0.0001f)
+            {
+                m.transform.localScale = Vector3.one * (1.4f / Mathf.Max(b.size.x, b.size.z));
+                Limites(m.transform, out b);
+                Vector3 centro = root.transform.InverseTransformPoint(b.center);
+                float abajo = root.transform.InverseTransformPoint(b.min).y;
+                m.transform.localPosition = new Vector3(-centro.x, pies - abajo, -centro.z);
+                Limites(m.transform, out b);
+                // Ojos: adelante y arriba de la cabeza
+                Vector3 min = root.transform.InverseTransformPoint(b.min), max = root.transform.InverseTransformPoint(b.max);
+                float tam = max.y - min.y;
+                foreach (float s in new[] { -1f, 1f })
+                {
+                    var e = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    e.name = "Ojo";
+                    Object.DestroyImmediate(e.GetComponent<Collider>());
+                    e.transform.SetParent(root.transform, false);
+                    e.transform.localPosition = new Vector3(s * tam * 0.07f, min.y + tam * 0.78f, max.z - tam * 0.1f);
+                    e.transform.localScale = Vector3.one * Mathf.Max(0.03f, tam * 0.05f);
+                    e.GetComponent<Renderer>().sharedMaterial = ojo;
+                }
+            }
+            if (root.TryGetComponent(out MeshRenderer capsula)) capsula.enabled = false;
+            PrefabUtility.SaveAsPrefabAsset(root, PrefabGato);
+            Debug.Log("[Backrooms] El gato ahora es una sombra (modelo gatp, negro, con ojos que brillan).");
+        }
+        finally { PrefabUtility.UnloadPrefabContents(root); }
+    }
+
+    // Giro (grados en Y) para que la cabeza del modelo quede hacia +Z
+    static float HaciaAdelante(GameObject m)
+    {
+        var verts = new List<Vector3>();
+        foreach (MeshFilter f in m.GetComponentsInChildren<MeshFilter>())
+            if (f.sharedMesh != null)
+                foreach (Vector3 v in f.sharedMesh.vertices) verts.Add(m.transform.InverseTransformPoint(f.transform.TransformPoint(v)));
+        if (verts.Count == 0) return 0f;
+        Vector3 mn = verts[0], mx = verts[0];
+        foreach (Vector3 v in verts) { mn = Vector3.Min(mn, v); mx = Vector3.Max(mx, v); }
+        bool largoEnX = mx.x - mn.x > mx.z - mn.z;
+        float a0 = largoEnX ? mn.x : mn.z, a1 = largoEnX ? mx.x : mx.z, cuarto = (a1 - a0) * 0.25f;
+        float yBajo = 0f, yAlto = 0f; int nBajo = 0, nAlto = 0;
+        foreach (Vector3 v in verts)
+        {
+            float a = largoEnX ? v.x : v.z;
+            if (a < a0 + cuarto) { yBajo += v.y; nBajo++; }
+            else if (a > a1 - cuarto) { yAlto += v.y; nAlto++; }
+        }
+        bool cabezaEnMax = (nAlto > 0 ? yAlto / nAlto : 0f) > (nBajo > 0 ? yBajo / nBajo : 0f);
+        // Euler(0, y) * eje -> +Z
+        if (largoEnX) return cabezaEnMax ? -90f : 90f;
+        return cabezaEnMax ? 0f : 180f;
+    }
+
+    // ------------------------------------------------------------------ Utilidades
+
+    static bool Limites(Transform t, out Bounds b)
+    {
+        b = default;
+        bool hay = false;
+        foreach (Renderer r in t.GetComponentsInChildren<Renderer>())
+        {
+            if (!hay) { b = r.bounds; hay = true; }
+            else b.Encapsulate(r.bounds);
+        }
+        return hay;
+    }
 
     static Material Mat(string nombre, Color color, float liso, float metalico, bool emision = false, Color brillo = default)
     {
         string ruta = Carpeta + "/" + nombre + ".mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(ruta);
         if (m) return m;
+        Directory.CreateDirectory(Carpeta);
         m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         m.SetColor("_BaseColor", color);
         m.SetFloat("_Smoothness", liso);

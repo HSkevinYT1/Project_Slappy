@@ -30,6 +30,22 @@ public class ProgresoCaminos : MonoBehaviour
              "hacia la Zona Principal y esta a estos metros de ella")]
     public float metrosParaCerrar = 2f;
 
+    [Header("Al volver a la estacion (como en el guion)")]
+    [Tooltip("La puerta de la zona siguiente no se abre al terminar la zona, sino cuando el jugador vuelve a la " +
+             "Zona Principal (se cierra la de la zona terminada y despues se abre la nueva)")]
+    public bool abrirSiguienteAlVolver = true;
+    [Tooltip("Segundos entre que se cierra la puerta de la zona terminada y se abre la nueva")]
+    public float esperaAbrir = 1.2f;
+    [Tooltip("Al abrirse la nueva, el jugador se gira a mirarla (mini cinematica)")]
+    public bool mirarPuertaNueva = true;
+
+    // El jugador volvio a la Zona Principal tras terminar la zona (numero de la zona terminada)
+    public event System.Action<int> AlVolver;
+    // Se abrio la puerta de la zona nueva (numero de la zona)
+    public event System.Action<int> AlAbrir;
+    // La puerta nueva esta esperando a que el jugador vuelva
+    public bool SiguienteEsperando { get; private set; }
+
     // Tramo recien completado cuya puerta sigue abierta hasta que el jugador sale (-1 = ninguno)
     int pendienteCerrar = -1;
     // Lado de la puerta (segun su eje azul) en el que estaba el jugador al completar la zona = lado de la zona
@@ -54,16 +70,21 @@ public class ProgresoCaminos : MonoBehaviour
             ladoZona = Lado(tramos[anterior].puerta.transform);
             if (Mathf.Abs(ladoZona) > 0.01f) pendienteCerrar = anterior;
         }
+        // La nueva se abre cuando vuelva (si no hay puerta que esperar, ya)
+        SiguienteEsperando = abrirSiguienteAlVolver && pendienteCerrar >= 0 && zonaActual < tramos.Length;
+        terminada = anterior;
 
         Aplicar(false);
         alCambiarZona?.Invoke(zonaActual);
     }
 
+    int terminada = -1;
+
     void Update()
     {
         if (pendienteCerrar < 0 || Jugador() == null) return;
         PuertaDeslizante puerta = tramos[pendienteCerrar].puerta;
-        if (puerta == null) { pendienteCerrar = -1; return; }
+        if (puerta == null) { pendienteCerrar = -1; AbrirSiguiente(); return; }
 
         // Ya cruzo la puerta hacia el otro lado (la Zona Principal) y se alejo un poco: se cierra detras de el
         float lado = Lado(puerta.transform);
@@ -71,7 +92,58 @@ public class ProgresoCaminos : MonoBehaviour
         {
             pendienteCerrar = -1;
             puerta.Cerrar();
+            AlVolver?.Invoke(terminada);
+            AbrirSiguiente();
         }
+    }
+
+    void AbrirSiguiente()
+    {
+        if (!SiguienteEsperando) return;
+        StartCoroutine(AbrirLuego());
+    }
+
+    // Se cerro la zona terminada: un momento despues se abre la nueva y el jugador se gira a mirarla
+    System.Collections.IEnumerator AbrirLuego()
+    {
+        int v = saltos;
+        yield return new WaitForSeconds(esperaAbrir);
+        if (v != saltos) yield break;   // mientras, el PanelDebug cambio la zona
+        SiguienteEsperando = false;
+        Aplicar(false);
+        AlAbrir?.Invoke(zonaActual);
+        Tramo t = TramoActual;
+        if (mirarPuertaNueva && t != null && t.puerta != null) yield return Mirar(t.puerta.transform.position);
+    }
+
+    // Gira el cuerpo del jugador hacia un punto (sin mover la camara arriba/abajo), lo mantiene un momento y lo suelta
+    System.Collections.IEnumerator Mirar(Vector3 punto)
+    {
+        if (Jugador() == null || PantallaMuerte.Muerto) yield break;
+        var apagados = new System.Collections.Generic.List<Behaviour>();
+        void Apagar(Behaviour b) { if (b != null && b.enabled) { b.enabled = false; apagados.Add(b); } }
+        Apagar(jugador.GetComponent<PlayerMovement>());
+        foreach (MouseLook m in jugador.GetComponentsInChildren<MouseLook>()) Apagar(m);
+        foreach (HeadBob h in jugador.GetComponentsInChildren<HeadBob>()) Apagar(h);
+        Rigidbody rb = jugador.GetComponent<Rigidbody>();
+        if (rb != null && !rb.isKinematic) rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+
+        Vector3 dir = punto - jugador.position; dir.y = 0f;
+        if (dir.sqrMagnitude > 0.01f)
+        {
+            Quaternion desde = jugador.rotation, hasta = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            for (float t = 0f; t < 1f; t += Time.deltaTime)
+            {
+                Quaternion r = Quaternion.Slerp(desde, hasta, Mathf.SmoothStep(0f, 1f, t));
+                if (rb != null) rb.MoveRotation(r); else jugador.rotation = r;
+                yield return null;
+            }
+            if (rb != null) rb.rotation = hasta;
+            jugador.rotation = hasta;
+        }
+        yield return new WaitForSeconds(1.4f);
+        // MouseLook al reactivarse toma el nuevo giro del cuerpo
+        foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
     }
 
     // Distancia con signo del jugador al plano de la puerta (positivo = delante de su eje azul)
@@ -87,6 +159,21 @@ public class ProgresoCaminos : MonoBehaviour
         return jugador;
     }
 
+    int saltos;
+
+    // Debug (PanelDebug): esa zona pasa a ser la actual ya (las anteriores quedan completadas), con su puerta abierta
+    // al instante, sin esperar a que el jugador vuelva a la estacion y sin la cinematica de mirar la puerta
+    public void SaltarA(int indice)
+    {
+        saltos++;
+        zonaActual = Mathf.Clamp(indice, 0, tramos.Length);
+        pendienteCerrar = -1;
+        SiguienteEsperando = false;
+        terminada = -1;
+        Aplicar(true);
+        alCambiarZona?.Invoke(zonaActual);
+    }
+
     // Por nombre (ej: "Cloacas"), para usarlo desde un UnityEvent
     public void IrAZona(string nombre)
     {
@@ -99,7 +186,7 @@ public class ProgresoCaminos : MonoBehaviour
     {
         for (int i = 0; i < tramos.Length; i++)
         {
-            bool activo = i == zonaActual;
+            bool activo = i == zonaActual && !SiguienteEsperando;
             if (tramos[i].marca != null) tramos[i].marca.SetEncendida(activo);
             if (tramos[i].puerta != null) tramos[i].puerta.SetAbierta(activo || i == pendienteCerrar, instantaneo);
         }

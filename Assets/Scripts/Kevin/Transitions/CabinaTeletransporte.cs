@@ -67,6 +67,16 @@ public class CabinaTeletransporte : MonoBehaviour
         if (!Usada) StartCoroutine(Secuencia());
     }
 
+    // Debug (PanelDebug): la cabina se da por usada y el jugador aparece en la otra, sin puerta, luces ni desmayo.
+    // "dentro" = donde estaria el cuerpo del jugador dentro de esta cabina (se pasa al sitio equivalente de la otra)
+    public void Saltar(Vector3 dentro)
+    {
+        if (Usada) return;
+        Usada = true;
+        alEntrar?.Invoke();
+        if (desmayo != null) desmayo.TeleportInstant(dentro);
+    }
+
     IEnumerator Secuencia()
     {
         Usada = true;

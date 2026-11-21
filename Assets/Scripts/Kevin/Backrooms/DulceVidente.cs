@@ -1,9 +1,10 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// Caramelo con un agujero: con el en la mano, manteniendo el clic derecho (accion "Mirar") el jugador se lo
-// acerca al ojo y mira a traves del agujero. La pantalla se oscurece salvo el agujero y aparecen las
-// indicaciones ocultas de las paredes (MarcaOculta). Se puede caminar mientras se mira.
+// La piedra de los Backrooms (antes un caramelo con agujero): con ella en la mano, manteniendo el clic derecho
+// (accion "Mirar") el jugador se la acerca al ojo y mira a traves. La pantalla se oscurece salvo el agujero y
+// aparecen las inscripciones ocultas de las paredes (MarcaOculta), como el mapa de las palancas.
+// Se gasta mientras se mira (durabilidad): se agrieta y al final se apaga (se queda en el inventario).
 [RequireComponent(typeof(Grabbable))]
 public class DulceVidente : MonoBehaviour
 {
@@ -23,7 +24,7 @@ public class DulceVidente : MonoBehaviour
     [Range(0, 20)] public int grietas = 10;
     [TextArea] public string avisoGrietas = "Se está agrietando... no va a durar para siempre.";
     [TextArea] public string avisoCasiRota = "Se está deshaciendo en mis manos. Tengo que usarla con cuidado.";
-    [TextArea] public string avisoRota = "Se hizo polvo...";
+    [TextArea] public string avisoRota = "Se apagó... ya no muestra nada.";
 
     [Header("Ayuda")]
     [Tooltip("Texto en pantalla mientras se tiene en la mano y todavia no se ha usado.")]
@@ -95,7 +96,7 @@ public class DulceVidente : MonoBehaviour
 
     void Update()
     {
-        if (rota) return;   // se esta deshaciendo (Romperse)
+        if (rota) return;   // gastada (o apagandose): ya no deja mirar
         bool enMano = EnMano();
         if (brillo != null)
         {
@@ -186,7 +187,8 @@ public class DulceVidente : MonoBehaviour
         }
     }
 
-    // Se acabo: se cierra el agujero, se parte en pedazos que caen y desaparece de la mano
+    // Se acabo: se cierra el agujero, se le caen unos pedazos y queda apagada (agrietada y oscura, ya no deja mirar).
+    // Se queda en el inventario: en el guion el protagonista la guarda con las otras piedras.
     System.Collections.IEnumerator Romperse()
     {
         rota = true;
@@ -203,19 +205,37 @@ public class DulceVidente : MonoBehaviour
         if (canvas != null) canvas.enabled = false;
         Jugo.Sacudir(0.12f);
 
-        Camera cam = Camera.main;
-        Vector3 donde = cam != null ? cam.transform.position + cam.transform.forward * 0.45f - cam.transform.up * 0.2f : transform.position;
-        Pedazos(donde);
+        // Vuelve a la mano (si estaba delante del ojo) y se le caen unos pedazos
+        if (moviendo && transform.parent != null)
+        {
+            transform.localPosition = manoPos;
+            transform.localRotation = manoRot;
+        }
+        moviendo = false;
+        k = 0f;
+        foreach (Renderer r in modelo) if (r != null) r.enabled = true;
+        Pedazos(transform.position);
 
-        if (jugador != null && jugador.Held == grab) jugador.Drop();
-        Destroy(gameObject);
+        // Apagada: oscura del todo y sin brillo
+        foreach (Renderer r in modelo)
+        {
+            if (r == null) continue;
+            r.GetPropertyBlock(bloque);
+            bloque.SetColor("_BaseColor", new Color(0.17f, 0.16f, 0.14f));
+            bloque.SetColor("_EmissionColor", Color.black);
+            r.SetPropertyBlock(bloque);
+        }
+        if (brillo != null) brillo.enabled = false;
+        usado = true;
     }
+
+    public bool Agotada => rota;
 
     // Unos pedacitos con fisica que caen y desaparecen
     void Pedazos(Vector3 centro)
     {
         Material mat = modelo.Length > 0 && modelo[0] != null ? modelo[0].sharedMaterial : null;
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 7; i++)
         {
             var p = GameObject.CreatePrimitive(i % 3 == 0 ? PrimitiveType.Sphere : PrimitiveType.Cube);
             p.name = "Pedazo de piedra";

@@ -77,7 +77,7 @@ public static class EnemigosZonasSetup
     static void RecolocarMenu()
     {
         if (!RecolocarCloacas(true))
-            EditorUtility.DisplayDialog("Cloacas", "No encontre \"Cloacas\" o \"" + Raiz + "/Enemigos/Enemigos Cloacas\".", "OK");
+            EditorUtility.DisplayDialog("Cloacas", "No encontre \"Cloacas\" o \"Cloacas/Enemigos Cloacas\".", "OK");
     }
 
     // Mueve las estatuas que ya existen (sin recrearlas, asi la llave y la cerradura siguen conectadas) a puntos
@@ -87,9 +87,8 @@ public static class EnemigosZonasSetup
         Area a = null;
         foreach (Area x in Areas) if (x.cerrada) a = x;
         GameObject area = a != null ? GameObject.Find(a.raiz) : null;
-        GameObject grupoGo = GameObject.Find(Raiz + "/Enemigos/Enemigos " + (a != null ? a.raiz : ""));
-        if (!area || !grupoGo) return false;
-        Transform grupo = grupoGo.transform;
+        Transform grupo = a != null ? EnemigosEnSuNivelSetup.Grupo(a.raiz) : null;
+        if (!area || !grupo) return false;
 
         Physics.SyncTransforms();
         var estatuas = new List<Transform>();
@@ -333,19 +332,18 @@ public static class EnemigosZonasSetup
 
     // ----------------------------------------------------------------- Enemigos
 
+    // Cada grupo va dentro de su area (ver EnemigosEnSuNivelSetup); al rehacer se reemplaza el que habia
     static void CrearEnemigos(Transform raiz)
     {
-        var contenedor = new GameObject("Enemigos");
-        contenedor.transform.SetParent(raiz, false);
-
         foreach (Area a in Areas)
         {
             GameObject area = GameObject.Find(a.raiz);
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(a.prefab);
             if (!area || !prefab) { Debug.LogWarning("[Enemigos y Zonas] Falta el area o el prefab " + a.prefab); continue; }
 
-            var grupo = new GameObject("Enemigos " + a.raiz);
-            grupo.transform.SetParent(contenedor.transform, false);
+            Transform anterior = EnemigosEnSuNivelSetup.Grupo(a.raiz);
+            if (anterior) Undo.DestroyObjectImmediate(anterior.gameObject);
+            Transform grupo = EnemigosEnSuNivelSetup.GrupoEnNivel(a.raiz);
 
             Vector3 entrada = PuntoEntrada(area.transform);
             List<Vector3> puntos = BuscarPuntos(a, area.transform, entrada);

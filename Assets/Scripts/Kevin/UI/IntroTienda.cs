@@ -41,9 +41,30 @@ public class IntroTienda : MonoBehaviour
 
     TutorialTienda tutorial;
     GameObject dobleCliente, dobleTendero;
+    // Lo que la intro esconde del jugador mientras dura (Terminar lo devuelve si se corta a la mitad)
+    GameObject brazosOcultos;
+    readonly List<Renderer> ocultos = new List<Renderer>();
+
+    public bool Reproduciendo { get; private set; }
+
+    // Corta la intro ya (lo usa PanelDebug al saltar el menu): carro estacionado, sin dobles, y el cuerpo y los
+    // brazos del jugador visibles otra vez. MenuPrincipal.Empezar corta su parte (la camara)
+    public void Terminar()
+    {
+        StopAllCoroutines();
+        Reproduciendo = false;
+        if (carro != null && carroFin != null) carro.SetPositionAndRotation(carroFin.position, carroFin.rotation);
+        if (dobleCliente != null) Destroy(dobleCliente);
+        if (dobleTendero != null) Destroy(dobleTendero);
+        foreach (Renderer r in ocultos) if (r != null) r.enabled = true;
+        ocultos.Clear();
+        if (brazosOcultos != null) brazosOcultos.SetActive(true);
+        brazosOcultos = null;
+    }
 
     public IEnumerator Reproducir(Camera cam, CanvasGroup panel, Camera camJugador, Transform cuerpoJugador)
     {
+        Reproduciendo = true;
         tutorial = FindFirstObjectByType<TutorialTienda>(FindObjectsInactive.Include);
         Transform t = cam.transform;
         Vector3 posInicio = t.position;
@@ -52,9 +73,9 @@ public class IntroTienda : MonoBehaviour
 
         // Los brazos (objeto Player_Arms) se desactivan y se activan cuando la camara se acopla a la vista del jugador
         GameObject brazos = BuscarBrazos(camJugador, cuerpoJugador);
-        if (brazos != null) brazos.SetActive(false);
+        if (brazos != null && brazos.activeSelf) { brazos.SetActive(false); brazosOcultos = brazos; }
         // El cuerpo del jugador tampoco se ve durante la escena (el tendero que sube es "el")
-        var ocultos = new List<Renderer>();
+        ocultos.Clear();
         if (cuerpoJugador != null)
             foreach (Renderer r in cuerpoJugador.GetComponentsInChildren<Renderer>())
                 if (r.enabled && (brazos == null || !r.transform.IsChildOf(brazos.transform)) &&
@@ -114,7 +135,10 @@ public class IntroTienda : MonoBehaviour
         if (dobleTendero != null) Destroy(dobleTendero);
         // Ya acoplada: vuelven el cuerpo y se activan los brazos
         foreach (Renderer r in ocultos) if (r != null) r.enabled = true;
+        ocultos.Clear();
         if (brazos != null) brazos.SetActive(true);
+        brazosOcultos = null;
+        Reproduciendo = false;
     }
 
     // Cuanto ha pasado la camara el vidrio de la ventana (metros, hacia adentro de la tienda; negativo = afuera).

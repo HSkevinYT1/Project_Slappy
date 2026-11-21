@@ -35,6 +35,8 @@ public class Objetivos : MonoBehaviour
     public string palancas = "Baja las palancas ({0}/{1})";
     public string buscarManija = "Busca la manija de la palanca rota";
     public string ponerManija = "Ponle la manija a la palanca rota";
+    public string presionarBoton = "Presiona el botón del tablero";
+    public string entrarPortal = "Entra al portal";
     public string salirBackrooms = "Vuelve a la estación";
 
     [Header("Cloacas (los de la llave salen de Salida Cloacas)")]
@@ -194,8 +196,17 @@ public class Objetivos : MonoBehaviour
     {
         sub = null;
         PuzzlePalancas pp = PuzzlePalancas.Instance;
-        if (hecha || (pp != null && pp.Completo)) { texto = salirBackrooms; return; }
+        if (hecha) { texto = salirBackrooms; return; }
         if (pp == null) { texto = explorarBackrooms; return; }
+        // Hasta encontrar la habitacion del cadaver (y que el gato se vaya): explorar
+        BackroomsGuion guion = BackroomsGuion.Instance;
+        if (guion != null && !guion.GatoSuelto && pp.Activadas == 0) { texto = explorarBackrooms; return; }
+        if (pp.Completo)
+        {
+            if (pp.boton == null) texto = salirBackrooms;
+            else texto = pp.PortalAbierto ? entrarPortal : presionarBoton;
+            return;
+        }
         texto = F(palancas, pp.Activadas, pp.Total);
         // Ya vio la palanca rota: primero conseguir la manija y ponersela
         if (pp.FaltaManija)

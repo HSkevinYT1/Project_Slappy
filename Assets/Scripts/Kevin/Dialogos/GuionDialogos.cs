@@ -40,6 +40,12 @@ public class GuionDialogos : MonoBehaviour
     [Tooltip("A esta distancia (m) de un panel se considera encontrado")]
     public float distanciaPanel = 2.6f;
 
+    [Header("Estación (al volver de una zona y al abrirse la siguiente)")]
+    [TextArea] public string trasLaberinto = "¿Qué demonios era esa cosa?";
+    [TextArea] public string abreBackrooms = "¿Por qué se abrió otra puerta?\n¿Acaso me van a hacer vivir esta mierda de nuevo?";
+    [TextArea] public string trasBackrooms = "Ese gato se parecía al de mi abuela... claro, si este fuera un demonio.";
+    [TextArea] public string abreCloacas = "Bueno, supongo que tendré que hacer esto otra vez.\nAl menos espero que la siguiente esté llena de colores y dulces.";
+
     [Header("Cloacas (ayudas)")]
     [TextArea] public string rejaCerrada = "Se cerró... Tal vez haya una llave por aquí.";
     [TextArea] public string estatuaMovida = "¿Esa cosa se movió? ...Solo se mueven cuando no las estoy mirando.";
@@ -116,6 +122,14 @@ public class GuionDialogos : MonoBehaviour
         }
         baterias = FindObjectsByType<Bateria>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 
+        // Estacion: al volver de una zona y cuando se abre la siguiente
+        progreso = FindFirstObjectByType<ProgresoCaminos>(FindObjectsInactive.Include);
+        if (progreso != null)
+        {
+            progreso.AlVolver += AlVolverAEstacion;
+            progreso.AlAbrir += AlAbrirZona;
+        }
+
         // Cloacas
         salida = FindFirstObjectByType<SalidaConLlave>(FindObjectsInactive.Include);
         if (salida != null) salida.alAbrir.AddListener(() => Pensamiento.Decir("cloacas.abierta", 0.5f, rejaAbierta));
@@ -128,6 +142,34 @@ public class GuionDialogos : MonoBehaviour
         {
             DialogueManager.Instance.OnDialogueStarted -= AlEmpezarDialogo;
             DialogueManager.Instance.OnDialogueEnded -= AlTerminarDialogo;
+        }
+        if (progreso != null)
+        {
+            progreso.AlVolver -= AlVolverAEstacion;
+            progreso.AlAbrir -= AlAbrirZona;
+        }
+    }
+
+    ProgresoCaminos progreso;
+
+    string NombreZona(int i) => progreso != null && progreso.tramos != null && i >= 0 && i < progreso.tramos.Length && progreso.tramos[i] != null
+        ? progreso.tramos[i].nombre : "";
+
+    void AlVolverAEstacion(int zona)
+    {
+        switch (NombreZona(zona))
+        {
+            case "Laberinto": Pensamiento.Decir("estacion.trasLaberinto", 0.3f, trasLaberinto); break;
+            case "Backrooms": Pensamiento.Decir("estacion.trasBackrooms", 0.3f, trasBackrooms); break;
+        }
+    }
+
+    void AlAbrirZona(int zona)
+    {
+        switch (NombreZona(zona))
+        {
+            case "Backrooms": Pensamiento.Decir("estacion.abreBackrooms", 0.6f, abreBackrooms); break;
+            case "Cloacas": Pensamiento.Decir("estacion.abreCloacas", 0.6f, abreCloacas); break;
         }
     }
 

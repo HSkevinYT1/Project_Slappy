@@ -41,6 +41,8 @@ public class FaintTeleport : MonoBehaviour
     public UnityEvent onArrived;
 
     public bool IsRunning { get; private set; }
+    // Donde despierta el jugador (la otra cabina)
+    public Transform Destino => destination;
 
     private Camera cam;
     private Transform body;
@@ -85,6 +87,28 @@ public class FaintTeleport : MonoBehaviour
         moveHead = true;
 
         StartCoroutine(Run());
+    }
+
+    // Punto del destino que corresponde a uno del origen (lo usa PanelDebug)
+    public Vector3 Equivalente(Vector3 enOrigen) => origin != null && destination != null ? Relocate(enOrigen) : enOrigen;
+
+    // Sin desmayo (lo usa PanelDebug para saltarse el tutorial): el cuerpo del jugador se pone en "enOrigen" (dentro de
+    // la cabina de origen) y de ahi pasa al sitio equivalente del destino, con lo que viaja con el; se esconde lo del
+    // destino y se avisa la llegada (onArrived), todo ya
+    public void TeleportInstant(Vector3 enOrigen)
+    {
+        if (IsRunning || origin == null || destination == null) return;
+        PlayerInteractor interactor = FindFirstObjectByType<PlayerInteractor>();
+        cam = interactor != null ? interactor.GetComponent<Camera>() : null;
+        if (cam == null) cam = Camera.main;
+        if (cam == null) return;
+        bodyRb = cam.GetComponentInParent<Rigidbody>();
+        bodyController = cam.GetComponentInParent<CharacterController>();
+        body = bodyRb != null ? bodyRb.transform : bodyController != null ? bodyController.transform : cam.transform.root;
+
+        body.position = enOrigen;
+        MoveEverything();
+        onArrived.Invoke();
     }
 
     private IEnumerator Run()

@@ -769,9 +769,9 @@ public static class ZonaRojaSetup
 
         // Enemigo: misma direccion respecto al faro, sobre el NavMesh nuevo
         Transform faro = raiz.Find("Faro");
-        GameObject grupo = GameObject.Find("Enemigos y Zonas/Enemigos/Enemigos Zona Roja");
+        Transform grupo = EnemigosEnSuNivelSetup.Grupo("Zona Roja");
         if (grupo && faro)
-            foreach (Transform e in grupo.transform)
+            foreach (Transform e in grupo)
             {
                 Vector3 d = e.position - faro.position; d.y = 0f;
                 if (d.sqrMagnitude < 0.01f) d = Vector3.left;
