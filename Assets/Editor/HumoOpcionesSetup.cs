@@ -139,9 +139,15 @@ public static class HumoOpcionesSetup
             Object.DestroyImmediate(c.GetComponent<Collider>());
             c.name = "Humo Volutas";
             c.transform.SetParent(vol, false);
-            c.transform.localPosition = new Vector3(0f, 0f, (zPlano + zFuera) * 0.5f);
+            // La cara de atras del cubo (la que se pinta) va 2 cm por delante del plano opaco para que no parpadee con el
+            float zAtras = zPlano - h * 0.02f;
+            c.transform.localPosition = new Vector3(0f, 0f, (zAtras + zFuera) * 0.5f);
             c.transform.localRotation = h > 0f ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity; // +Z local hacia afuera
-            c.transform.localScale = new Vector3(ls.x - 0.05f, ls.y - 0.02f, Mathf.Abs(zFuera - zPlano));
+            c.transform.localScale = new Vector3(ls.x - 0.05f, ls.y - 0.02f, Mathf.Abs(zFuera - zAtras));
+
+            // Al abrirse la sombra se desactiva de golpe (no baja por el piso)
+            var puerta = s.GetComponent<PuertaDeslizante>();
+            if (puerta) { Undo.RecordObject(puerta, "Humo en las sombras"); puerta.desactivarAlAbrir = true; EditorUtility.SetDirty(puerta); }
             var cr = c.GetComponent<MeshRenderer>();
             cr.sharedMaterial = volMat;
             cr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

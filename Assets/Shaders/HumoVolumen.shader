@@ -25,7 +25,7 @@ Shader "Slappy/HumoVolumen"
             Blend One OneMinusSrcAlpha
             ZWrite Off
             ZTest LEqual
-            Cull Back
+            Cull Front // caras de atras: se sigue viendo con la camara dentro del cubo
 
             HLSLPROGRAM
             #pragma vertex vert

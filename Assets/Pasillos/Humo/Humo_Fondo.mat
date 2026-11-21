@@ -33,11 +33,8 @@ Material:
     - _Escala: 0.8
     - _Estirar: 2.2
     - _Nucleo: 1
-    - _Profundidad: 0
-    - _Rasante: 0
     - _Remolino: 0.6
     - _VelRemolino: 0.3
-    - _ZWrite: 1
     m_Colors:
     - _BrilloColor: {r: 0, g: 0, b: 0, a: 0}
     - _Color: {r: 0.002, g: 0.002, b: 0.0025, a: 1}
