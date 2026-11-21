@@ -25587,8 +25587,8 @@ Transform:
   - {fileID: 965058978}
   - {fileID: 1006403452}
   - {fileID: 2336748}
-  - {fileID: 1867961617}
   - {fileID: 1049028616}
+  - {fileID: 1867961617}
   m_Father: {fileID: 1986290705}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &126647407
@@ -379494,7 +379494,7 @@ GameObject:
   - component: {fileID: 1867961619}
   - component: {fileID: 1867961618}
   m_Layer: 0
-  m_Name: pintura 1 (1)
+  m_Name: pintura 3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
