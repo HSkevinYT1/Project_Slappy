@@ -31,6 +31,11 @@ public class Inventario : MonoBehaviour
     readonly Fila[] filas = new Fila[Ranuras];
     TextMeshProUGUI ayuda;
     float animCambio;
+    // Pulso de la pila de la linterna al recargarla (1 = recien, baja a 0)
+    float pulsoBateria;
+
+    // Lo llama Bateria al recogerla: la pila del inventario crece, se pasa y se asienta, y brilla
+    public void PulsoBateria() => pulsoBateria = 1f;
 
     class Fila
     {
@@ -106,6 +111,9 @@ public class Inventario : MonoBehaviour
         obj.gameObject.SetActive(true);
         interactor.HoldDirect(obj);
         animCambio = 1f;
+        // Agarrar algo: la cabeza baja un poquito hacia la mano
+        Jugo.PatadaFOV(-1f);
+        Jugo.Cabeceo(0.015f);
     }
 
     // Lo llaman PlayerInteractor.Drop y Give: el objeto ya no esta en el inventario
@@ -269,6 +277,7 @@ public class Inventario : MonoBehaviour
         float alfaObjetivo = HUD.Oculto || PantallaMuerte.Muerto || !alguno ? 0f : 1f;
         grupo.alpha = Mathf.MoveTowards(grupo.alpha, alfaObjetivo, dt * 4f);
         animCambio = Mathf.MoveTowards(animCambio, 0f, dt * 4f);
+        pulsoBateria = Mathf.MoveTowards(pulsoBateria, 0f, dt * 2f);
 
         // Se apilan de abajo hacia arriba (la 3 abajo, la 1 arriba), centrados en la lista
         float total = 0f;
@@ -318,6 +327,10 @@ public class Inventario : MonoBehaviour
                 Color c = p > 0.5f ? Color.Lerp(new Color(1f, 0.85f, 0.2f), new Color(0.45f, 1f, 0.45f), (p - 0.5f) * 2f)
                                    : Color.Lerp(new Color(1f, 0.2f, 0.18f), new Color(1f, 0.85f, 0.2f), p * 2f);
                 if (p < 0.15f) c.a = 0.45f + 0.55f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 6f));
+                // Recarga: crece de golpe, se pasa y se asienta, con un destello blanco que se apaga
+                float pulso = pulsoBateria > 0f ? Mathf.Lerp(1.5f, 1f, Jugo.SalidaAtras(1f - pulsoBateria, 3f)) : 1f;
+                f.bateria.localScale = Vector3.one * pulso;
+                c = Color.Lerp(c, Color.white, pulsoBateria * pulsoBateria);
                 f.bateriaRelleno.color = c;
                 f.bateriaRelleno.fillAmount = p;
                 f.porcentaje.text = Mathf.CeilToInt(p * 100f) + "%";

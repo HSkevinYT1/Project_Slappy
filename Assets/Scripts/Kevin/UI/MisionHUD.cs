@@ -16,6 +16,9 @@ public class MisionHUD : MonoBehaviour
     Image fondo;
     bool visible;
     float destello;
+    RectTransform panel;
+    Vector2 posBase;
+    float entrada = 1f;
 
     public static void Mostrar(string texto)
     {
@@ -38,7 +41,8 @@ public class MisionHUD : MonoBehaviour
         canvas.transform.SetParent(transform, false);
 
         // Panel anclado arriba a la izquierda; el ancho se ajusta al texto
-        RectTransform panel = HUD.Rect(canvas.transform, "Mision", new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(420f, 78f));
+        panel = HUD.Rect(canvas.transform, "Mision", new Vector2(0f, 1f), new Vector2(40f, -40f), new Vector2(420f, 78f));
+        posBase = panel.anchoredPosition;
         grupo = panel.gameObject.AddComponent<CanvasGroup>();
         grupo.alpha = 0f;
         grupo.blocksRaycasts = false;
@@ -92,12 +96,17 @@ public class MisionHUD : MonoBehaviour
         objetivo.text = texto;
         visible = true;
         destello = 1f;
+        entrada = 0f;
     }
 
     void Update()
     {
         bool mostrar = visible && !HUD.Oculto && !PantallaMuerte.Muerto;
         grupo.alpha = Mathf.MoveTowards(grupo.alpha, mostrar ? 1f : 0f, Time.unscaledDeltaTime * 3f);
+
+        // Objetivo nuevo: entra desde la izquierda, se pasa un poco y se asienta
+        entrada = Mathf.MoveTowards(entrada, 1f, Time.unscaledDeltaTime / 0.45f);
+        panel.anchoredPosition = posBase + new Vector2(Mathf.LerpUnclamped(-90f, 0f, Jugo.SalidaAtras(entrada, 2.2f)), 0f);
 
         // Destello al cambiar de objetivo
         destello = Mathf.MoveTowards(destello, 0f, Time.unscaledDeltaTime * 1.2f);

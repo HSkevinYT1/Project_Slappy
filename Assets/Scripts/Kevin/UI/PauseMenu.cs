@@ -29,6 +29,15 @@ public class PauseMenu : MonoBehaviour
     private Button botonContinuar;
     private float alfa;
 
+    // Jugo del menu (todo en tiempo real: el juego esta congelado)
+    private readonly List<JugoUI> jugos = new List<JugoUI>();
+    private TextMeshProUGUI titulo;
+    private RectTransform tituloRect;
+    private Vector2 tituloBase;
+    private float tAbrir = 99f, tPagina = 99f, proximoParpadeo, finParpadeo;
+    private GameObject paginaAnimada;
+    private readonly Dictionary<GameObject, Vector2> basePaginas = new Dictionary<GameObject, Vector2>();
+
     void Awake()
     {
         AudioListener.volume = PlayerPrefs.GetFloat(ClaveVolumen, 1f);
@@ -53,9 +62,39 @@ public class PauseMenu : MonoBehaviour
         // Aparece y desaparece suave (en tiempo real: el juego esta congelado)
         if (grupo != null)
         {
-            alfa = Mathf.MoveTowards(alfa, IsPaused ? 1f : 0f, Time.unscaledDeltaTime * 8f);
-            grupo.alpha = alfa;
+            alfa = Mathf.MoveTowards(alfa, IsPaused ? 1f : 0f, Time.unscaledDeltaTime * (IsPaused ? 6f : 9f));
+            grupo.alpha = IsPaused ? Jugo.SalidaCubica(alfa) : alfa * alfa;
             if (!IsPaused && alfa <= 0f && canvas.gameObject.activeSelf) canvas.gameObject.SetActive(false);
+            if (canvas.gameObject.activeSelf) AnimarJugo(Time.unscaledDeltaTime);
+        }
+    }
+
+    // Titulo que cae y rebota al abrir, con algun parpadeo de cartel que falla; paginas que entran deslizando
+    void AnimarJugo(float dt)
+    {
+        tAbrir += dt;
+        tPagina += dt;
+        if (tituloRect != null)
+        {
+            float k = Jugo.SalidaAtras(tAbrir / 0.5f, 2.2f);
+            tituloRect.anchoredPosition = tituloBase + new Vector2(0f, Mathf.LerpUnclamped(46f, 0f, k));
+            tituloRect.localScale = Vector3.one * Mathf.LerpUnclamped(1.18f, 1f, k);
+        }
+        if (titulo != null)
+        {
+            float ahora = Time.unscaledTime;
+            if (ahora > proximoParpadeo)
+            {
+                finParpadeo = ahora + Random.Range(0.08f, 0.22f);
+                proximoParpadeo = ahora + Random.Range(2.5f, 6f);
+            }
+            titulo.alpha = ahora < finParpadeo ? (Mathf.PerlinNoise(ahora * 40f, 0.3f) > 0.5f ? 1f : 0.25f) : 1f;
+        }
+        if (paginaAnimada != null && paginaAnimada.activeSelf && basePaginas.TryGetValue(paginaAnimada, out Vector2 b))
+        {
+            float k = Jugo.SalidaCubica(tPagina / 0.28f);
+            ((RectTransform)paginaAnimada.transform).anchoredPosition = b + new Vector2(Mathf.Lerp(50f, 0f, k), 0f);
+            paginaAnimada.GetComponent<CanvasGroup>().alpha = k;
         }
     }
 
@@ -98,6 +137,10 @@ public class PauseMenu : MonoBehaviour
             MostrarPagina(null);
             grupo.interactable = true;
             grupo.blocksRaycasts = true;
+            // Entrada: el titulo cae y las opciones llegan una detras de otra
+            tAbrir = 0f;
+            proximoParpadeo = Time.unscaledTime + Random.Range(1.5f, 3f);
+            for (int i = 0; i < jugos.Count; i++) jugos[i].Entrar(0.06f + i * 0.045f);
             PantallaMuerte.AsegurarEventSystem();
             if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(botonContinuar.gameObject);
         }
@@ -106,7 +149,11 @@ public class PauseMenu : MonoBehaviour
     public void Resume()
     {
         if (pausePanel != null) pausePanel.SetActive(false);
-        if (grupo != null) { grupo.interactable = false; grupo.blocksRaycasts = false; }
+        if (grupo != null)
+        {
+            grupo.interactable = false;
+            grupo.blocksRaycasts = false;
+        }
 
         foreach (Behaviour b in disabledWhilePaused)
         {
@@ -193,7 +240,11 @@ public class PauseMenu : MonoBehaviour
         sombraPagina = HUD.Rect(canvas.transform, "Sombra Pagina", new Vector2(0.5f, 0f), Vector2.one, new Vector2(1f, 0.5f), Vector2.zero, Vector2.zero).gameObject;
         HUD.Imagen((RectTransform)sombraPagina.transform, new Color(0f, 0f, 0f, 0.5f));
 
-        TextMeshProUGUI titulo = HUD.Texto(ArribaIzq(canvas.transform, "Titulo", new Vector2(90f, -60f), new Vector2(600f, 120f)), "Texto", "Pausa", 96f, TextAlignmentOptions.MidlineLeft, Rojo);
+        tituloRect = ArribaIzq(canvas.transform, "Titulo", new Vector2(90f, -60f), new Vector2(600f, 120f));
+        tituloRect.pivot = new Vector2(0f, 0.5f);   // crece desde la izquierda (donde empieza la palabra)
+        tituloRect.anchoredPosition = new Vector2(90f, -120f);
+        tituloBase = tituloRect.anchoredPosition;
+        titulo = HUD.Texto(tituloRect, "Texto", "Pausa", 96f, TextAlignmentOptions.MidlineLeft, Rojo);
         if (fuente) titulo.font = fuente;
 
         // Lista de opciones
@@ -209,13 +260,14 @@ public class PauseMenu : MonoBehaviour
         for (int i = 0; i < nombres.Length; i++)
         {
             Button b = Opcion(canvas.transform, nombres[i], new Vector2(96f, -220f - i * 66f), fuente, acciones[i]);
+            jugos.Add(b.GetComponent<JugoUI>());
             if (i == 0) botonContinuar = b;
             if (i == 1) botonOpciones = b;
             if (i == 2) botonControles = b;
         }
 
         // Pagina de opciones
-        paginaOpciones = ArribaIzq(canvas.transform, "Pagina Opciones", new Vector2(700f, -230f), new Vector2(480f, 300f)).gameObject;
+        paginaOpciones = ArribaIzq(canvas.transform, "Pagina Opciones", new Vector2(700f, -230f), new Vector2(480f, 330f)).gameObject;
         Deslizador((RectTransform)paginaOpciones.transform, "Volumen", 0f, fuente, PlayerPrefs.GetFloat(ClaveVolumen, 1f), 0f, 1f, v =>
         {
             AudioListener.volume = v;
@@ -225,6 +277,12 @@ public class PauseMenu : MonoBehaviour
         {
             AplicarSensibilidad(v);
             PlayerPrefs.SetFloat(ClaveSensibilidad, v);
+        });
+        // Accesibilidad: cuanto se mueve la camara con el jugo (temblor, golpes de vision, cabeceos). 0 = nada
+        Deslizador((RectTransform)paginaOpciones.transform, "Movimiento de camara", -220f, fuente, Jugo.Movimiento, 0f, 1f, v =>
+        {
+            Jugo.Movimiento = v;
+            Jugo.Sacudir(0.35f * v);   // muestra como se siente (se ve al cerrar el menu)
         });
 
         // Pagina de controles: dos columnas de texto (las teclas salen de Assets/InputSystem_Actions)
@@ -248,6 +306,11 @@ public class PauseMenu : MonoBehaviour
             if (fuente) { tecla.font = fuente; accion.font = fuente; }
         }
 
+        foreach (GameObject p in new[] { paginaOpciones, paginaControles })
+        {
+            basePaginas[p] = ((RectTransform)p.transform).anchoredPosition;
+            p.AddComponent<CanvasGroup>();
+        }
         MostrarPagina(null);
         canvas.gameObject.SetActive(false);
     }
@@ -259,6 +322,13 @@ public class PauseMenu : MonoBehaviour
         paginaOpciones.SetActive(abrir && pagina == paginaOpciones);
         paginaControles.SetActive(abrir && pagina == paginaControles);
         sombraPagina.SetActive(abrir);
+        // La pagina entra deslizando desde la derecha
+        if (abrir)
+        {
+            paginaAnimada = pagina;
+            tPagina = 0f;
+            AnimarJugo(0f);
+        }
         // La opcion abierta queda en rojo
         Marcar(botonOpciones, paginaOpciones.activeSelf);
         Marcar(botonControles, paginaControles.activeSelf);
@@ -300,6 +370,16 @@ public class PauseMenu : MonoBehaviour
         c.fadeDuration = 0.06f;
         b.colors = c;
         b.onClick.AddListener(accion);
+
+        // Jugo: el texto se corre y crece al pasar el mouse, con una rayita roja que aparece a su izquierda
+        RectTransform marca = HUD.Rect(r, "Marca", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(-4f, -2f), new Vector2(14f, 4f));
+        HUD.Imagen(marca, Rojo);
+        marca.gameObject.SetActive(false);
+        t.rectTransform.pivot = new Vector2(0f, 0.5f);   // escala desde donde empieza la palabra
+        t.rectTransform.anchoredPosition = new Vector2(-t.rectTransform.sizeDelta.x * 0.5f, 0f);
+        var jugo = r.gameObject.AddComponent<JugoUI>();
+        jugo.visual = t.rectTransform;
+        jugo.marca = marca;
         return b;
     }
 
@@ -341,6 +421,12 @@ public class PauseMenu : MonoBehaviour
         s.maxValue = max;
         s.value = Mathf.Clamp(valor, min, max);
         s.onValueChanged.AddListener(alCambiar);
+
+        // Jugo: el mango crece al pasar el mouse o arrastrarlo
+        var jugo = r.gameObject.AddComponent<JugoUI>();
+        jugo.visual = mango;
+        jugo.moverPosicion = false;
+        jugo.escalaHover = 1.5f;
         return s;
     }
 }

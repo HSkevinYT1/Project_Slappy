@@ -10,6 +10,11 @@ public class PuertaDeslizante : MonoBehaviour
     // Segundos que tarda en abrirse o cerrarse
     public float duracion = 1.5f;
     public AudioClip sonido;
+    [Header("Jugo")]
+    [Tooltip("Temblor de camara al terminar de cerrarse (con el jugador cerca)")]
+    public float golpeAlCerrar = 0.45f;
+    [Tooltip("Hasta que distancia (m) se nota el golpe")]
+    public float radioGolpe = 16f;
 
     public bool Abierta { get; private set; }
 
@@ -37,6 +42,8 @@ public class PuertaDeslizante : MonoBehaviour
         Iniciar();
         if (Abierta != abierta && !instantaneo && sonido != null)
             AudioSource.PlayClipAtPoint(sonido, transform.position);
+        // Al empezar a abrirse: un retumbe suave
+        if (!Abierta && abierta && !instantaneo) Jugo.SacudirEn(transform.position, golpeAlCerrar * 0.3f, radioGolpe);
         Abierta = abierta;
         if (instantaneo) { valor = abierta ? 1f : 0f; Aplicar(); }
     }
@@ -47,6 +54,11 @@ public class PuertaDeslizante : MonoBehaviour
         if (Mathf.Approximately(valor, objetivo)) return;
         valor = Mathf.MoveTowards(valor, objetivo, Time.deltaTime / Mathf.Max(0.01f, duracion));
         Aplicar();
+        // Termino de cerrarse: temblor si el jugador esta cerca
+        if (!Abierta && valor <= 0f && golpeAlCerrar > 0f)
+        {
+            Jugo.SacudirEn(transform.position, golpeAlCerrar, radioGolpe);
+        }
     }
 
     void Aplicar()

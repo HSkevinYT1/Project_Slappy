@@ -31,6 +31,10 @@ public static class HUD
 
         if (!interactor.GetComponent<Inventario>()) interactor.gameObject.AddComponent<Inventario>();
 
+        // Jugo de camara (temblor, golpes de FOV, correr, aterrizajes) en la camara del jugador
+        MouseLook vista = Object.FindFirstObjectByType<MouseLook>(FindObjectsInactive.Include);
+        if (vista != null && vista.GetComponent<Camera>() && !vista.GetComponent<CamaraJugo>()) vista.gameObject.AddComponent<CamaraJugo>();
+
         if (!Object.FindFirstObjectByType<RelojJugador>(FindObjectsInactive.Include) || !Object.FindFirstObjectByType<PantallaMuerte>(FindObjectsInactive.Include))
         {
             var go = new GameObject("HUD Jugador");

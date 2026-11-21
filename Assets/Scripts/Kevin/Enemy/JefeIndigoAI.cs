@@ -314,7 +314,18 @@ public class JefeIndigoAI : MonoBehaviour
             case State.Chase:
                 velocidadBase = chaseSpeed;
                 agent.speed = velocidadBase * MultiplicadorDistancia();
-                if (Time.time - ultimoAlVer >= esperaAlVer) { ultimoAlVer = Time.time; Gritar(sonidoAlVer); }
+                if (Time.time - ultimoAlVer >= esperaAlVer)
+                {
+                    ultimoAlVer = Time.time;
+                    Gritar(sonidoAlVer);
+                    // Jugo: te vio. Golpe de camara y zoom hacia adentro (mas fuerte cuanto mas cerca)
+                    if (player != null)
+                    {
+                        float k = 1f - Mathf.Clamp01(Vector3.Distance(transform.position, player.position) / Mathf.Max(1f, viewDistance));
+                        Jugo.Sacudir(Mathf.Lerp(0.2f, 0.45f, k));
+                        Jugo.PatadaFOV(-Mathf.Lerp(1.5f, 3.5f, k));
+                    }
+                }
                 onPlayerSpotted?.Invoke();
                 break;
             case State.Search:

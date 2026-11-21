@@ -204,25 +204,34 @@ public class PlayerInteractor : MonoBehaviour
         return null;
     }
 
+    // Jugo del texto: cuando cambia, aparece con un "pop" (crece, se pasa y se asienta) y un fundido
+    string promptAnterior = "";
+    float promptDesde;
+
     // Texto temporal en pantalla para probar. Mas adelante se reemplaza por un Canvas.
     void OnGUI()
     {
         // Con puntero propio, el texto lo muestra quien maneje ese puntero
-        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt) || PantallaMuerte.Muerto) return;
+        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt) || PantallaMuerte.Muerto) { promptAnterior = ""; return; }
+
+        if (CurrentPrompt != promptAnterior) { promptAnterior = CurrentPrompt; promptDesde = Time.unscaledTime; }
+        float k = Mathf.Clamp01((Time.unscaledTime - promptDesde) / 0.22f);
+        float pop = Mathf.LerpUnclamped(0.7f, 1f, Jugo.SalidaAtras(k, 2.4f));
+        float alfa = Jugo.SalidaCubica(k * 1.6f);
 
         GUIStyle style = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
             // Escala con la pantalla (antes 20 px fijos: se veia chico)
-            fontSize = Mathf.RoundToInt(Screen.height * 0.019f * HUD.Escala)
+            fontSize = Mathf.Max(1, Mathf.RoundToInt(Screen.height * 0.019f * HUD.Escala * pop))
         };
-        style.normal.textColor = Color.white;
+        style.normal.textColor = new Color(1f, 1f, 1f, alfa);
 
         float ancho = Screen.width * 0.5f, alto = style.fontSize * 2f;
         Rect rect = new Rect((Screen.width - ancho) / 2f, Screen.height / 2f + style.fontSize * 1.6f, ancho, alto);
         // Sombra para que se lea sobre fondos claros
         GUIStyle sombra = new GUIStyle(style);
-        sombra.normal.textColor = new Color(0f, 0f, 0f, 0.8f);
+        sombra.normal.textColor = new Color(0f, 0f, 0f, 0.8f * alfa);
         GUI.Label(new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height), "[" + GameInput.InteractKeyName + "] " + CurrentPrompt, sombra);
         GUI.Label(rect, "[" + GameInput.InteractKeyName + "] " + CurrentPrompt, style);
     }

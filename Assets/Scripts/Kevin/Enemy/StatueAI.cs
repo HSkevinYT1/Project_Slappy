@@ -37,6 +37,12 @@ public class EstatuaAI : MonoBehaviour
     private Vector3 posicionInicial;
     private Quaternion rotacionInicial;
 
+    [Header("Susto")]
+    [Tooltip("Si el jugador la vuelve a ver a menos de esta distancia (m) despues de que se movio, se lleva un susto")]
+    public float distanciaSusto = 6f;
+    private Vector3 posAlCongelar;
+    private static float ultimoSusto;
+
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
@@ -118,6 +124,8 @@ public class EstatuaAI : MonoBehaviour
                 agent.isStopped = true;
                 agent.velocity = Vector3.zero;
                 agent.nextPosition = transform.position;
+                Susto();
+                posAlCongelar = transform.position;
                 onFreeze?.Invoke();
                 break;
             case State.Moving:
@@ -132,6 +140,19 @@ public class EstatuaAI : MonoBehaviour
         }
     }
 
+    // Jugo: se dio vuelta y la estatua, que se movio mientras no la veia, esta pegada a el
+    void Susto()
+    {
+        if (target == null || posAlCongelar == Vector3.zero || PantallaMuerte.Muerto) return;
+        if (Vector3.Distance(transform.position, posAlCongelar) < 0.8f) return;
+        float d = Vector3.Distance(transform.position, target.position);
+        if (d > distanciaSusto || Time.time - ultimoSusto < 2.5f) return;
+        ultimoSusto = Time.time;
+        float k = 1f - Mathf.Clamp01((d - catchDistance) / Mathf.Max(0.1f, distanciaSusto - catchDistance));
+        Jugo.Sacudir(Mathf.Lerp(0.25f, 0.55f, k));
+        Jugo.PatadaFOV(-Mathf.Lerp(2f, 5f, k));
+    }
+
     // Despues de atrapar al jugador (al reintentar): vuelve a donde empezo, quieta
     public void Reiniciar()
     {
@@ -141,6 +162,7 @@ public class EstatuaAI : MonoBehaviour
             transform.SetPositionAndRotation(posicionInicial, rotacionInicial);
             if (agent.isOnNavMesh) agent.Warp(posicionInicial);
         }
+        posAlCongelar = transform.position;   // volver al inicio no cuenta como "se movio"
         if (agent.isOnNavMesh) EnterState(State.Frozen);
         else CurrentState = State.Frozen;
     }
