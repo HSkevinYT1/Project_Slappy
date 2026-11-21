@@ -42,6 +42,8 @@ public class RelojJugador : MonoBehaviour
     public AudioClip sonidoManecillas;
     [Tooltip("Cuanto se acelera el tic-tac con la entidad encima (2.5 = dos veces y media)")]
     public float aceleracionManecillas = 2.5f;
+    [Tooltip("Guardado (sin mirarlo) el tic-tac se sigue oyendo, muy bajo y apagado, como dentro de la manga (0 = no se oye)")]
+    [Range(0f, 1f)] public float volumenGuardado = 0.12f;
 
     [Header("Brazo al mirar el reloj")]
     [Tooltip("Donde queda el reloj, en espacio de la camara (x derecha, y arriba, z adelante)")]
@@ -91,7 +93,7 @@ public class RelojJugador : MonoBehaviour
         Desbloqueado = desbloqueadoAlInicio;
         hora = horaInicial;
         CrearUI();
-        audioTic = gameObject.AddComponent<AudioSource>();
+        audioTic = FuenteReloj().AddComponent<AudioSource>();
         audioTic.playOnAwake = false;
         audioTic.spatialBlend = 0f;
         audioTic.ignoreListenerPause = false;
@@ -365,31 +367,61 @@ public class RelojJugador : MonoBehaviour
         pistaGrupo.alpha = Mathf.MoveTowards(pistaGrupo.alpha, pistaTiempo > 0f && subida > 0.6f ? 1f : 0f, dt * 3f);
     }
 
+    // Cuanto se oye segun lo levantado que esta: guardado muy bajo (y apagado por el filtro), mirandolo normal
+    float FactorVolumen() => Mathf.Lerp(volumenGuardado, 1f, Mathf.Clamp01(subida * 1.5f));
+
+    // Guardado suena apagado (sin agudos), como tapado por la manga; levantado, claro
+    void Filtro()
+    {
+        if (filtroManga == null)
+        {
+            filtroManga = FuenteReloj().GetComponent<AudioLowPassFilter>();
+            if (filtroManga == null) filtroManga = FuenteReloj().AddComponent<AudioLowPassFilter>();
+        }
+        filtroManga.cutoffFrequency = Mathf.Lerp(1400f, 22000f, Mathf.Clamp01(subida * 1.5f));
+    }
+
+    AudioLowPassFilter filtroManga;
+    GameObject fuenteReloj;
+
+    // Objeto propio para el sonido del reloj (el filtro de "manga" solo le afecta a el)
+    GameObject FuenteReloj()
+    {
+        if (fuenteReloj == null)
+        {
+            fuenteReloj = new GameObject("Sonido Reloj");
+            fuenteReloj.transform.SetParent(transform, false);
+        }
+        return fuenteReloj;
+    }
+
     void Sonido()
     {
-        if (sonidoManecillas != null) { SonidoManecillas(); return; }
-        if (!Visible || subida < 0.5f || Time.timeScale == 0f) return;
+        bool puede = Desbloqueado && Time.timeScale > 0f && !PantallaMuerte.Muerto && !HUD.Oculto && (volumenGuardado > 0f || Visible);
+        if (puede) Filtro();
+        if (sonidoManecillas != null) { SonidoManecillas(puede); return; }
+        if (!puede || (!Visible && volumenGuardado <= 0f)) return;
         float k = Cercania;
         float intervalo = k > 0.01f ? Mathf.Lerp(0.35f, 0.045f, k) : 1f;
         if (Time.time < proximoTic) return;
         proximoTic = Time.time + intervalo * (k > 0.5f ? Random.Range(0.6f, 1.4f) : 1f);
         alterna = !alterna;
         audioTic.pitch = 1f + k * Random.Range(-0.15f, 0.3f);
-        audioTic.PlayOneShot(alterna ? tic : tac, volumenTic * (0.35f + 0.65f * Mathf.Max(0.3f, k)));
+        audioTic.PlayOneShot(alterna ? tic : tac, volumenTic * (0.35f + 0.65f * Mathf.Max(0.3f, k)) * FactorVolumen());
     }
 
     // "reloj manecillas" en bucle mientras el reloj esta levantado: con una entidad cerca se acelera y tiembla
-    void SonidoManecillas()
+    void SonidoManecillas(bool puede)
     {
         if (audioManecillas == null)
         {
-            audioManecillas = gameObject.AddComponent<AudioSource>();
+            audioManecillas = FuenteReloj().AddComponent<AudioSource>();
             audioManecillas.playOnAwake = false;
             audioManecillas.loop = true;
             audioManecillas.spatialBlend = 0f;
             audioManecillas.clip = sonidoManecillas;
         }
-        bool sonar = subida > 0.05f && Time.timeScale > 0f;
+        bool sonar = puede && (subida > 0.05f || volumenGuardado > 0f);
         if (!sonar)
         {
             if (audioManecillas.isPlaying) audioManecillas.Pause();
@@ -404,7 +436,7 @@ public class RelojJugador : MonoBehaviour
         float k = Cercania;
         float temblor = k > 0.5f ? (Mathf.PerlinNoise(Time.time * 6f, 4.2f) - 0.5f) * 0.6f * k : 0f;
         audioManecillas.pitch = Mathf.Lerp(1f, Mathf.Max(1f, aceleracionManecillas), k * k) + temblor;
-        audioManecillas.volume = volumenTic * Mathf.Clamp01(subida * 1.5f) * (0.6f + 0.4f * k);
+        audioManecillas.volume = volumenTic * FactorVolumen() * (0.6f + 0.4f * k);
     }
 
     // ------------------------------------------------------------------ UI (solo textos; el reloj es el modelo 3D)

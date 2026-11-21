@@ -24,7 +24,7 @@ public class SalidaConLlave : MonoBehaviour
     public AudioClip sonidoAbrir;
     [Range(0f, 1f)] public float volumen = 1f;
 
-    [Header("Mision (cartel arriba a la izquierda)")]
+    [Header("Objetivo (indicador arriba a la izquierda, lo muestra Objetivos)")]
     [Tooltip("Al cerrarse la reja")]
     public string misionBuscar = "Busca la llave";
     [Tooltip("Con la llave en el inventario")]
@@ -39,7 +39,6 @@ public class SalidaConLlave : MonoBehaviour
 
     Transform jugador;
     float proximaRevision;
-    bool mostrandoSalir;
 
     void Awake()
     {
@@ -61,22 +60,7 @@ public class SalidaConLlave : MonoBehaviour
         if (reja == null) return;
         if (jugador == null) { jugador = HUD.Jugador(); if (jugador == null) return; }
 
-        // Ya abierta: el cartel de "salir" se quita cuando el jugador deja el area
-        if (Abierta)
-        {
-            if (mostrandoSalir && area != null && !area.Contiene(jugador.position))
-            {
-                mostrandoSalir = false;
-                if (MisionHUD.Actual == misionSalir) MisionHUD.Ocultar();
-            }
-            return;
-        }
-        // Encerrado: buscar la llave, y con la llave en el inventario, usarla en la cerradura
-        if (Cerrada)
-        {
-            MisionHUD.Mostrar(TieneLaLlave() ? misionUsar : misionBuscar);
-            return;
-        }
+        if (Abierta || Cerrada) return;
         if (area != null && !area.Contiene(jugador.position)) return;
 
         // El eje azul de la reja apunta hacia afuera de la zona
@@ -94,10 +78,9 @@ public class SalidaConLlave : MonoBehaviour
         Cerrada = true;
         reja.Cerrar();
         Sonar(sonidoCerrar);
-        MisionHUD.Mostrar(misionBuscar);
     }
 
-    bool TieneLaLlave()
+    public bool TieneLaLlave()
     {
         Grabbable llave = cerradura != null ? cerradura.objetoEsperado : null;
         return llave != null && Inventario.Instance != null && Inventario.Instance.IndiceDe(llave) >= 0;
@@ -110,8 +93,6 @@ public class SalidaConLlave : MonoBehaviour
         Abierta = true;
         if (reja != null) reja.Abrir();
         Sonar(sonidoAbrir);
-        MisionHUD.Mostrar(misionSalir);
-        mostrandoSalir = true;
 
         ProgresoCaminos p = ProgresoCaminos.Instance;
         if (p != null && p.TramoActual != null && p.TramoActual.nombre == zona) p.CompletarZonaActual();

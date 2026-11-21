@@ -83,7 +83,30 @@ public class JefeIndigoAI : MonoBehaviour
     [Tooltip("Sin reloj en la escena: a esta distancia (m) del jugador reaparece")]
     public float distanciaAcercarse = 30f;
 
+    [Header("Inteligencia (enemigo 1)")]
+    [Tooltip("Oye los pasos (poco caminando, mas corriendo, menos a traves de paredes) y va a investigar en vez de " +
+             "perseguir directo; al perder al jugador va hacia donde iba, revisa mirando alrededor y despues ronda " +
+             "cerca de donde lo vio por ultima vez")]
+    public bool inteligente = false;
+    [Tooltip("Hasta donde oye los pasos caminando / corriendo (m)")]
+    public float oidoCaminando = 4.5f;
+    public float oidoCorriendo = 11f;
+    [Tooltip("Con una pared en medio oye menos (0.5 = la mitad de distancia)")]
+    [Range(0f, 1f)] public float oidoTrasPared = 0.5f;
+    [Tooltip("Si lo oye mas cerca que esto, va directo a por el")]
+    public float distanciaAlarma = 3f;
+    [Tooltip("Al perderlo de vista, segundos hacia adelante que adivina por donde va")]
+    public float prediccion = 1.2f;
+    public float velocidadInvestigar = 3f;
+    [Tooltip("Segundos que se queda mirando alrededor en cada punto que revisa")]
+    public float tiempoMirarAlrededor = 1.3f;
+    [Tooltip("Segundos que recuerda donde vio al jugador (patrulla cerca de alli)")]
+    public float memoria = 40f;
+    [HideInInspector] public int versionIA;
+
     public State CurrentState { get; private set; } = State.Patrol;
+    // Va hacia un ruido (no lo vio): camina mas rapido que patrullando pero no corre
+    public bool Investigando { get; private set; }
 
     private NavMeshAgent agent;
     private Rigidbody playerBody;
@@ -175,11 +198,14 @@ public class JefeIndigoAI : MonoBehaviour
         if (player == null || CurrentState == State.Caught || !agent.isOnNavMesh) return;
 
         bool sees = CanSeePlayer();
-        bool hears = CanHearPlayer();
+        bool hears = inteligente ? Escuchar() : CanHearPlayer();
         if (sees || hears)
         {
             lastKnownPosition = target.position;
             lastSeenTime = Time.time;
+            if (playerBody != null) velocidadVista = playerBody.linearVelocity;
+            vistoAlguna = true;
+            Investigando = false;
             if (CurrentState != State.Chase) EnterState(State.Chase);
         }
 
@@ -303,6 +329,11 @@ public class JefeIndigoAI : MonoBehaviour
         Debug.Log(name + " -> " + next);
         stateTimer = 0f;
         waitTimer = 0f;
+        // Si estaba mirando alrededor (busqueda inteligente), vuelve a caminar normal
+        mirandoHasta = -1f;
+        if (agent != null && agent.isOnNavMesh) agent.isStopped = false;
+        if (agent != null) agent.updateRotation = true;
+        if (next != State.Search) Investigando = false;
 
         switch (next)
         {
@@ -367,11 +398,16 @@ public class JefeIndigoAI : MonoBehaviour
 
         // Si lo pierde durante un rato, pasa a buscarlo
         if (Time.time - lastSeenTime > loseSightGrace)
+        {
+            // Inteligente: no va a donde lo vio, sino a donde iba
+            if (inteligente) lastKnownPosition = Predecir(lastKnownPosition, velocidadVista * prediccion);
             EnterState(State.Search);
+        }
     }
 
     void UpdateSearch()
     {
+        if (inteligente) { BuscarInteligente(); return; }
         stateTimer += Time.deltaTime;
 
         // Al llegar a la ultima posicion conocida, revisa puntos cercanos
@@ -443,8 +479,119 @@ public class JefeIndigoAI : MonoBehaviour
     }
 
 
+    // ------------------------------------------------------------------ Inteligencia
+
+    private Vector3 velocidadVista;
+    private bool vistoAlguna;
+    private float mirandoHasta = -1f, giroMirar, proximoRuido;
+    private Vector3 direccionBusqueda;
+
+    // Oye los pasos del jugador. Devuelve true solo si lo oye tan cerca que va directo a por el;
+    // si lo oye mas lejos, va a investigar el ruido (sin saber exactamente donde esta)
+    bool Escuchar()
+    {
+        if (playerBody == null || Escondite.JugadorEscondido) return false;
+        Vector3 v = playerBody.linearVelocity; v.y = 0f;
+        if (v.magnitude <= noiseSpeedThreshold) return false;
+
+        PlayerMovement pm = playerBody.GetComponent<PlayerMovement>();
+        float alcance = pm != null && pm.Corriendo ? oidoCorriendo : oidoCaminando;
+        Vector3 desde = EyePosition();
+        Vector3 hasta = playerCollider != null ? playerCollider.bounds.center : target.position;
+        if (HayParedEntre(desde, hasta)) alcance *= oidoTrasPared;
+        float d = Vector3.Distance(transform.position, target.position);
+        if (d > alcance) return false;
+        if (d <= distanciaAlarma || CurrentState == State.Chase) return true;
+
+        // Lo oyo de lejos: va a ver que fue (cada tanto corrige hacia el ruido nuevo)
+        if (Time.time < proximoRuido) return false;
+        proximoRuido = Time.time + 0.8f;
+        Vector3 error = Random.insideUnitSphere * Mathf.Lerp(0.5f, 2.5f, d / Mathf.Max(0.1f, alcance));
+        error.y = 0f;
+        lastKnownPosition = Predecir(target.position + error, Vector3.zero);
+        direccionBusqueda = (target.position - transform.position).normalized;
+        if (CurrentState == State.Patrol || CurrentState == State.Search)
+        {
+            bool yaBuscaba = CurrentState == State.Search;
+            Investigando = true;
+            if (!yaBuscaba) EnterState(State.Search);
+            else { agent.SetDestination(lastKnownPosition); stateTimer = 0f; mirandoHasta = -1f; }
+            velocidadBase = velocidadInvestigar;
+        }
+        return false;
+    }
+
+    bool HayParedEntre(Vector3 a, Vector3 b)
+    {
+        Vector3 d = b - a;
+        foreach (RaycastHit h in Physics.RaycastAll(a, d.normalized, d.magnitude, obstacleMask, QueryTriggerInteraction.Ignore))
+        {
+            if (h.collider.transform.IsChildOf(transform) || IsPlayer(h.collider)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    // Un punto del NavMesh al que se llega, lo mas cerca posible de desde + adelanto
+    Vector3 Predecir(Vector3 desde, Vector3 adelanto)
+    {
+        adelanto.y = 0f;
+        var camino = new NavMeshPath();
+        for (int i = 0; i < 4; i++)
+        {
+            Vector3 p = desde + adelanto * (1f - i * 0.3f);
+            if (!NavMesh.SamplePosition(p, out NavMeshHit hit, 2.5f, NavMesh.AllAreas)) continue;
+            if (agent.isOnNavMesh && NavMesh.CalculatePath(transform.position, hit.position, NavMesh.AllAreas, camino) &&
+                camino.status == NavMeshPathStatus.PathComplete) return hit.position;
+        }
+        return NavMesh.SamplePosition(desde, out NavMeshHit h2, 2.5f, NavMesh.AllAreas) ? h2.position : desde;
+    }
+
+    // Busqueda: va al punto, se queda mirando alrededor y revisa puntos cada vez mas lejos,
+    // sobre todo hacia donde iba el jugador
+    void BuscarInteligente()
+    {
+        stateTimer += Time.deltaTime;
+        if (mirandoHasta > 0f)
+        {
+            // Mirando alrededor: gira a un lado y al otro
+            float k = 1f - (mirandoHasta - Time.time) / Mathf.Max(0.1f, tiempoMirarAlrededor);
+            transform.rotation = Quaternion.Euler(0f, giroMirar + Mathf.Sin(k * Mathf.PI * 2f) * 75f, 0f);
+            if (Time.time < mirandoHasta) return;
+            mirandoHasta = -1f;
+            agent.isStopped = false;
+            agent.updateRotation = true;
+            float radio = Mathf.Lerp(4f, 11f, stateTimer / Mathf.Max(1f, searchDuration * 1.6f));
+            Vector3 centro = lastKnownPosition + direccionBusqueda * radio * 0.4f;
+            agent.SetDestination(RandomNavPoint(centro, radio));
+        }
+        else if (ReachedDestination())
+        {
+            mirandoHasta = Time.time + tiempoMirarAlrededor * Random.Range(0.8f, 1.3f);
+            giroMirar = transform.eulerAngles.y;
+            agent.isStopped = true;
+            agent.updateRotation = false;
+            if (velocidadVista.sqrMagnitude > 0.1f) direccionBusqueda = new Vector3(velocidadVista.x, 0f, velocidadVista.z).normalized;
+        }
+
+        if (stateTimer >= searchDuration * (Investigando ? 1f : 1.6f))
+        {
+            mirandoHasta = -1f;
+            agent.isStopped = false;
+            agent.updateRotation = true;
+            Investigando = false;
+            EnterState(State.Patrol);
+        }
+    }
+
     void GoToNextPatrolPoint()
     {
+        // Inteligente: un rato despues de verlo sigue rondando por esa zona
+        if (inteligente && vistoAlguna && Time.time - lastSeenTime < memoria && Random.value < 0.6f)
+        {
+            agent.SetDestination(RandomNavPoint(lastKnownPosition, wanderRadius * 0.6f));
+            return;
+        }
         if (patrolPoints != null && patrolPoints.Length > 0)
         {
             agent.SetDestination(patrolPoints[patrolIndex].position);
@@ -488,8 +635,9 @@ public class JefeIndigoAI : MonoBehaviour
             agent.ResetPath();
             agent.velocity = Vector3.zero;
         }
-        // La primera patrulla sale desde alli, sin perseguir a nadie
+        // La primera patrulla sale desde alli, sin perseguir a nadie (y sin recordar donde lo vio)
         lastSeenTime = -999f;
+        vistoAlguna = false;
         if (enabled && agent.isOnNavMesh) EnterState(State.Patrol);
         else CurrentState = State.Patrol;
     }

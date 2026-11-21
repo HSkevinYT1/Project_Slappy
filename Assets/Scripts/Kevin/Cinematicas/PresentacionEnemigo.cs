@@ -62,7 +62,8 @@ public class PresentacionEnemigo : MonoBehaviour
     [Tooltip("Segundos mirando el reloj antes de seguir")]
     public float mirarReloj = 3.2f;
     public string textoTutorial = "Presiona [{0}] para mirar tu reloj";
-    public string textoPista = "Las agujas enloquecen cuando algo se acerca...";
+    [Tooltip("Ya no se usa (el texto al lado del reloj se quito)")]
+    public string textoPista = "";
 
     public UnityEvent alTerminar;
 
@@ -209,7 +210,6 @@ public class PresentacionEnemigo : MonoBehaviour
                     {
                         reloj.Mostrar(true);
                         reloj.Tutorial("");
-                        reloj.Pista(textoPista, mirarReloj + 2.5f);
                         vistoDesde = t;
                         // Recien ahora aparece el enemigo y cruza
                         if (esperarReloj) { Arrancar(); arrancoEn = t; }

@@ -16,6 +16,15 @@ public class DulceVidente : MonoBehaviour
     public Color colorBorde = new Color(0.25f, 0.6f, 0.35f, 0.75f);
     public AudioClip sonidoMirar;
 
+    [Header("Desgaste")]
+    [Tooltip("Segundos en total que se puede mirar a traves antes de que se deshaga (0 = no se gasta)")]
+    public float durabilidad = 30f;
+    [Tooltip("Grietas que van apareciendo sobre el agujero mientras se gasta")]
+    [Range(0, 20)] public int grietas = 10;
+    [TextArea] public string avisoGrietas = "Se está agrietando... no va a durar para siempre.";
+    [TextArea] public string avisoCasiRota = "Se está deshaciendo en mis manos. Tengo que usarla con cuidado.";
+    [TextArea] public string avisoRota = "Se hizo polvo...";
+
     [Header("Ayuda")]
     [Tooltip("Texto en pantalla mientras se tiene en la mano y todavia no se ha usado.")]
     public string ayuda = "Mantén clic derecho para mirar a través";
@@ -39,10 +48,30 @@ public class DulceVidente : MonoBehaviour
     private RawImage mascara;
     private Texture2D textura;
 
+    // Desgaste: 0 nueva, 1 rota
+    private float usoTotal;
+    public float Desgaste => durabilidad > 0f ? Mathf.Clamp01(usoTotal / durabilidad) : 0f;
+    private bool rota;
+    private MaterialPropertyBlock bloque;
+    private Color colorBase = Color.white, emisionBase = Color.black;
+    private RectTransform contenedorGrietas;
+
+    // Cada grieta es una linea quebrada (en radios del agujero, desde el borde hacia adentro) que se va abriendo
+    struct Segmento { public Vector2 a, b; public float umbral; public Image img; }
+    private Segmento[] segmentos;
+    private int visiblesAntes;
+
     void Awake()
     {
         grab = GetComponent<Grabbable>();
         modelo = GetComponentsInChildren<Renderer>();
+        bloque = new MaterialPropertyBlock();
+        if (modelo.Length > 0 && modelo[0] != null && modelo[0].sharedMaterial != null)
+        {
+            Material m = modelo[0].sharedMaterial;
+            if (m.HasProperty("_BaseColor")) colorBase = m.GetColor("_BaseColor");
+            if (m.HasProperty("_EmissionColor")) emisionBase = m.GetColor("_EmissionColor");
+        }
     }
 
     void OnDisable()
@@ -66,6 +95,7 @@ public class DulceVidente : MonoBehaviour
 
     void Update()
     {
+        if (rota) return;   // se esta deshaciendo (Romperse)
         bool enMano = EnMano();
         if (brillo != null)
         {
@@ -125,7 +155,87 @@ public class DulceVidente : MonoBehaviour
 
         Mirando = s > 0.5f;
         MarcaOculta.SetVisibilidad(Mathf.InverseLerp(0.4f, 1f, s));
+
+        // Se gasta mientras se mira a traves
+        if (Mirando && durabilidad > 0f && !rota)
+        {
+            float antes = Desgaste;
+            usoTotal += Time.deltaTime;
+            float ahora = Desgaste;
+            if (antes < 0.45f && ahora >= 0.45f) Pensamiento.Decir("piedra.grietas", 0.2f, avisoGrietas);
+            if (antes < 0.85f && ahora >= 0.85f) Pensamiento.Decir("piedra.casiRota", 0.2f, avisoCasiRota);
+        }
+        AspectoGastado();
         Mascara(s);
+        if (Desgaste >= 1f && !rota) StartCoroutine(Romperse());
+    }
+
+    // En la mano se ve mas oscura y mas chica cuanto mas gastada esta
+    void AspectoGastado()
+    {
+        float d = Desgaste;
+        if (d <= 0f || rota) return;
+        float k = d * d;
+        foreach (Renderer r in modelo)
+        {
+            if (r == null) continue;
+            r.GetPropertyBlock(bloque);
+            bloque.SetColor("_BaseColor", Color.Lerp(colorBase, new Color(0.22f, 0.2f, 0.17f), k * 0.85f));
+            bloque.SetColor("_EmissionColor", emisionBase * Mathf.Lerp(1f, 0.1f, k));
+            r.SetPropertyBlock(bloque);
+        }
+    }
+
+    // Se acabo: se cierra el agujero, se parte en pedazos que caen y desaparece de la mano
+    System.Collections.IEnumerator Romperse()
+    {
+        rota = true;
+        Pensamiento.Decir("piedra.rota", 0.4f, avisoRota);
+        // Se cierra lo que se estaba mirando
+        for (float t = 0f; t < 0.35f; t += Time.deltaTime)
+        {
+            MarcaOculta.SetVisibilidad(1f - t / 0.35f);
+            Mascara(1f - t / 0.35f);
+            yield return null;
+        }
+        Mirando = false;
+        MarcaOculta.SetVisibilidad(0f);
+        if (canvas != null) canvas.enabled = false;
+        Jugo.Sacudir(0.12f);
+
+        Camera cam = Camera.main;
+        Vector3 donde = cam != null ? cam.transform.position + cam.transform.forward * 0.45f - cam.transform.up * 0.2f : transform.position;
+        Pedazos(donde);
+
+        if (jugador != null && jugador.Held == grab) jugador.Drop();
+        Destroy(gameObject);
+    }
+
+    // Unos pedacitos con fisica que caen y desaparecen
+    void Pedazos(Vector3 centro)
+    {
+        Material mat = modelo.Length > 0 && modelo[0] != null ? modelo[0].sharedMaterial : null;
+        for (int i = 0; i < 12; i++)
+        {
+            var p = GameObject.CreatePrimitive(i % 3 == 0 ? PrimitiveType.Sphere : PrimitiveType.Cube);
+            p.name = "Pedazo de piedra";
+            p.layer = 2;   // Ignore Raycast: no estorba al apuntar
+            p.transform.position = centro + Random.insideUnitSphere * 0.05f;
+            p.transform.rotation = Random.rotation;
+            p.transform.localScale = Vector3.one * Random.Range(0.008f, 0.022f);
+            var r = p.GetComponent<Renderer>();
+            if (mat != null) r.sharedMaterial = mat;
+            r.GetPropertyBlock(bloque);
+            bloque.SetColor("_BaseColor", new Color(0.24f, 0.22f, 0.18f));
+            bloque.SetColor("_EmissionColor", Color.black);
+            r.SetPropertyBlock(bloque);
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var rb = p.AddComponent<Rigidbody>();
+            rb.mass = 0.01f;
+            rb.linearVelocity = Random.insideUnitSphere * 0.8f + Vector3.down * 0.5f;
+            rb.angularVelocity = Random.insideUnitSphere * 12f;
+            Destroy(p, Random.Range(1.8f, 2.6f));
+        }
     }
 
     // Pantalla negra con el agujero del caramelo en el centro
@@ -141,7 +251,11 @@ public class DulceVidente : MonoBehaviour
 
         // La imagen cubre toda la pantalla; con el uvRect el agujero queda redondo y de radioAgujero del alto
         // (fuera de la textura se repite su borde, que es negro). Al acercarlo al ojo el agujero se cierra.
-        float radio = radioAgujero * Screen.height * Mathf.Lerp(3f, 1f, s);
+        // Gastada, el agujero se va cerrando (se desmorona hacia adentro) y tiembla un poco
+        float d = Desgaste;
+        float radio = radioAgujero * Screen.height * Mathf.Lerp(3f, 1f, s) * Mathf.Lerp(1f, 0.72f, d * d);
+        if (d > 0.6f) radio *= 1f + (Mathf.PerlinNoise(Time.time * 9f, 0.7f) - 0.5f) * 0.05f * (d - 0.6f) / 0.4f;
+        Grietas(radio, s, d);
         float lado = 2f * radio / AgujeroTextura;                       // pixeles que ocupa la textura entera
         float w = Screen.width / lado, h = Screen.height / lado;
         mascara.uvRect = new Rect(0.5f - w * 0.5f, 0.5f - h * 0.5f, w, h);
@@ -165,6 +279,84 @@ public class DulceVidente : MonoBehaviour
         r.anchorMax = Vector2.one;
         r.offsetMin = r.offsetMax = Vector2.zero;
         mascara.texture = textura = TexturaAgujero(colorBorde);
+
+        // Grietas encima del agujero (centradas en la pantalla, en pixeles)
+        var cont = new GameObject("Grietas", typeof(RectTransform));
+        cont.transform.SetParent(go.transform, false);
+        contenedorGrietas = (RectTransform)cont.transform;
+        contenedorGrietas.anchorMin = contenedorGrietas.anchorMax = new Vector2(0.5f, 0.5f);
+        contenedorGrietas.sizeDelta = Vector2.zero;
+        CrearGrietas();
+    }
+
+    // Lineas quebradas que salen del borde del agujero hacia adentro; cada tramo tiene un "umbral" de desgaste
+    // a partir del cual se ve, asi las grietas van creciendo a medida que se gasta
+    void CrearGrietas()
+    {
+        var lista = new System.Collections.Generic.List<Segmento>();
+        var rnd = new System.Random(GetInstanceID());
+        float R(float a, float b) => a + (float)rnd.NextDouble() * (b - a);
+        for (int g = 0; g < grietas; g++)
+        {
+            float umbral = Mathf.Lerp(0.12f, 0.9f, grietas > 1 ? g / (float)(grietas - 1) : 0f) + R(-0.04f, 0.04f);
+            float ang = R(0f, Mathf.PI * 2f);
+            Vector2 p = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * R(0.98f, 1.08f);
+            // Hacia el centro, con quiebres
+            float dir = ang + Mathf.PI + R(-0.5f, 0.5f);
+            int tramos = rnd.Next(4, 8);
+            for (int t = 0; t < tramos; t++)
+            {
+                float largo = R(0.06f, 0.13f);
+                dir += R(-0.6f, 0.6f);
+                Vector2 q = p + new Vector2(Mathf.Cos(dir), Mathf.Sin(dir)) * largo;
+                if (q.magnitude < 0.35f) break;   // no llegan hasta el centro
+                lista.Add(new Segmento { a = p, b = q, umbral = umbral + t * 0.035f, img = Linea() });
+                p = q;
+            }
+        }
+        segmentos = lista.ToArray();
+    }
+
+    Image Linea()
+    {
+        var go = new GameObject("Grieta", typeof(RectTransform));
+        go.transform.SetParent(contenedorGrietas, false);
+        var img = go.AddComponent<Image>();
+        img.raycastTarget = false;
+        img.color = new Color(0.04f, 0.035f, 0.03f, 0.92f);
+        var r = img.rectTransform;
+        r.anchorMin = r.anchorMax = new Vector2(0.5f, 0.5f);
+        r.pivot = new Vector2(0f, 0.5f);
+        go.SetActive(false);
+        return img;
+    }
+
+    void Grietas(float radio, float s, float d)
+    {
+        if (segmentos == null) return;
+        float grosor = Mathf.Max(2f, Screen.height / 360f);
+        int visibles = 0;
+        foreach (Segmento g in segmentos)
+        {
+            bool ver = d > g.umbral;
+            if (g.img.gameObject.activeSelf != ver) g.img.gameObject.SetActive(ver);
+            if (!ver) continue;
+            visibles++;
+            // El tramo mas nuevo crece desde su punto de inicio
+            float crecer = Mathf.Clamp01((d - g.umbral) / 0.03f);
+            Vector2 a = g.a * radio, b = Vector2.Lerp(g.a, g.b, crecer) * radio;
+            Vector2 v = b - a;
+            RectTransform r = g.img.rectTransform;
+            r.anchoredPosition = a;
+            r.sizeDelta = new Vector2(v.magnitude, grosor);
+            r.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg);
+            Color c = g.img.color;
+            c.a = 0.92f * Mathf.Clamp01(s * 1.5f);
+            g.img.color = c;
+        }
+        // Una grieta nueva: un tironcito
+        if (visibles > visiblesAntes && Mirando) Jugo.Sacudir(0.05f);
+        visiblesAntes = visibles;
     }
 
     const float AgujeroTextura = 0.35f;   // radio del agujero en la textura (1 = medio lado)
