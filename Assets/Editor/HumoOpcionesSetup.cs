@@ -17,6 +17,7 @@ public static class HumoOpcionesSetup
         EditorApplication.delayCall += () => EditorApplication.delayCall += () =>
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (File.Exists("Temp/Capturas/humo_quitar.txt")) { File.Delete("Temp/Capturas/humo_quitar.txt"); QuitarHumo(); }
             if (File.Exists("Temp/Capturas/humo_aplicar.txt")) { File.Delete("Temp/Capturas/humo_aplicar.txt"); AplicarElegido(); }
             if (File.Exists("Temp/Capturas/humo_fotos.txt")) { File.Delete("Temp/Capturas/humo_fotos.txt"); Crear(); soloActual = false; Fotos(); }
             if (File.Exists("Temp/Capturas/humo_actual.txt")) { File.Delete("Temp/Capturas/humo_actual.txt"); soloActual = true; Fotos(); }
@@ -66,10 +67,12 @@ public static class HumoOpcionesSetup
     // Opcion elegida: la 2 (humo que sube) en las 4 sombras de los pasillos
     const int Elegida = 2;
 
-    // Volumen: capas de humo semitransparentes a lo largo del pasillo (se ve con profundidad de lado),
-    // mas anchas y altas que la abertura para que los bordes queden dentro de paredes, piso y techo
-    const int CapasN = 10;
-    const float Fondo = 3f, AnchoExtra = 2.4f, AltoExtra = 1f;
+    // Plano opaco (nunca se ve el pasillo) justo detras de la abertura, mas ancho y alto que ella para que
+    // sus bordes queden dentro de paredes, piso y techo; delante, un cubo de humo volumetrico (Slappy/HumoVolumen)
+    // que sobresale hacia la estacion: de lado se ven volutas de sombra saliendo del hueco.
+    const float AnchoExtra = 2.4f, AltoExtra = 1f;
+    const float DetrasPlano = 0.05f; // plano a esta distancia detras de la cara interior del bloque
+    const float Salida = 1.1f;       // metros que sobresale el humo por delante de la cara exterior
     const string NombreVolumen = "Humo Volumen";
 
     [MenuItem("Tools/Pasillos/Aplicar humo a las sombras")]
@@ -77,33 +80,26 @@ public static class HumoOpcionesSetup
     {
         var baseMat = AssetDatabase.LoadAssetAtPath<Material>($"{Carpeta}/Humo_Opcion{Elegida}.mat");
         if (!baseMat) { Crear(); baseMat = AssetDatabase.LoadAssetAtPath<Material>($"{Carpeta}/Humo_Opcion{Elegida}.mat"); }
-        // Material de las capas: el elegido, pero cada capa deja pasar algo (juntas tapan del todo)
-        string rutaCapas = $"{Carpeta}/Humo_Capas.mat";
-        var capas = AssetDatabase.LoadAssetAtPath<Material>(rutaCapas);
-        if (!capas) { capas = new Material(baseMat); AssetDatabase.CreateAsset(capas, rutaCapas); }
-        capas.CopyPropertiesFromMaterial(baseMat);
-        capas.SetFloat("_Nucleo", 0f); // capas apagadas: con humo semitransparente encima el fondo se veia gris (pendiente)
-        capas.SetFloat("_Densidad", 0f);
-        capas.SetFloat("_Bordes", 0.14f);
-        capas.SetFloat("_Profundidad", 0f);
-        capas.SetFloat("_Rasante", 0f);
-        // Juntas, las volutas claras de cada capa se suman: aqui van mucho mas oscuras
-        capas.SetColor("_Color", new Color(0.002f, 0.002f, 0.0025f));
-        capas.SetColor("_ColorClaro", new Color(0.012f, 0.012f, 0.013f));
-        capas.SetFloat("_Contraste", 1.8f);
-        capas.SetFloat("_ZWrite", 0f);
-        capas.renderQueue = 3101; // despues de la niebla de las zonas (FogVolume, cola 3000), que si no lo pinta de gris
-        EditorUtility.SetDirty(capas);
-        // Fondo del volumen: la ultima capa es totalmente opaca (nunca se ve el pasillo a traves)
+        // Plano del fondo: humo animado pero 100% opaco (sin bordes que se deshacen) y escribe profundidad
         string rutaFondo = $"{Carpeta}/Humo_Fondo.mat";
         var fondo = AssetDatabase.LoadAssetAtPath<Material>(rutaFondo);
-        if (!fondo) { fondo = new Material(capas); AssetDatabase.CreateAsset(fondo, rutaFondo); }
-        fondo.CopyPropertiesFromMaterial(capas);
+        if (!fondo) { fondo = new Material(baseMat); AssetDatabase.CreateAsset(fondo, rutaFondo); }
+        fondo.CopyPropertiesFromMaterial(baseMat);
+        fondo.SetColor("_Color", new Color(0.002f, 0.002f, 0.0025f));
+        fondo.SetColor("_ColorClaro", new Color(0.03f, 0.03f, 0.032f));
         fondo.SetFloat("_Nucleo", 1f); fondo.SetFloat("_Densidad", 2f);
-        fondo.SetFloat("_Rasante", 0f);
+        fondo.SetFloat("_Bordes", 0f); fondo.SetFloat("_Rasante", 0f); fondo.SetFloat("_Profundidad", 0f);
         fondo.SetFloat("_ZWrite", 1f);
-        fondo.renderQueue = 2450; // se dibuja con lo opaco y escribe profundidad: los efectos de pantalla lo ven como pared
+        fondo.renderQueue = 2450; // con lo opaco: los efectos de pantalla lo ven como pared
         EditorUtility.SetDirty(fondo);
+        // Volumen que sobresale
+        string rutaVol = $"{Carpeta}/Humo_Volumen.mat";
+        var volMat = AssetDatabase.LoadAssetAtPath<Material>(rutaVol);
+        if (!volMat) { volMat = new Material(Shader.Find("Slappy/HumoVolumen")); AssetDatabase.CreateAsset(volMat, rutaVol); }
+        volMat.shader = Shader.Find("Slappy/HumoVolumen");
+        volMat.renderQueue = 3101; // despues de la niebla de las zonas (FogVolume, cola 3000)
+        volMat.enableInstancing = true;
+        EditorUtility.SetDirty(volMat);
         AssetDatabase.SaveAssets();
 
         int n = 0;
@@ -114,7 +110,7 @@ public static class HumoOpcionesSetup
             Undo.RecordObject(r, "Humo en las sombras");
             r.sharedMaterials = new[] { baseMat };
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            r.enabled = false; // el volumen de capas reemplaza al bloque (sigue el collider y la puerta)
+            r.enabled = false; // el plano + volumen reemplazan al bloque (sigue el collider y la puerta)
 
             Transform viejo = s.Find(NombreVolumen);
             if (viejo) Undo.DestroyObjectImmediate(viejo.gameObject);
@@ -123,32 +119,61 @@ public static class HumoOpcionesSetup
             vol.SetParent(s, false);
             Vector3 ls = s.localScale;
             vol.localScale = new Vector3(1f / ls.x, 1f / ls.y, 1f / ls.z); // dentro del volumen todo en metros
-            float ancho = ls.x + AnchoExtra, alto = ls.y + AltoExtra;
-            // Todo el volumen dentro del pasillo (hacia donde esta su piso), desde un poco detras de la abertura
             Transform piso = s.parent ? s.parent.Find("Piso") : null;
-            float haciaDentro = piso && Vector3.Dot(piso.position - s.position, s.forward) < 0f ? -1f : 1f;
-            float centroZ = haciaDentro * (Fondo * 0.5f + 0.7f);
-            for (int i = 0; i < CapasN; i++)
-            {
-                var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                Object.DestroyImmediate(q.GetComponent<Collider>());
-                q.name = "Capa " + (i + 1);
-                q.transform.SetParent(vol, false);
-                // La capa 1 es la de la abertura; la ultima, la del fondo
-                float z = centroZ + haciaDentro * Mathf.Lerp(-Fondo * 0.5f, Fondo * 0.5f, (i + 0.5f) / CapasN);
-                q.transform.localPosition = new Vector3(0f, 0f, z);
-                q.transform.localScale = new Vector3(ancho, alto, 1f);
-                var qr = q.GetComponent<MeshRenderer>();
-                bool ultima = i == CapasN - 1;
-                qr.sharedMaterial = ultima ? fondo : capas;
-                qr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                qr.receiveShadows = false;
-            }
+            float h = piso && Vector3.Dot(piso.position - s.position, s.forward) < 0f ? -1f : 1f; // hacia dentro del pasillo
+            float zPlano = h * (ls.z * 0.5f + DetrasPlano);
+            float zFuera = -h * (ls.z * 0.5f + Salida);
+
+            var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Object.DestroyImmediate(q.GetComponent<Collider>());
+            q.name = "Humo Plano";
+            q.transform.SetParent(vol, false);
+            q.transform.localPosition = new Vector3(0f, 0f, zPlano);
+            q.transform.localScale = new Vector3(ls.x + AnchoExtra, ls.y + AltoExtra, 1f);
+            var qr = q.GetComponent<MeshRenderer>();
+            qr.sharedMaterial = fondo;
+            qr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            qr.receiveShadows = false;
+
+            var c = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(c.GetComponent<Collider>());
+            c.name = "Humo Volutas";
+            c.transform.SetParent(vol, false);
+            c.transform.localPosition = new Vector3(0f, 0f, (zPlano + zFuera) * 0.5f);
+            c.transform.localRotation = h > 0f ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity; // +Z local hacia afuera
+            c.transform.localScale = new Vector3(ls.x - 0.05f, ls.y - 0.02f, Mathf.Abs(zFuera - zPlano));
+            var cr = c.GetComponent<MeshRenderer>();
+            cr.sharedMaterial = volMat;
+            cr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            cr.receiveShadows = false;
+
             EditorUtility.SetDirty(r);
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(r.gameObject.scene);
             n++;
         }
-        Debug.Log($"[Humo] Opcion {Elegida} (humo que sube) en {n} sombras: {CapasN} capas en {Fondo} m de fondo, bordes escondidos en paredes, piso y techo. Guarda la escena (Ctrl+S).");
+        Debug.Log($"[Humo] Opcion {Elegida} en {n} sombras: plano opaco + volutas que salen {Salida} m. Guarda la escena (Ctrl+S).");
+    }
+
+    // Deja las 4 sombras como estaban: cubo gris (material Gris), visible y con sombras, sin capas de humo
+    [MenuItem("Tools/Pasillos/Quitar humo de las sombras")]
+    static void QuitarHumo()
+    {
+        var gris = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Gris.mat");
+        int n = 0;
+        foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (!r || System.Array.IndexOf(Sombras, r.name) < 0) continue;
+            Transform vol = r.transform.Find(NombreVolumen);
+            if (vol) Undo.DestroyObjectImmediate(vol.gameObject);
+            Undo.RecordObject(r, "Quitar humo");
+            if (gris) r.sharedMaterials = new[] { gris };
+            r.enabled = true;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            EditorUtility.SetDirty(r);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(r.gameObject.scene);
+            n++;
+        }
+        Debug.Log($"[Humo] Quitado: {n} sombras de vuelta a cubos grises. Guarda la escena (Ctrl+S).");
     }
 
     static bool soloActual;
