@@ -221,5 +221,7 @@ public class BackroomsGuion : MonoBehaviour
         Pensamiento.Decir("backrooms.entrada", 0.4f, alEntrar);
         yield return new WaitForSeconds(1.1f);
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
+        // Si muere, reaparece ya adentro (no del otro lado de la pared)
+        if (PantallaMuerte.Instance != null && !PantallaMuerte.Muerto) PantallaMuerte.Instance.Guardar();
     }
 }

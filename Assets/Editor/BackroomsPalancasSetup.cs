@@ -521,25 +521,8 @@ public static class BackroomsPalancasSetup
         piedra.position = new Vector3(cuerpo.center.x, cuerpo.max.y + 0.03f, cuerpo.center.z);
         if (piedra.TryGetComponent(out Interactable inter)) { Undo.RecordObject(inter, "Piedra"); inter.SetPrompt("Recoger piedra"); }
 
-        var gema = AssetDatabase.LoadAssetAtPath<GameObject>(ModeloGema);
-        if (gema == null || piedra.Find("Gema")) return;
-        // El modelo del caramelo (toroide) se cambia por el de la gema
-        if (piedra.TryGetComponent(out MeshRenderer mr)) Undo.DestroyObjectImmediate(mr);
-        if (piedra.TryGetComponent(out MeshFilter mf)) Undo.DestroyObjectImmediate(mf);
-        var g = (GameObject)PrefabUtility.InstantiatePrefab(gema, piedra);
-        g.name = "Gema";
-        foreach (Collider c in g.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
-        g.transform.localPosition = Vector3.zero;
-        g.transform.localRotation = Quaternion.identity;
-        g.transform.localScale = Vector3.one;
-        if (Limites(g.transform, out Bounds bg) && bg.size.magnitude > 0.0001f)
-        {
-            float tam = Mathf.Max(bg.size.x, bg.size.y, bg.size.z);
-            g.transform.localScale = Vector3.one * (0.09f / Mathf.Max(0.0001f, tam / Mathf.Max(0.0001f, piedra.lossyScale.x)));
-            Limites(g.transform, out bg);
-            g.transform.position += piedra.position - bg.center;
-        }
-        Undo.RegisterCreatedObjectUndo(g, "Gema");
+        // Su modelo: una piedra con agujero (la "piedra bruja"; la gema es el modelo de las coleccionables)
+        NovedadesGuionSetup.PonerPiedraBruja(piedra);
     }
 
     // Quad pintado en una pared, que solo se ve con la piedra (MarcaOculta)

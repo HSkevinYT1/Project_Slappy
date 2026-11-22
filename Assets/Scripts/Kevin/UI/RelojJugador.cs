@@ -43,7 +43,7 @@ public class RelojJugador : MonoBehaviour
     [Tooltip("Cuanto se acelera el tic-tac con la entidad encima (2.5 = dos veces y media)")]
     public float aceleracionManecillas = 2.5f;
     [Tooltip("Guardado (sin mirarlo) el tic-tac se sigue oyendo, muy bajo y apagado, como dentro de la manga (0 = no se oye)")]
-    [Range(0f, 1f)] public float volumenGuardado = 0.12f;
+    [Range(0f, 1f)] public float volumenSinMirar = 0.04f;   // (antes se llamaba volumenGuardado y estaba en 0.12)
 
     [Header("Brazo al mirar el reloj")]
     [Tooltip("Donde queda el reloj, en espacio de la camara (x derecha, y arriba, z adelante)")]
@@ -368,7 +368,7 @@ public class RelojJugador : MonoBehaviour
     }
 
     // Cuanto se oye segun lo levantado que esta: guardado muy bajo (y apagado por el filtro), mirandolo normal
-    float FactorVolumen() => Mathf.Lerp(volumenGuardado, 1f, Mathf.Clamp01(subida * 1.5f));
+    float FactorVolumen() => Mathf.Lerp(volumenSinMirar, 1f, Mathf.Clamp01(subida * 1.5f));
 
     // Guardado suena apagado (sin agudos), como tapado por la manga; levantado, claro
     void Filtro()
@@ -397,10 +397,10 @@ public class RelojJugador : MonoBehaviour
 
     void Sonido()
     {
-        bool puede = Desbloqueado && Time.timeScale > 0f && !PantallaMuerte.Muerto && !HUD.Oculto && (volumenGuardado > 0f || Visible);
+        bool puede = Desbloqueado && Time.timeScale > 0f && !PantallaMuerte.Muerto && !HUD.Oculto && (volumenSinMirar > 0f || Visible);
         if (puede) Filtro();
         if (sonidoManecillas != null) { SonidoManecillas(puede); return; }
-        if (!puede || (!Visible && volumenGuardado <= 0f)) return;
+        if (!puede || (!Visible && volumenSinMirar <= 0f)) return;
         float k = Cercania;
         float intervalo = k > 0.01f ? Mathf.Lerp(0.35f, 0.045f, k) : 1f;
         if (Time.time < proximoTic) return;
@@ -421,7 +421,7 @@ public class RelojJugador : MonoBehaviour
             audioManecillas.spatialBlend = 0f;
             audioManecillas.clip = sonidoManecillas;
         }
-        bool sonar = puede && (subida > 0.05f || volumenGuardado > 0f);
+        bool sonar = puede && (subida > 0.05f || volumenSinMirar > 0f);
         if (!sonar)
         {
             if (audioManecillas.isPlaying) audioManecillas.Pause();

@@ -491,6 +491,15 @@ public static class NovedadesGuionSetup
         Transform luz = zr.Find("Mesa del diario/Luz de la mesa");
         if (luz) { Undo.DestroyObjectImmediate(luz.gameObject); hechos.Add("sin la luz de la mesa del diario"); algo = true; }
 
+        // La piedra bruja tenia el modelo de una gema: se le pone el suyo
+        foreach (DulceVidente dv in Object.FindObjectsByType<DulceVidente>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (dv.transform.Find("Gema") || !dv.transform.Find("Piedra bruja"))
+            {
+                PonerPiedraBruja(dv.transform);
+                hechos.Add("la piedra bruja con su propio modelo (piedra con agujero)");
+                algo = true;
+            }
+
         // La mision que quedo a medias (sin la luz del faro ni el bidon): se termina de conectar
         Transform mt = zr.Find("Mision Faro");
         MisionFaro m = mt ? mt.GetComponent<MisionFaro>() : null;
@@ -507,6 +516,82 @@ public static class NovedadesGuionSetup
             else Debug.LogWarning("[Guion] No encontre Faro/Piso 3 - Linterna/Luz del faro (apagada) para conectar la mision.", m);
         }
         return algo;
+    }
+
+    // ------------------------------------------------------------------ Piedra bruja (la piedra magica de los Backrooms)
+
+    // Una piedra irregular con un agujero natural en el centro (el agujero en el eje Z local, por donde se mira).
+    // Reemplaza el modelo de gema que tenia (ese es el de las piedras coleccionables)
+    public static void PonerPiedraBruja(Transform piedra)
+    {
+        if (piedra == null) return;
+        foreach (string viejo in new[] { "Gema", "Piedra bruja" })
+        {
+            Transform t = piedra.Find(viejo);
+            if (t) Undo.DestroyObjectImmediate(t.gameObject);
+        }
+        if (piedra.TryGetComponent(out MeshRenderer mr0)) Undo.DestroyObjectImmediate(mr0);
+        if (piedra.TryGetComponent(out MeshFilter mf0)) Undo.DestroyObjectImmediate(mf0);
+
+        Directory.CreateDirectory(Carpeta);
+        string ruta = Carpeta + "/PiedraBruja.asset";
+        var malla = AssetDatabase.LoadAssetAtPath<Mesh>(ruta);
+        if (malla == null) { malla = MallaPiedraBruja(); AssetDatabase.CreateAsset(malla, ruta); }
+        Material mat = Mat("PiedraBruja", new Color(0.4f, 0.38f, 0.35f), 0.22f, 0f);
+
+        var go = new GameObject("Piedra bruja");
+        Undo.RegisterCreatedObjectUndo(go, "Piedra bruja");
+        go.transform.SetParent(piedra, false);
+        float escala = Mathf.Abs(piedra.lossyScale.x) > 0.0001f ? 1f / Mathf.Abs(piedra.lossyScale.x) : 1f;
+        go.transform.localScale = Vector3.one * escala;
+        go.AddComponent<MeshFilter>().sharedMesh = malla;
+        go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+    }
+
+    static Mesh MallaPiedraBruja()
+    {
+        const int segs = 28, lados = 12;
+        const float radio = 0.031f, grosor = 0.019f;
+        var rnd = new System.Random(5);
+        float[] bulto = new float[6];
+        for (int i = 0; i < bulto.Length; i++) bulto[i] = (float)rnd.NextDouble() * Mathf.PI * 2f;
+        float Ruido(float a, float b) =>
+            1f + 0.16f * Mathf.Sin(a * 2f + bulto[0]) + 0.1f * Mathf.Sin(a * 3f + bulto[1]) + 0.07f * Mathf.Sin(b * 2f + a + bulto[2])
+               + 0.05f * Mathf.Sin(a * 5f + b * 3f + bulto[3]);
+        var vs = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+        for (int i = 0; i <= segs; i++)
+        {
+            float a = i / (float)segs * Mathf.PI * 2f;
+            Vector3 centro = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
+            // El aro es mas gordo de un lado (como una piedra gastada por el agua)
+            float gordo = grosor * (1f + 0.35f * Mathf.Cos(a - bulto[4]));
+            for (int j = 0; j <= lados; j++)
+            {
+                float b = j / (float)lados * Mathf.PI * 2f;
+                float k = Ruido(a, b);
+                Vector3 n = centro * Mathf.Cos(b) + Vector3.forward * Mathf.Sin(b);
+                Vector3 v = centro * radio + n * gordo * k;
+                v.z *= 0.72f;   // aplanada en el eje del agujero
+                vs.Add(v);
+                uvs.Add(new Vector2(i / (float)segs * 3f, j / (float)lados));
+            }
+        }
+        for (int i = 0; i < segs; i++)
+            for (int j = 0; j < lados; j++)
+            {
+                int a0 = i * (lados + 1) + j, a1 = a0 + 1, b0 = a0 + lados + 1, b1 = b0 + 1;
+                tris.Add(a0); tris.Add(b0); tris.Add(a1);
+                tris.Add(a1); tris.Add(b0); tris.Add(b1);
+            }
+        var m = new Mesh { name = "PiedraBruja" };
+        m.SetVertices(vs);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        return m;
     }
 
     static void Brillo(GameObject go, Material glow)

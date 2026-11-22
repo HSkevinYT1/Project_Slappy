@@ -50,7 +50,7 @@ public class Flashlight : MonoBehaviour
         }
 
         // Descargar bateria
-        if (lightObject.activeSelf && !apagandose)
+        if (lightObject.activeSelf && !apagandose && !Lectura.Abierta)   // leyendo una nota o el diario no se gasta
         {
             battery -= drainPerSecond * Time.deltaTime;
 

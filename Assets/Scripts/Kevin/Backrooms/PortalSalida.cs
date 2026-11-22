@@ -1,19 +1,25 @@
-using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.Rendering.Universal;
 
 // Portal que aparece detras del jugador al presionar el boton del tablero de los Backrooms (lo crea PuzzlePalancas).
-// Crece girando y, al cruzarlo, una luz blanca tapa todo, el jugador aparece en la salida de la zona y la zona
-// queda completada (ProgresoCaminos).
+// Es un portal "de verdad": una puerta rectangular con marco brillante por la que se ve, en vivo, lo que hay del
+// otro lado (la salida de la zona). Se cruza caminando: el jugador aparece en la salida con el mismo paso y la misma
+// mirada, sin cortes, y la zona queda completada (ProgresoCaminos).
+[DefaultExecutionOrder(10000)]   // despues de que la camara del jugador se mueva (asi la vista del portal no tiembla)
 public class PortalSalida : MonoBehaviour
 {
     public Transform destino;
     public string zona = "Backrooms";
     public Material material;
+    public float ancho = 1.3f, alto = 2.3f;
 
-    Transform anillo, nucleo;
-    Light luz;
+    Camera camJugador, camPortal;
+    RenderTexture rt;
+    Material vista;
+    Transform jugador;
+    float ladoAntes;
     bool usado;
+    float tAparecer;
 
     public static PortalSalida Crear(Vector3 pos, Quaternion rot, Transform destino, string zona, Material material)
     {
@@ -28,117 +34,156 @@ public class PortalSalida : MonoBehaviour
         return p;
     }
 
+    // El frente del portal (su eje azul) mira al jugador; se cruza hacia atras de el
+    Quaternion Entrada => transform.rotation * Quaternion.Euler(0f, 180f, 0f);
+
     void Armar()
     {
-        // Disco de luz y un anillo de esferas que gira alrededor
-        nucleo = Pieza(PrimitiveType.Cylinder, "Nucleo", new Vector3(0f, 1.15f, 0f), new Vector3(1.5f, 0.01f, 2.1f)).transform;
-        nucleo.localRotation = Quaternion.Euler(90f, 0f, 0f);
-        anillo = new GameObject("Anillo").transform;
-        anillo.SetParent(transform, false);
-        anillo.localPosition = new Vector3(0f, 1.15f, 0f);
-        for (int i = 0; i < 16; i++)
-        {
-            float a = i / 16f * Mathf.PI * 2f;
-            var s = Pieza(PrimitiveType.Sphere, "Chispa " + i, Vector3.zero, Vector3.one * 0.11f);
-            s.transform.SetParent(anillo, false);
-            s.transform.localPosition = new Vector3(Mathf.Cos(a) * 0.82f, Mathf.Sin(a) * 1.12f, 0f);
-        }
-        luz = new GameObject("Luz").AddComponent<Light>();
-        luz.transform.SetParent(transform, false);
-        luz.transform.localPosition = new Vector3(0f, 1.15f, 0.4f);
-        luz.type = LightType.Point;
-        luz.color = new Color(0.55f, 0.4f, 1f);
-        luz.range = 6f;
-        luz.intensity = 0f;
-
-        var col = gameObject.AddComponent<BoxCollider>();
-        col.isTrigger = true;
-        col.center = new Vector3(0f, 1.1f, 0f);
-        col.size = new Vector3(1.5f, 2.2f, 0.8f);
-        StartCoroutine(Aparecer());
-    }
-
-    GameObject Pieza(PrimitiveType tipo, string nombre, Vector3 pos, Vector3 escala)
-    {
-        var g = GameObject.CreatePrimitive(tipo);
-        g.name = nombre;
-        g.layer = 2;
-        Destroy(g.GetComponent<Collider>());
-        g.transform.SetParent(transform, false);
-        g.transform.localPosition = pos;
-        g.transform.localScale = escala;
-        var r = g.GetComponent<Renderer>();
-        if (material != null) r.sharedMaterial = material;
+        // Superficie: la vista del otro lado
+        var sup = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        sup.name = "Superficie";
+        Destroy(sup.GetComponent<Collider>());
+        sup.layer = 2;
+        sup.transform.SetParent(transform, false);
+        sup.transform.localPosition = new Vector3(0f, alto * 0.5f, 0f);
+        sup.transform.localScale = new Vector3(ancho, alto, 1f);
+        Shader s = Shader.Find("Slappy/PortalVista");
+        vista = new Material(s != null ? s : Shader.Find("Universal Render Pipeline/Unlit"));
+        var r = sup.GetComponent<Renderer>();
+        r.sharedMaterial = vista;
         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        return g;
+
+        // Marco cuadrado
+        const float g = 0.08f, f = 0.14f;
+        Barra("Arriba", new Vector3(0f, alto + g * 0.5f, 0f), new Vector3(ancho + g * 2f, g, f));
+        Barra("Abajo", new Vector3(0f, g * 0.5f - 0.02f, 0f), new Vector3(ancho + g * 2f, g, f));
+        Barra("Izquierda", new Vector3(-(ancho + g) * 0.5f, alto * 0.5f, 0f), new Vector3(g, alto + g, f));
+        Barra("Derecha", new Vector3((ancho + g) * 0.5f, alto * 0.5f, 0f), new Vector3(g, alto + g, f));
+
+        var luz = new GameObject("Luz").AddComponent<Light>();
+        luz.transform.SetParent(transform, false);
+        luz.transform.localPosition = new Vector3(0f, alto * 0.55f, 0.5f);
+        luz.type = LightType.Point;
+        luz.color = new Color(0.45f, 0.8f, 1f);
+        luz.range = 4.5f;
+        luz.intensity = 1.6f;
+        luz.shadows = LightShadows.None;
+
+        // La camara del otro lado
+        var cg = new GameObject("Camara del portal");
+        camPortal = cg.AddComponent<Camera>();
+        camPortal.enabled = false;
+        var datos = camPortal.GetUniversalAdditionalCameraData();
+        datos.renderShadows = false;
+        datos.renderPostProcessing = false;
+
+        transform.localScale = new Vector3(1f, 0.02f, 1f);
     }
 
-    IEnumerator Aparecer()
+    void Barra(string nombre, Vector3 pos, Vector3 tam)
     {
-        Jugo.Sacudir(0.25f);
-        for (float t = 0f; t < 0.6f; t += Time.deltaTime)
-        {
-            float k = Jugo.SalidaAtras(t / 0.6f, 1.6f);
-            transform.localScale = new Vector3(k, k, 1f);
-            luz.intensity = 3f * Mathf.Clamp01(t / 0.6f);
-            yield return null;
-        }
-        transform.localScale = Vector3.one;
+        var b = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        b.name = nombre;
+        b.layer = 2;
+        Destroy(b.GetComponent<Collider>());
+        b.transform.SetParent(transform, false);
+        b.transform.localPosition = pos;
+        b.transform.localScale = tam;
+        if (material != null) b.GetComponent<Renderer>().sharedMaterial = material;
+    }
+
+    void OnDestroy()
+    {
+        if (camPortal != null) Destroy(camPortal.gameObject);
+        if (rt != null) { rt.Release(); Destroy(rt); }
+        if (vista != null) Destroy(vista);
     }
 
     void Update()
     {
-        if (anillo != null) anillo.localRotation = Quaternion.Euler(0f, 0f, Time.time * 90f);
-        if (nucleo != null)
+        // Se abre: crece desde el piso
+        if (tAparecer < 1f)
         {
-            float pulso = 1f + Mathf.Sin(Time.time * 4f) * 0.03f;
-            nucleo.localScale = new Vector3(1.5f * pulso, 0.01f, 2.1f * pulso);
+            tAparecer = Mathf.Min(1f, tAparecer + Time.deltaTime / 0.7f);
+            transform.localScale = new Vector3(1f, Mathf.Max(0.02f, Jugo.SalidaAtras(tAparecer, 1.4f)), 1f);
+            vista.SetFloat("_Aparecer", tAparecer);
         }
-        if (luz != null && !usado) luz.intensity = 3f + Mathf.Sin(Time.time * 3f) * 0.6f;
+
+        if (usado || destino == null) return;
+        if (jugador == null) { jugador = HUD.Jugador(); if (jugador == null) return; }
+        // Cruzo el plano de la puerta (de adelante hacia atras) dentro del marco
+        Vector3 local = Quaternion.Inverse(transform.rotation) * (jugador.position - transform.position);
+        float lado = local.z;
+        bool enMarco = Mathf.Abs(local.x) < ancho * 0.5f + 0.25f && local.y > -1f && local.y < alto;
+        if (ladoAntes > 0f && lado <= 0f && enMarco && tAparecer >= 1f) Cruzar();
+        ladoAntes = lado;
     }
 
-    void OnTriggerEnter(Collider other)
+    void LateUpdate()
     {
-        if (usado || other.GetComponentInParent<PlayerMovement>() == null) return;
+        if (camJugador == null) camJugador = Camera.main;
+        if (camJugador == null || camPortal == null || destino == null) return;
+        // Solo se dibuja si el jugador esta cerca y mirando hacia el portal
+        Vector3 haciaPortal = transform.position + Vector3.up * alto * 0.5f - camJugador.transform.position;
+        bool mirando = haciaPortal.sqrMagnitude < 30f * 30f && Vector3.Dot(camJugador.transform.forward, haciaPortal) > -0.3f;
+        camPortal.enabled = mirando && !usado;
+        if (!camPortal.enabled) return;
+
+        int w = Mathf.Max(64, camJugador.pixelWidth / 2), h = Mathf.Max(64, camJugador.pixelHeight / 2);
+        if (rt == null || rt.width != w || rt.height != h)
+        {
+            if (rt != null) { rt.Release(); Destroy(rt); }
+            rt = new RenderTexture(w, h, 24) { name = "Vista del portal" };
+            camPortal.targetTexture = rt;
+            vista.SetTexture("_MainTex", rt);
+        }
+
+        // La camara del otro lado: donde estaria la del jugador respecto a la salida
+        Quaternion delta = destino.rotation * Quaternion.Inverse(Entrada);
+        camPortal.transform.SetPositionAndRotation(
+            destino.position + delta * (camJugador.transform.position - transform.position),
+            delta * camJugador.transform.rotation);
+        camPortal.fieldOfView = camJugador.fieldOfView;
+        camPortal.aspect = camJugador.aspect;
+        camPortal.nearClipPlane = camJugador.nearClipPlane;
+        camPortal.farClipPlane = camJugador.farClipPlane;
+        camPortal.cullingMask = camJugador.cullingMask;
+        camPortal.ResetProjectionMatrix();
+
+        // Plano de corte en la salida: no se ve lo que queda detras de ella
+        Vector3 n = destino.forward;
+        Vector3 pc = camPortal.worldToCameraMatrix.MultiplyPoint(destino.position);
+        Vector3 nc = camPortal.worldToCameraMatrix.MultiplyVector(n) * Mathf.Sign(Vector3.Dot(n, destino.position - camPortal.transform.position));
+        float dst = -Vector3.Dot(pc, nc) + 0.05f;
+        if (Mathf.Abs(dst) > 0.2f) camPortal.projectionMatrix = camPortal.CalculateObliqueMatrix(new Vector4(nc.x, nc.y, nc.z, dst));
+    }
+
+    // Pasa al otro lado con la misma posicion relativa, mirada y velocidad
+    void Cruzar()
+    {
         usado = true;
-        StartCoroutine(Cruzar(other.GetComponentInParent<PlayerMovement>().transform));
-    }
+        Quaternion delta = destino.rotation * Quaternion.Inverse(Entrada);
+        Vector3 pos = destino.position + delta * (jugador.position - transform.position);
+        Vector3 adelante = delta * jugador.forward; adelante.y = 0f;
+        Quaternion rot = adelante.sqrMagnitude > 0.001f ? Quaternion.LookRotation(adelante, Vector3.up) : destino.rotation;
 
-    IEnumerator Cruzar(Transform jugador)
-    {
-        // Luz que tapa todo
-        Canvas canvas = HUD.CrearCanvas("Portal Destello", 130);
-        canvas.GetComponent<GraphicRaycaster>().enabled = false;
-        Image blanco = HUD.Imagen(HUD.Llenar(canvas.transform, "Destello"), new Color(0.85f, 0.8f, 1f, 0f));
-        for (float t = 0f; t < 0.35f; t += Time.deltaTime) { blanco.color = new Color(0.85f, 0.8f, 1f, t / 0.35f); yield return null; }
-        blanco.color = new Color(0.85f, 0.8f, 1f, 1f);
-
-        // A la salida de la zona (MouseLook se apaga un momento para tomar el giro nuevo)
-        MouseLook[] miradas = jugador.GetComponentsInChildren<MouseLook>();
+        var miradas = jugador.GetComponentsInChildren<MouseLook>();
         foreach (MouseLook m in miradas) m.enabled = false;
         Rigidbody rb = jugador.GetComponent<Rigidbody>();
-        if (destino != null)
+        Vector3 vel = rb != null && !rb.isKinematic ? delta * rb.linearVelocity : Vector3.zero;
+        jugador.SetPositionAndRotation(pos, rot);
+        if (rb != null)
         {
-            Quaternion giro = Quaternion.Euler(0f, destino.eulerAngles.y, 0f);
-            if (rb != null)
-            {
-                rb.linearVelocity = Vector3.zero;
-                rb.position = destino.position;
-                rb.rotation = giro;
-            }
-            jugador.SetPositionAndRotation(destino.position, giro);
-            Physics.SyncTransforms();
+            rb.position = pos;
+            rb.rotation = rot;
+            if (!rb.isKinematic) rb.linearVelocity = vel;
         }
-        yield return new WaitForFixedUpdate();
-        foreach (MouseLook m in miradas) if (m != null) m.enabled = true;
+        Physics.SyncTransforms();
+        foreach (MouseLook m in miradas) m.enabled = true;   // toma el giro nuevo del cuerpo
+        if (PantallaMuerte.Instance != null) PantallaMuerte.Instance.Guardar();
 
-        // La zona queda completada (la nueva se abre cuando vuelva a la estacion)
         ProgresoCaminos p = ProgresoCaminos.Instance;
         if (p != null && p.TramoActual != null && p.TramoActual.nombre == zona) p.CompletarZonaActual();
-
-        yield return new WaitForSeconds(0.25f);
-        for (float t = 0f; t < 0.7f; t += Time.deltaTime) { blanco.color = new Color(0.85f, 0.8f, 1f, 1f - t / 0.7f); yield return null; }
-        Destroy(canvas.gameObject);
         Destroy(gameObject);
     }
 }

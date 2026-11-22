@@ -129,6 +129,7 @@ public class MisionFaro : MonoBehaviour
         if (!Entro && centroFaro != null && Plano(jugador.position - centroFaro.position) < radioDentro
             && Mathf.Abs(jugador.position.y - centroFaro.position.y) < 4f)
             StartCoroutine(Entrada());
+        RevisarAfuera();
 
         if (diario != null && !diario.Leida && Cerca(diario.transform.position, 4f)) Pensamiento.Decir("faro.diario", 0.2f, alVerDiario);
 
@@ -162,6 +163,21 @@ public class MisionFaro : MonoBehaviour
             Jugo.Sacudir(0.25f);
         }
         Pensamiento.Decir("faro.desaparece", 0.5f, alDesaparecer);
+        // Si muere, reaparece aqui adentro (no en el pasillo, del otro lado de la pared)
+        if (PantallaMuerte.Instance != null && !PantallaMuerte.Muerto) PantallaMuerte.Instance.Guardar();
+    }
+
+    // Quedo afuera con la entrada tapada (ej: reaparecio en el pasillo): la pared se quita y al volver a entrar
+    // aparece otra vez
+    void RevisarAfuera()
+    {
+        if (!Entro || Relleno || muroEntrada == null || !muroEntrada.activeSelf || centroFaro == null || PantallaMuerte.Muerto) return;
+        float d = Plano(jugador.position - centroFaro.position);
+        if (d > 10f && d < 40f && Mathf.Abs(jugador.position.y - centroFaro.position.y) < 4f)
+        {
+            muroEntrada.SetActive(false);
+            Entro = false;
+        }
     }
 
     void AlLeerDiario()

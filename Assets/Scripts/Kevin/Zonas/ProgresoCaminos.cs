@@ -54,7 +54,16 @@ public class ProgresoCaminos : MonoBehaviour
 
     void Awake() => Instance = this;
 
-    void Start() => Aplicar(true);
+    [Tooltip("Las puertas de los caminos desaparecen y aparecen parpadeando (en vez de hundirse en el piso)")]
+    public bool puertasConParpadeo = true;
+
+    void Start()
+    {
+        if (puertasConParpadeo)
+            foreach (Tramo t in tramos)
+                if (t != null && t.puerta != null) t.puerta.parpadeo = true;
+        Aplicar(true);
+    }
 
     public void CompletarZonaActual() => IrAZona(zonaActual + 1);
 

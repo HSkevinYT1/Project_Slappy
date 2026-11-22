@@ -5,7 +5,7 @@ using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 // Cada zona (Laberinto, Backrooms, Cloacas, Zona Roja: los tramos de ProgresoCaminos) solo esta activa mientras el
-// jugador esta dentro, en su pasillo o cerca de su entrada. El resto del tiempo su objeto raiz se desactiva entero:
+// jugador esta dentro, en su pasillo, cerca de su entrada o mientras su puerta esta abierta (se ve desde la estacion). El resto del tiempo su objeto raiz se desactiva entero:
 // no se dibujan sus mallas, luces ni sombras, y no corren sus enemigos, sonidos ni scripts (su estado se guarda:
 // al volver todo sigue como estaba). La tienda y el sotano se apagan cuando ya se uso la cabina.
 // Se crea solo al jugar (solo en Play: en el editor las zonas siguen activas para poder editarlas).
@@ -29,6 +29,7 @@ public class CargaZonas : MonoBehaviour
         public Vector3 entrada;
         public Bounds pasillo;
         public bool hayPasillo;
+        public PuertaDeslizante puerta;
         public float volumenArea = float.MaxValue;
     }
 
@@ -68,7 +69,7 @@ public class CargaZonas : MonoBehaviour
             foreach (ProgresoCaminos.Tramo t in progreso.tramos)
             {
                 if (t == null || !raices.TryGetValue(t.nombre, out GameObject raiz)) continue;
-                var z = new Zona { nombre = t.nombre, raiz = raiz };
+                var z = new Zona { nombre = t.nombre, raiz = raiz, puerta = t.puerta };
                 foreach (ZonaVolumen a in areas)
                     if (a.name == "Trigger " + t.nombre && a.TryGetComponent(out BoxCollider caja))
                     {
@@ -112,6 +113,7 @@ public class CargaZonas : MonoBehaviour
             bool activa = z.raiz.activeSelf;
             float extra = activa ? histeresis : 0f;
             bool quiere = z == actual
+                       || (z.puerta != null && z.puerta.Abierta)   // con la puerta abierta se ve desde la estacion: si no, aparece de golpe
                        || (z.hayPasillo && Dentro(z.pasillo, p, extra))
                        || Vector3.Distance(p, z.entrada) < radioEntrada + extra;
             if (quiere == activa) continue;
