@@ -4,7 +4,7 @@ using UnityEngine.UI;
 // La piedra de los Backrooms (antes un caramelo con agujero): con ella en la mano, manteniendo el clic derecho
 // (accion "Mirar") el jugador se la acerca al ojo y mira a traves. La pantalla se oscurece salvo el agujero y
 // aparecen las inscripciones ocultas de las paredes (MarcaOculta), como el mapa de las palancas.
-// Se gasta mientras se mira (durabilidad): se agrieta y al final se apaga (se queda en el inventario).
+// Se gasta mientras se mira (durabilidad): se agrieta y al final se deshace (desaparece de la mano y del inventario).
 [RequireComponent(typeof(Grabbable))]
 public class DulceVidente : MonoBehaviour
 {
@@ -24,7 +24,7 @@ public class DulceVidente : MonoBehaviour
     [Range(0, 20)] public int grietas = 10;
     [TextArea] public string avisoGrietas = "Se está agrietando... no va a durar para siempre.";
     [TextArea] public string avisoCasiRota = "Se está deshaciendo en mis manos. Tengo que usarla con cuidado.";
-    [TextArea] public string avisoRota = "Se apagó... ya no muestra nada.";
+    [TextArea] public string avisoRota = "Se deshizo en mis manos...";
 
     [Header("Ayuda")]
     [Tooltip("Texto en pantalla mientras se tiene en la mano y todavia no se ha usado.")]
@@ -187,8 +187,7 @@ public class DulceVidente : MonoBehaviour
         }
     }
 
-    // Se acabo: se cierra el agujero, se le caen unos pedazos y queda apagada (agrietada y oscura, ya no deja mirar).
-    // Se queda en el inventario: en el guion el protagonista la guarda con las otras piedras.
+        // Se acabo: se cierra el agujero, se le caen unos pedazos y se deshace (las piedras que se coleccionan son otras)
     System.Collections.IEnumerator Romperse()
     {
         rota = true;
@@ -216,17 +215,29 @@ public class DulceVidente : MonoBehaviour
         foreach (Renderer r in modelo) if (r != null) r.enabled = true;
         Pedazos(transform.position);
 
-        // Apagada: oscura del todo y sin brillo
-        foreach (Renderer r in modelo)
-        {
-            if (r == null) continue;
-            r.GetPropertyBlock(bloque);
-            bloque.SetColor("_BaseColor", new Color(0.17f, 0.16f, 0.14f));
-            bloque.SetColor("_EmissionColor", Color.black);
-            r.SetPropertyBlock(bloque);
-        }
-        if (brillo != null) brillo.enabled = false;
         usado = true;
+        if (brillo != null) brillo.enabled = false;
+
+        // Lo que queda se oscurece, se achica hasta deshacerse y sale del inventario
+        Vector3 escala = transform.localScale;
+        for (float t = 0f; t < 0.45f; t += Time.deltaTime)
+        {
+            float q = t / 0.45f;
+            foreach (Renderer r in modelo)
+            {
+                if (r == null) continue;
+                r.GetPropertyBlock(bloque);
+                bloque.SetColor("_BaseColor", Color.Lerp(new Color(0.3f, 0.28f, 0.25f), new Color(0.08f, 0.07f, 0.06f), q));
+                bloque.SetColor("_EmissionColor", Color.black);
+                r.SetPropertyBlock(bloque);
+            }
+            transform.localScale = escala * (1f - q * q);
+            yield return null;
+        }
+        if (Inventario.Instance != null) Inventario.Instance.Quitar(grab);
+        PlayerInteractor pi = FindFirstObjectByType<PlayerInteractor>();
+        if (pi != null && pi.Held == grab) pi.SetHeld(null);
+        Destroy(gameObject);
     }
 
     public bool Agotada => rota;

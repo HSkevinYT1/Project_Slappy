@@ -505,6 +505,10 @@ public class PanelDebug : MonoBehaviour
         if (Boton(TieneLinterna() ? "Recargar linterna" : "Dar linterna")) Hacer(Linterna, false);
         if (Boton("Ir adonde miro")) pendiente = () => { if (IrAdondeMiro()) Cerrar(); };
         GUILayout.EndHorizontal();
+        GUI.enabled = PiedraColeccionable.Recogidas < PiedraColeccionable.Total;
+        if (Boton("Dar las 4 piedras (" + PiedraColeccionable.Recogidas + "/" + PiedraColeccionable.Total + ")"))
+            Hacer(() => { PiedraColeccionable.DarTodas(); Aviso("Tienes las 4 piedras: al final sale la cinemática secreta."); }, false);
+        GUI.enabled = true;
 
         Seccion("Mundo");
         congelar = Interruptor("Congelar enemigos", congelar);

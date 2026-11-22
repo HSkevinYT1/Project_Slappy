@@ -29,6 +29,8 @@ public class BackroomsGuion : MonoBehaviour
     public JefeIndigoAI gato;
     [Tooltip("Donde esta el gato al principio (encima del cadaver)")]
     public Transform puntoGato;
+    [Tooltip("Cuanto mas arriba del piso esta el gato al principio (lo que mide el cadaver tirado)")]
+    public float alturaCadaver = 0.24f;
     [Tooltip("Hacia donde sale corriendo")]
     public Transform huidaGato;
     [Tooltip("Grito de otra persona (opcional) y desde donde suena")]
@@ -75,6 +77,9 @@ public class BackroomsGuion : MonoBehaviour
             a.Warp(h.position);
             a.isStopped = true;
             a.ResetPath();
+            // Subido encima del cuerpo (el agente se queda en el piso hasta que salga corriendo)
+            a.updatePosition = false;
+            gato.transform.position = new Vector3(puntoGato.position.x, h.position.y + a.baseOffset + alturaCadaver, puntoGato.position.z);
         }
         if (puntoGato != null) gato.transform.rotation = Quaternion.Euler(0f, puntoGato.eulerAngles.y, 0f);
     }
@@ -113,7 +118,9 @@ public class BackroomsGuion : MonoBehaviour
     bool VeAlGato()
     {
         if (cam == null) return false;
-        Vector3 p = gato.transform.position + Vector3.up * 0.4f;
+        // El centro del cuerpo del gato (es chico: esta cerca del piso, no a la altura del agente)
+        NavMeshAgent ag = gato.GetComponent<NavMeshAgent>();
+        Vector3 p = gato.transform.position + Vector3.up * (0.3f - (ag != null ? ag.baseOffset : 0f));
         if ((p - cam.transform.position).sqrMagnitude > distanciaVerGato * distanciaVerGato) return false;
         Vector3 vp = cam.WorldToViewportPoint(p);
         if (vp.z <= 0f || vp.x < 0.05f || vp.x > 0.95f || vp.y < 0.05f || vp.y > 0.95f) return false;
@@ -145,6 +152,18 @@ public class BackroomsGuion : MonoBehaviour
 
         // Sale corriendo hacia el grito
         NavMeshAgent agent = gato.GetComponent<NavMeshAgent>();
+        // Salta del cuerpo al piso
+        if (agent != null && !agent.updatePosition)
+        {
+            Vector3 desde = gato.transform.position, hasta = agent.nextPosition + Vector3.up * agent.baseOffset;
+            for (float t = 0f; t < 0.18f; t += Time.deltaTime)
+            {
+                float k = t / 0.18f;
+                gato.transform.position = Vector3.Lerp(desde, hasta, k) + Vector3.up * (Mathf.Sin(k * Mathf.PI) * 0.25f);
+                yield return null;
+            }
+            agent.updatePosition = true;
+        }
         if (agent != null && agent.isOnNavMesh && huidaGato != null)
         {
             agent.isStopped = false;

@@ -739,7 +739,7 @@ public static class BackroomsPalancasSetup
 
     // ------------------------------------------------------------------ Gato de sombra
 
-    // Al prefab del gato (una capsula) le pone el modelo "gatp" todo negro, con ojos que brillan
+    // Al prefab del gato (una capsula) le pone el modelo "gatp" todo negro, con ojos que brillan (tamano: NovedadesGuionSetup.EscalarGato)
     static void ModeloSombraGato()
     {
         if (!AssetDatabase.LoadAssetAtPath<GameObject>(PrefabGato)) return;
@@ -770,7 +770,7 @@ public static class BackroomsPalancasSetup
             float pies = agent ? -agent.baseOffset : -1f;
             if (Limites(m.transform, out Bounds b) && b.size.z > 0.0001f)
             {
-                m.transform.localScale = Vector3.one * (1.4f / Mathf.Max(b.size.x, b.size.z));
+                m.transform.localScale = Vector3.one * (0.75f / Mathf.Max(b.size.x, b.size.z));
                 Limites(m.transform, out b);
                 Vector3 centro = root.transform.InverseTransformPoint(b.center);
                 float abajo = root.transform.InverseTransformPoint(b.min).y;

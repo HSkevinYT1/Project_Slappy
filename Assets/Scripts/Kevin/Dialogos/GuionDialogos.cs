@@ -45,6 +45,8 @@ public class GuionDialogos : MonoBehaviour
     [TextArea] public string abreBackrooms = "¿Por qué se abrió otra puerta?\n¿Acaso me van a hacer vivir esta mierda de nuevo?";
     [TextArea] public string trasBackrooms = "Ese gato se parecía al de mi abuela... claro, si este fuera un demonio.";
     [TextArea] public string abreCloacas = "Bueno, supongo que tendré que hacer esto otra vez.\nAl menos espero que la siguiente esté llena de colores y dulces.";
+    [TextArea] public string trasCloacas = "Maldito lugar... ahora tengo los pies mojados.";
+    [TextArea] public string abreZonaRoja = "Por lo que veo, esa es la última.";
 
     [Header("Cloacas (ayudas)")]
     [TextArea] public string rejaCerrada = "Se cerró... Tal vez haya una llave por aquí.";
@@ -161,6 +163,7 @@ public class GuionDialogos : MonoBehaviour
         {
             case "Laberinto": Pensamiento.Decir("estacion.trasLaberinto", 0.3f, trasLaberinto); break;
             case "Backrooms": Pensamiento.Decir("estacion.trasBackrooms", 0.3f, trasBackrooms); break;
+            case "Cloacas": Pensamiento.Decir("estacion.trasCloacas", 0.3f, trasCloacas); break;
         }
     }
 
@@ -170,6 +173,7 @@ public class GuionDialogos : MonoBehaviour
         {
             case "Backrooms": Pensamiento.Decir("estacion.abreBackrooms", 0.6f, abreBackrooms); break;
             case "Cloacas": Pensamiento.Decir("estacion.abreCloacas", 0.6f, abreCloacas); break;
+            case "Zona Roja": Pensamiento.Decir("estacion.abreZonaRoja", 0.6f, abreZonaRoja); break;
         }
     }
 

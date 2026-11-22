@@ -43,7 +43,16 @@ public class Objetivos : MonoBehaviour
     public string explorarCloacas = "Explora las cloacas";
 
     [Header("Zona Roja")]
-    public string explorarZonaRoja = "Explora la isla";
+    public string explorarZonaRoja = "Explora el faro";
+    public string leerDiario = "Lee el diario del faro";
+    public string buscarNotas = "Encuentra las notas ({0}/{1})";
+    public string buscarBidon = "Busca el bidón de gasolina";
+    public string rellenarFaro = "Rellena el faro con la gasolina";
+    public string salirFaro = "Vuelve a la estación";
+
+    [Header("Final")]
+    public string huirMuros = "Busca una salida";
+    public string tirarse = "Tírate al agujero";
 
     // ------------------------------------------------------------------ Estado
 
@@ -145,7 +154,16 @@ public class Objetivos : MonoBehaviour
         // ---- Zonas
         if (progreso == null || progreso.tramos == null) return;
         string dentro = null;
-        foreach (var kv in zonas) if (kv.Value != null && kv.Value.JugadorDentro) { dentro = kv.Key; break; }
+        // Si se pisan (la caja de la Zona Roja es enorme: abarca la isla y todo el alto del faro), la mas pequena,
+        // como hace VolumenZonas con el Volume
+        float menor = float.MaxValue;
+        foreach (var kv in zonas)
+        {
+            if (kv.Value == null || !kv.Value.JugadorDentro) continue;
+            Vector3 s = kv.Value.TryGetComponent(out BoxCollider caja) ? caja.bounds.size : Vector3.one * 1e6f;
+            float tam = s.x * s.y * s.z;
+            if (tam < menor) { menor = tam; dentro = kv.Key; }
+        }
 
         if (dentro != null)
         {
@@ -155,13 +173,20 @@ public class Objetivos : MonoBehaviour
                 case "Laberinto": Laberinto(hecha, out texto, out sub); return;
                 case "Backrooms": Backrooms(hecha, out texto, out sub); return;
                 case "Cloacas": Cloacas(hecha, out texto, out sub); return;
-                case "Zona Roja": texto = explorarZonaRoja; return;
+                case "Zona Roja": ZonaRoja(hecha, out texto, out sub); return;
             }
         }
 
         // En la Zona Principal o en un pasillo: a donde ir
         ProgresoCaminos.Tramo t = progreso.TramoActual;
-        if (t == null) return;
+        if (t == null)
+        {
+            // Todas completadas: el final
+            if (final == null) final = FindFirstObjectByType<FinalJuego>();
+            if (final != null && final.Empezado) texto = final.AgujeroAbierto ? tirarse : huirMuros;
+            else texto = salirFaro;
+            return;
+        }
         switch (t.nombre)
         {
             case "Laberinto": texto = irLaberinto; break;
@@ -214,6 +239,19 @@ public class Objetivos : MonoBehaviour
             bool tieneManija = pp.pieza != null && Inventario.Instance != null && Inventario.Instance.IndiceDe(pp.pieza) >= 0;
             texto = tieneManija ? ponerManija : buscarManija;
         }
+    }
+
+    FinalJuego final;
+
+    void ZonaRoja(bool hecha, out string texto, out string sub)
+    {
+        sub = null;
+        MisionFaro m = MisionFaro.Instance;
+        if (hecha || (m != null && m.Relleno)) { texto = salirFaro; return; }
+        if (m == null) { texto = explorarZonaRoja; return; }
+        if (!m.DiarioLeido) { texto = Pensamiento.YaDicho("faro.diario") ? leerDiario : explorarZonaRoja; return; }
+        if (m.NotasLeidas < m.TotalNotas) { texto = F(buscarNotas, m.NotasLeidas, m.TotalNotas); return; }
+        texto = m.TieneBidon ? rellenarFaro : buscarBidon;
     }
 
     void Cloacas(bool hecha, out string texto, out string sub)
