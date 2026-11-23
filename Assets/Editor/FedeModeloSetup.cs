@@ -25,17 +25,11 @@ public static class FedeModeloSetup
     // Sube este numero para que se vuelva a aplicar solo al cambiar el modelo/los ojos
     const int Version = 8;
 
-    static FedeModeloSetup()
-    {
-        EditorApplication.delayCall += () =>
-        {
-            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-            var p = AssetDatabase.LoadAssetAtPath<GameObject>(Prefab);
-            if (p && !p.transform.Find("Modelo/_fede v" + Version) && AssetDatabase.LoadAssetAtPath<GameObject>(Modelo)) Aplicar();
-        };
-    }
+    // Ya no se aplica solo: el modelo y las animaciones de Fede los pone ModelosAnimadosSetup
+    // (Tools > Modelos > Intercambiar modelos y animaciones). Este menu deja el modelo viejo.
+    static FedeModeloSetup() { }
 
-    [MenuItem("Tools/Enemigos/Modelo de Fede")]
+    [MenuItem("Tools/Enemigos/Modelo de Fede (viejo)")]
     static void Aplicar()
     {
         var modelo = AssetDatabase.LoadAssetAtPath<GameObject>(Modelo);
