@@ -63,14 +63,16 @@ public static partial class CloacasAliviaderoSetup
 
         // 3) armar
         Materiales();
+        EmpezarMallas();
         var tmp = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         mallaCilindro = tmp.GetComponent<MeshFilter>().sharedMesh;
         Object.DestroyImmediate(tmp);
-        piezas.Clear(); nodos.Clear(); tuneles.Clear(); cacheMallas.Clear();
+        piezas.Clear(); nodos.Clear(); tuneles.Clear(); cacheMallas.Clear(); cacheCilindros.Clear(); cacheSectores.Clear(); grupoPieza = null;
         Trazado();
         for (int i = 0; i < nodos.Count; i++) { NuevaPieza(nodos[i].nombre); if (nodos[i].redondo) CamaraRedonda(i); else CamaraRect(i); }
         for (int i = 0; i < tuneles.Count; i++) { NuevaPieza("Tunel " + nodos[tuneles[i].a].nombre + " - " + nodos[tuneles[i].b].nombre); ConstruirTunel(tuneles[i]); }
-        Combinar(colAgua);
+        TerminarMallas();
+        if (colisiones.childCount == 0) Object.DestroyImmediate(colisiones.gameObject);
         foreach (var col in raiz.GetComponentsInChildren<Transform>()) col.gameObject.isStatic = true;
         foreach (var col in colPiso.GetComponentsInChildren<Transform>()) col.gameObject.isStatic = true;
         foreach (var col in colAgua.GetComponentsInChildren<Transform>()) col.gameObject.isStatic = true;
@@ -213,12 +215,24 @@ public static partial class CloacasAliviaderoSetup
     static void Sector(Vector3 c, float rin, float rout, float a0, float a1, float y0, float y1, Material mat, bool col)
     {
         if (y1 - y0 < 0.01f) return;
-        Agregar(MallaSector(rin, rout, a0, a1, y1 - y0, Mathf.Max(1, Mathf.CeilToInt((a1 - a0) / 7.5f))), Matrix4x4.Translate(c + Vector3.up * y0), mat);
+        // la malla se arma desde el angulo 0 y el objeto se gira a a0 (asi los sectores iguales comparten malla)
+        string clave = string.Format(System.Globalization.CultureInfo.InvariantCulture, "Sector_{0:0.000}_{1:0.000}_{2:0.00}_{3:0.000}", rin, rout, a1 - a0, y1 - y0);
+        if (!cacheSectores.TryGetValue(clave, out Mesh malla) || !malla)
+        {
+            malla = MallaSector(rin, rout, 0f, a1 - a0, y1 - y0, Mathf.Max(1, Mathf.CeilToInt((a1 - a0) / 7.5f)));
+            malla.name = clave;
+            cacheSectores[clave] = Guardar(malla);
+        }
+        var go = Objeto(a1 - a0 >= 359.9f ? "Anillo " + Nombre(mat) : Nombre(mat), malla, c + Vector3.up * y0, Quaternion.Euler(0, a0, 0), Vector3.one, mat, Padre());
         if (!col) return;
         float am = (a0 + a1) * 0.5f, rm = (rin + rout) * 0.5f;
         float ancho = 2f * rout * Mathf.Sin((a1 - a0) * 0.5f * Mathf.Deg2Rad) + 0.05f;
+        grupoPieza = go.transform;
         Colision(c + Quaternion.Euler(0, am, 0) * Vector3.forward * rm + Vector3.up * ((y0 + y1) * 0.5f), Quaternion.Euler(0, am, 0), new Vector3(ancho, y1 - y0, rout - rin));
+        grupoPieza = null;
     }
+
+    static readonly Dictionary<string, Mesh> cacheSectores = new Dictionary<string, Mesh>();
 
     static void EnPiso(System.Action a) { var p = colActual; colActual = colPiso; a(); colActual = p; }
 
@@ -268,11 +282,12 @@ public static partial class CloacasAliviaderoSetup
         if (n.tipo == 2)
         {
             float ri = r * 0.25f, largoP = r - acera - ri + 0.2f;
-            // el cuerpo de ladrillo termina bajo la tapa (si no, sus caras de arriba coinciden y parpadean)
-            Cilindro(n.c + Vector3.up * -1.24f, ri, 2.32f, mLadrillo, true);
-            var prev = colActual; colActual = colPiso; Cilindro(n.c + Vector3.up * -0.03f, ri + 0.1f, 0.06f, mAcera, true); colActual = prev;
-            // la pasarela queda 1,5 cm sobre la tapa y la acera para no compartir plano con ellas
-            EnPiso(() => Caja(n.c + Vector3.back * (ri + largoP * 0.5f - 0.1f) + Vector3.down * 0.045f, new Vector3(1.6f, 0.12f, largoP), mMetal));
+            // El ladrillo termina 30 cm bajo la tapa (queda escondido dentro de ella) y el puente no se mete en la isla:
+            // caras casi a la misma altura parpadean, sobre todo vistas de lejos en la Scene.
+            Cilindro(n.c + Vector3.up * -1.35f, ri, 2.1f, mLadrillo, true);
+            var prev = colActual; colActual = colPiso; Cilindro(n.c + Vector3.up * -0.175f, ri + 0.1f, 0.35f, mAcera, true); colActual = prev;
+            float largoB = largoP - 0.13f;
+            EnPiso(() => Caja(n.c + Vector3.back * (ri + 0.03f + largoB * 0.5f) + Vector3.down * 0.08f, new Vector3(1.6f, 0.12f, largoB), mMetal));
             Baranda(n.c + new Vector3(0.8f, 0, -ri), n.c + new Vector3(0.8f, 0, -(r - acera)));
             Baranda(n.c + new Vector3(-0.8f, 0, -ri), n.c + new Vector3(-0.8f, 0, -(r - acera)));
             for (int i = 0; i < 12; i++)
