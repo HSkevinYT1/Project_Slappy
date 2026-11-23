@@ -12,17 +12,23 @@ using UnityEngine.SceneManagement;
 //   caminando desde la estacion), completar la actual (como si la terminara) o volver a la estacion.
 // - Jugador: invencible, estamina infinita, velocidad, dar/recargar la linterna, ir adonde se esta mirando.
 // - Mundo: congelar a los enemigos y la velocidad del tiempo.
+// - Capturas: ocultar todo el HUD (y si se quiere los brazos y lo que hay en la mano) para sacar fotos del escenario.
+//   F10 lo alterna sin abrir el panel.
 // Con algun truco activo sale un aviso chiquito arriba a la derecha. Se crea solo al jugar (no hay que ponerlo en la escena).
+[DefaultExecutionOrder(10000)]   // su LateUpdate va despues del resto: oculta lo que otros scripts acaban de mostrar
 public class PanelDebug : MonoBehaviour
 {
     // Los trucos siguen al recargar la escena (ej: al volver al inicio); se reinician al darle Play
-    static bool estaminaInfinita, congelar;
+    static bool estaminaInfinita, congelar, sinHUD, sinBrazos;
     static float velocidad = 1f, tiempo = 1f;
+
+    // true con "Ocultar HUD" puesto: los textos de OnGUI (avisos, ayudas) lo consultan para no dibujarse
+    public static bool HUDOculto => sinHUD;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void Reiniciar()
     {
-        estaminaInfinita = congelar = false;
+        estaminaInfinita = congelar = sinHUD = sinBrazos = false;
         velocidad = tiempo = 1f;
         PantallaMuerte.Invencible = false;
     }
@@ -69,6 +75,7 @@ public class PanelDebug : MonoBehaviour
             if (abierto) Cerrar();
             else if (!PauseMenu.IsPaused && !PantallaMuerte.Muerto) Abrir();
         }
+        if (k != null && k.f10Key.wasPressedThisFrame) sinHUD = !sinHUD;
 
         if (pendiente != null)
         {
@@ -155,6 +162,57 @@ public class PanelDebug : MonoBehaviour
         }
         // Si algo devolvio el tiempo a la normalidad (ej: la pausa), se vuelve a poner el elegido
         if (!abierto && tiempo != 1f && Time.timeScale == 1f && !PauseMenu.IsPaused) Time.timeScale = tiempo;
+    }
+
+    // ------------------------------------------------------------------ Capturas (ocultar HUD y brazos)
+
+    readonly HashSet<Canvas> canvasOcultos = new HashSet<Canvas>();
+    readonly HashSet<Renderer> brazosOcultos = new HashSet<Renderer>();
+    readonly List<Renderer> soltados = new List<Renderer>();
+
+    void LateUpdate()
+    {
+        OcultarHUD();
+        OcultarBrazos();
+    }
+
+    // Todos los Canvas de pantalla (HUD, inventario, mision, pensamientos, lecturas, fundidos...) se apagan; los de
+    // mundo (carteles del escenario) se quedan. Se revisa cada frame porque hay scripts que los vuelven a prender.
+    void OcultarHUD()
+    {
+        if (!sinHUD)
+        {
+            if (canvasOcultos.Count == 0) return;
+            foreach (Canvas c in canvasOcultos) if (c != null) c.enabled = true;
+            canvasOcultos.Clear();
+            return;
+        }
+        foreach (Canvas c in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+            if (c.enabled && c.isRootCanvas && c.renderMode != RenderMode.WorldSpace)
+            {
+                c.enabled = false;
+                canvasOcultos.Add(c);
+            }
+    }
+
+    // Lo que cuelga de la camara del jugador: los brazos y lo que tiene en la mano (la luz de la linterna sigue)
+    void OcultarBrazos()
+    {
+        Camera cam = sinBrazos || brazosOcultos.Count > 0 ? Camara() : null;
+        if (!sinBrazos || cam == null)
+        {
+            if (brazosOcultos.Count == 0) return;
+            foreach (Renderer r in brazosOcultos) if (r != null) r.enabled = true;
+            brazosOcultos.Clear();
+            return;
+        }
+        // Lo que se solto mientras estaba oculto vuelve a verse en el mundo
+        soltados.Clear();
+        foreach (Renderer r in brazosOcultos) if (r == null || !r.transform.IsChildOf(cam.transform)) soltados.Add(r);
+        foreach (Renderer r in soltados) { if (r != null) r.enabled = true; brazosOcultos.Remove(r); }
+
+        foreach (Renderer r in cam.GetComponentsInChildren<Renderer>())
+            if (r.enabled) { r.enabled = false; brazosOcultos.Add(r); }
     }
 
     void AplicarVelocidad(float v)
@@ -514,6 +572,10 @@ public class PanelDebug : MonoBehaviour
         congelar = Interruptor("Congelar enemigos", congelar);
         Opciones("Tiempo", tiempo, new[] { 0.25f, 0.5f, 1f, 2f, 4f }, v => tiempo = v);
 
+        Seccion("Capturas");
+        sinHUD = Interruptor("Ocultar todo el HUD  (F10)", sinHUD);
+        sinBrazos = Interruptor("Ocultar brazos y lo que hay en la mano", sinBrazos);
+
         if (mensaje != "" && Time.unscaledTime < mensajeHasta) { GUILayout.Space(4f); GUILayout.Label(mensaje, sAviso); }
         GUILayout.Space(6f);
         GUILayout.BeginHorizontal();
@@ -553,8 +615,9 @@ public class PanelDebug : MonoBehaviour
     // Con el panel cerrado: que trucos estan puestos (y el ultimo aviso)
     void Indicador(float s)
     {
-        if (MenuPrincipal.Abierto) return;
+        if (MenuPrincipal.Abierto || sinHUD) return;
         var partes = new List<string>();
+        if (sinBrazos) partes.Add("sin brazos");
         if (PantallaMuerte.Invencible) partes.Add("invencible");
         if (estaminaInfinita) partes.Add("estamina infinita");
         if (velocidad != 1f) partes.Add("velocidad x" + velocidad.ToString("0.##"));

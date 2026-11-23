@@ -19,8 +19,8 @@ using UnityEngine.AI;
 [InitializeOnLoad]
 public static class ModelosAnimadosSetup
 {
-    const string Marca = "_anim v1";
-    const string Base = "Assets/animaciones y modelos/";
+    const string Marca = "_anim v5";   // v5: sin materiales rotos (morados): solo se copian los que existen. Se rehacen todos
+    const string Base = "Assets/Animations/";   // (antes "Assets/animaciones y modelos/")
     const string Prefabs = "Assets/Prefabs/";
     const string MatsFede = "Assets/Modelos De enemigos/Materiales Fede/";
 
@@ -39,24 +39,24 @@ public static class ModelosAnimadosSetup
     };
     static readonly Def[] Gato =
     {
-        new Def(AnimacionesModelo.Idle, "Cat/CatIdle.fbx"),
-        new Def(AnimacionesModelo.Caminar, "Cat/CatWalk.fbx"),
+        new Def(AnimacionesModelo.Idle, "gato/CatIdle.fbx"),
+        new Def(AnimacionesModelo.Caminar, "gato/CatWalk.fbx"),
     };
     static readonly Def[] Slappy =
     {
-        new Def(AnimacionesModelo.Caminar, "Slappy/Slappywalk.fbx"),
-        new Def(AnimacionesModelo.Correr, "Slappy/Mutant Run (3).fbx"),
-        new Def(AnimacionesModelo.Jumpscare, "Slappy/JumpscareSlappy.fbx", false),
+        new Def(AnimacionesModelo.Caminar, "slappy/Enemigo4_Walk.fbx"),
+        new Def(AnimacionesModelo.Correr, "slappy/Enemigo4_Run.fbx"),
+        new Def(AnimacionesModelo.Jumpscare, "slappy/Enemigo4_Jumpscare.fbx", false),
     };
     static readonly Def[] Cliente =
     {
-        new Def(AnimacionesModelo.Idle, "NPC/NPCIDLE.fbx"),
-        new Def(AnimacionesModelo.Caminar, "NPC/NPCwalk.fbx"),
+        new Def(AnimacionesModelo.Idle, "npc/NPCIdle.fbx"),
+        new Def(AnimacionesModelo.Caminar, "npc/NPCWalk.fbx"),
     };
     static readonly Def[] Cultista =
     {
-        new Def(AnimacionesModelo.Idle, "Cultista/CultistIdle.fbx"),
-        new Def(AnimacionesModelo.Caminar, "Cultista/CultistWalkPose.fbx"),
+        // (sin idle por ahora: solo esta cultistawalk)
+        new Def(AnimacionesModelo.Caminar, "cultista/cultistawalk.fbx"),
     };
     const string ArchivoBrazos = "NPC/Arms.fbx";
     // Lo que cuelga de los brazos y hay que conservar
@@ -68,10 +68,14 @@ public static class ModelosAnimadosSetup
         EditorSceneManager.sceneOpened += (s, m) => EditorApplication.delayCall += AutoAplicar;
     }
 
+    // Se aplica solo (pone los modelos nuevos). Se animan (AnimacionesModelo.reproducir) solo las animaciones que funcionan (las
+    // animaciones no estaban bien). Los brazos del jugador no se cambian solos (solo desde el menu).
+    const bool Automatico = true;
+
     static void AutoAplicar()
     {
-        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-        if (!AssetDatabase.LoadAssetAtPath<GameObject>(Base + ArchivoBrazos)) return;
+        if (!Automatico || EditorApplication.isPlayingOrWillChangePlaymode) return;
+        if (!AssetDatabase.IsValidFolder(Base.TrimEnd('/'))) return;
         Aplicar(false);
     }
 
@@ -84,7 +88,8 @@ public static class ModelosAnimadosSetup
         Enemigo(Prefabs + "Enemy 1 (fede).prefab", Fede, 2.6f, true, forzar);
         Enemigo(Prefabs + "Enemy 2 (gato).prefab", Gato, 0f, false, forzar);
         Enemigo(Prefabs + "Enemy 4.prefab", Slappy, 0f, false, forzar);
-        BrazosPrefab(forzar);
+        // Los brazos solo a mano (Tools > Modelos): con Arms.fbx la mano del jugador dejaba de verse
+        if (forzar) BrazosPrefab(forzar);
         Escena(forzar);
     }
 
@@ -108,6 +113,8 @@ public static class ModelosAnimadosSetup
 
     static void Enemigo(string ruta, Def[] defs, float altoFijo, bool esFede, bool forzar)
     {
+        // Sin ningun FBX de este personaje en la carpeta (ej. Fede por ahora): se queda con su modelo de siempre
+        if (!Hay(defs)) return;
         if (!AssetDatabase.LoadAssetAtPath<GameObject>(ruta)) { Debug.LogWarning("[Modelos] No encuentro " + ruta); return; }
         GameObject raiz = PrefabUtility.LoadPrefabContents(ruta);
         try
@@ -123,7 +130,9 @@ public static class ModelosAnimadosSetup
 
             var mapa = Materiales(viejos);
             Rescatar(raiz.transform, viejos, false);
-            foreach (Transform v in viejos) Object.DestroyImmediate(v.gameObject);
+            // Los viejos se borran DESPUES de crear el modelo nuevo: el mapa de materiales apunta a sus renderers
+            // (borrarlos antes daba MissingReferenceException en AsignarMateriales y cortaba todo el setup)
+            foreach (Transform v in viejos) v.name += " (viejo)";
             foreach (AnimacionCaminar ac in raiz.GetComponentsInChildren<AnimacionCaminar>(true)) Object.DestroyImmediate(ac);
 
             var agent = raiz.GetComponent<NavMeshAgent>();
@@ -147,6 +156,7 @@ public static class ModelosAnimadosSetup
             else mats = (r, sueltos) => AsignarMateriales(r, mapa, sueltos);
 
             CrearModelo(raiz.transform, defs, alto, pies, mats, mapa);
+            foreach (Transform v in viejos) if (v) Object.DestroyImmediate(v.gameObject);
             var capsula = raiz.GetComponent<MeshRenderer>();
             if (capsula) capsula.enabled = false;
 
@@ -164,12 +174,12 @@ public static class ModelosAnimadosSetup
         TutorialTienda tut = Object.FindFirstObjectByType<TutorialTienda>(FindObjectsInactive.Include);
         if (tut)
         {
-            cambio |= NPC(tut.cliente, Cliente, forzar);
-            cambio |= NPC(tut.cultista, Cultista, forzar);
+            cambio |= NPC(tut.cliente, Cliente, forzar, "Assets/Modelos De enemigos/Idle (1).fbx");
+            cambio |= NPC(tut.cultista, Cultista, forzar, "Assets/Modelos De enemigos/IdleCultist.fbx");
         }
         // Brazos del jugador de la escena si no vienen del prefab
         var pm = Object.FindFirstObjectByType<PlayerMovement>(FindObjectsInactive.Include);
-        if (pm && !PrefabUtility.IsPartOfPrefabInstance(pm))
+        if (forzar && pm && !PrefabUtility.IsPartOfPrefabInstance(pm))
         {
             Transform pa = Buscar(pm.transform, "Player_Arms");
             if (pa) cambio |= Brazos(pa, forzar, true);
@@ -180,9 +190,10 @@ public static class ModelosAnimadosSetup
         Debug.Log("[Modelos] Escena actualizada (NPCs de la tienda). Guarda la escena (Ctrl+S).");
     }
 
-    static bool NPC(Transform npc, Def[] defs, bool forzar)
+    static bool NPC(Transform npc, Def[] defs, bool forzar, string respaldo)
     {
         if (!npc) return false;
+        if (!Hay(defs)) return false;
         Transform actual = npc.Find("Modelo");
         if (actual && actual.Find(Marca) && !forzar) return false;
 
@@ -192,21 +203,25 @@ public static class ModelosAnimadosSetup
 
         float alto = 1.8f, pies = 0f;
         if (LimitesEn(viejos, npc, out Bounds b) && b.size.y > 0.2f) { alto = b.size.y; pies = b.min.y; }
+        // Una persona: si la medida da algo absurdo (el cliente salia de 155 m), 1.8 m con los pies en el pivote
+        if (alto < 1.3f || alto > 2.4f) { alto = 1.8f; pies = 0f; }
 
         var mapa = Materiales(viejos);
+        // Si el modelo viejo ya tenia materiales rotos, los del modelo original del equipo
+        var original = AssetDatabase.LoadAssetAtPath<GameObject>(respaldo);
+        if (original) foreach (var kv in Materiales(new[] { original.transform })) if (!mapa.ContainsKey(kv.Key)) mapa[kv.Key] = kv.Value;
         Rescatar(npc, viejos, true);
-        foreach (Transform v in viejos)
-        {
-            if (PrefabUtility.IsPartOfPrefabInstance(v) && !PrefabUtility.IsOutermostPrefabInstanceRoot(v.gameObject))
-            {
-                Undo.RecordObject(v.gameObject, "Modelo NPC");
-                v.gameObject.SetActive(false);
-                v.gameObject.name += " (viejo)";
-            }
-            else Undo.DestroyObjectImmediate(v.gameObject);
-        }
+        // Se apartan (y se borran despues de crear el nuevo: el mapa de materiales apunta a sus renderers)
+        foreach (Transform v in viejos) { Undo.RecordObject(v.gameObject, "Modelo NPC"); v.gameObject.name += " (viejo)"; }
         Undo.RecordObject(npc, "Modelo NPC");
         var comp = CrearModelo(npc, defs, alto, pies, (r, sueltos) => AsignarMateriales(r, mapa, sueltos), mapa);
+        foreach (Transform v in viejos)
+        {
+            if (!v) continue;
+            if (PrefabUtility.IsPartOfPrefabInstance(v) && !PrefabUtility.IsOutermostPrefabInstanceRoot(v.gameObject))
+                v.gameObject.SetActive(false);
+            else Undo.DestroyObjectImmediate(v.gameObject);
+        }
         Undo.RegisterCreatedObjectUndo(npc.Find("Modelo").gameObject, "Modelo NPC");
         EditorUtility.SetDirty(comp);
         Debug.Log($"[Modelos] {npc.name}: modelo nuevo con {string.Join(", ", defs.Select(d => d.nombre))} ({alto:0.00} m).", npc);
@@ -330,6 +345,7 @@ public static class ModelosAnimadosSetup
             foreach (Renderer r in inst.GetComponentsInChildren<Renderer>(true))
             {
                 mats?.Invoke(r, sueltos);
+                SinMorado(r);
                 if (r is SkinnedMeshRenderer sk) sk.updateWhenOffscreen = true;
             }
 
@@ -411,7 +427,9 @@ public static class ModelosAnimadosSetup
             {
                 if (EnExtra(r.transform)) continue;   // piezas del reloj, etc.
                 string n = Limpio(r.name);
-                if (!mapa.ContainsKey(n) && r.sharedMaterials.Any(m => m)) mapa[n] = r;
+                // Solo los que se ven bien: un material borrado (ej. el que venia dentro de un FBX que ya no existe)
+                // o con un shader roto se veia morado y se pasaba de un modelo al siguiente
+                if (!mapa.ContainsKey(n) && r.sharedMaterials.Length > 0 && r.sharedMaterials.All(MaterialBueno)) mapa[n] = r;
             }
         return mapa;
     }
@@ -442,13 +460,44 @@ public static class ModelosAnimadosSetup
             sueltos.Remove(viejo);
         }
         var origen = viejo.sharedMaterials;
+        if (origen.Length == 0 || !origen.All(MaterialBueno)) return;
         var arr = r.sharedMaterials;
         for (int i = 0; i < arr.Length; i++) arr[i] = origen[Mathf.Min(i, origen.Length - 1)];
         r.sharedMaterials = arr;
         r.shadowCastingMode = viejo.shadowCastingMode;
     }
 
+    static bool MaterialBueno(Material m) =>
+        m != null && m.shader != null && m.shader.isSupported && m.shader.name != "Hidden/InternalErrorShader";
+
+    // Lo que quede sin material o con uno roto (se veria morado): un gris liso del pipeline (URP Lit)
+    static void SinMorado(Renderer r)
+    {
+        var arr = r.sharedMaterials;
+        bool cambio = false;
+        for (int i = 0; i < arr.Length; i++)
+            if (!MaterialBueno(arr[i])) { arr[i] = Respaldo(); cambio = true; }
+        if (cambio) { r.sharedMaterials = arr; Debug.LogWarning($"[Modelos] {r.name}: tenia un material roto (morado), queda gris.", r); }
+    }
+
+    static Material respaldoMat;
+    static Material Respaldo()
+    {
+        const string ruta = "Assets/Materials/ModeloRespaldo.mat";
+        if (respaldoMat) return respaldoMat;
+        respaldoMat = AssetDatabase.LoadAssetAtPath<Material>(ruta);
+        if (respaldoMat) return respaldoMat;
+        Shader s = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        respaldoMat = new Material(s) { name = "ModeloRespaldo" };
+        if (respaldoMat.HasProperty("_BaseColor")) respaldoMat.SetColor("_BaseColor", new Color(0.55f, 0.53f, 0.5f));
+        Directory.CreateDirectory("Assets/Materials");
+        AssetDatabase.CreateAsset(respaldoMat, ruta);
+        return respaldoMat;
+    }
+
     // ------------------------------------------------------------------ Utilidades
+
+    static bool Hay(Def[] defs) => defs.Any(d => AssetDatabase.LoadAssetAtPath<GameObject>(Base + d.archivo) != null);
 
     static Transform Buscar(Transform raiz, string nombre)
     {
@@ -464,7 +513,9 @@ public static class ModelosAnimadosSetup
         var res = new List<Transform>();
         foreach (MonoBehaviour mb in raiz.GetComponentsInChildren<MonoBehaviour>(true))
         {
-            if (!mb || Dentro(mb.transform, viejos)) continue;
+            // AnimacionesModelo apunta a las poses viejas, pero se rehace con el modelo nuevo: no cuenta (si no, las
+            // poses viejas se "rescataban" y quedaba el personaje dos veces)
+            if (!mb || mb is AnimacionesModelo || Dentro(mb.transform, viejos)) continue;
             var so = new SerializedObject(mb);
             var it = so.GetIterator();
             while (it.Next(true))

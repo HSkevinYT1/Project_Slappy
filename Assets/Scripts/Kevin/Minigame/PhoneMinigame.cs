@@ -334,7 +334,7 @@ public class PhoneMinigame : MonoBehaviour
     // Texto temporal por si acaso
     void OnGUI()
     {
-        if (!playing || PauseMenu.IsPaused || UsesPointer) return;
+        if (!playing || PauseMenu.IsPaused || UsesPointer || PanelDebug.HUDOculto) return;
 
         GUIStyle style = new GUIStyle(GUI.skin.label)
         {

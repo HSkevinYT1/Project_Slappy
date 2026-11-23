@@ -212,7 +212,7 @@ public class PlayerInteractor : MonoBehaviour
     void OnGUI()
     {
         // Con puntero propio, el texto lo muestra quien maneje ese puntero
-        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt) || PantallaMuerte.Muerto) { promptAnterior = ""; return; }
+        if (pointer != null || string.IsNullOrEmpty(CurrentPrompt) || PantallaMuerte.Muerto || PanelDebug.HUDOculto) { promptAnterior = ""; return; }
 
         if (CurrentPrompt != promptAnterior) { promptAnterior = CurrentPrompt; promptDesde = Time.unscaledTime; }
         float k = Mathf.Clamp01((Time.unscaledTime - promptDesde) / 0.22f);

@@ -209,7 +209,8 @@ public class IntroTienda : MonoBehaviour
         if (tutorial == null || tutorial.cliente == null) return null;
         GameObject d = Instantiate(tutorial.cliente.gameObject);
         d.name = nombre;
-        foreach (MonoBehaviour m in d.GetComponentsInChildren<MonoBehaviour>(true)) Destroy(m);
+        // Sin scripts (no es el cliente de verdad), salvo el de las animaciones: asi camina al moverse
+        foreach (MonoBehaviour m in d.GetComponentsInChildren<MonoBehaviour>(true)) if (!(m is AnimacionesModelo)) Destroy(m);
         foreach (Collider c in d.GetComponentsInChildren<Collider>(true)) Destroy(c);
         foreach (Renderer r in d.GetComponentsInChildren<Renderer>(true)) r.allowOcclusionWhenDynamic = false;
         if (colores != null)

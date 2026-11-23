@@ -31,6 +31,14 @@ public class AparicionMunecas : MonoBehaviour
     public float distanciaMinima = 10f;
     [Tooltip("Segundos de luz que aguanta cada muñeca")]
     public float segundosParaDestruir = 2.5f;
+    [Tooltip("Metros maximos al jugador: aparecen cerca (aunque siempre fuera de la vista). Si no hay ningun punto asi, en cualquiera")]
+    public float distanciaMaxima = 30f;
+
+    [Header("Cada vez mas")]
+    [Tooltip("Con el tiempo aparecen mas seguido y caben mas: a estos minutos (desde la muñeca de practica) llegan a los valores de abajo")]
+    public float minutosHastaMaximo = 4f;
+    public float cadaCuantoAlFinal = 14f;
+    public int maximoVivasAlFinal = 6;
 
     [Header("Llave")]
     public LlaveAleatoria llave;
@@ -52,6 +60,10 @@ public class AparicionMunecas : MonoBehaviour
         "Qué inquietante muñeca... ¿qué hace algo así por aquí?",
     };
     [TextArea] public string alDestruirPractica = "¿La luz las deshace...? Mejor no apagar la linterna.";
+    [Tooltip("Presentacion (como en el guion): cuando el jugador deja de mirarla, la muñeca se le acerca; al volver a verla dice esto")]
+    [TextArea] public string alMoverse = "Estoy seguro de que no estabas ahí.";
+    public float metrosAcercarse = 3f;
+    float desdePractica;
 
     public bool IntroEmpezada { get; private set; }
     public bool PracticaHecha { get; private set; }
@@ -102,8 +114,11 @@ public class AparicionMunecas : MonoBehaviour
         if (area != null && !area.Contiene(jugador.position)) return;
         vivas.RemoveAll(v => v == null);
         if (Time.time < proxima) return;
-        if (vivas.Count >= maximoVivas || (totalMaximo > 0 && Apariciones >= totalMaximo)) { proxima = Time.time + 2f; return; }
-        proxima = Aparecer() ? Time.time + cadaCuanto : Time.time + 2f;
+        float k = minutosHastaMaximo > 0f ? Mathf.Clamp01((Time.time - desdePractica) / (minutosHastaMaximo * 60f)) : 1f;
+        int maximo = Mathf.RoundToInt(Mathf.Lerp(maximoVivas, Mathf.Max(maximoVivas, maximoVivasAlFinal), k));
+        float intervalo = Mathf.Lerp(cadaCuanto, Mathf.Min(cadaCuanto, cadaCuantoAlFinal), k);
+        if (vivas.Count >= maximo || (totalMaximo > 0 && Apariciones >= totalMaximo)) { proxima = Time.time + 2f; return; }
+        proxima = Aparecer() ? Time.time + intervalo : Time.time + 2f;
     }
 
     IEnumerator Intro()
@@ -112,6 +127,37 @@ public class AparicionMunecas : MonoBehaviour
         if (practica == null) { Practica(); yield break; }
         if (mirarMuneca) yield return Mirar(practica.transform.position);
         if (dialogos != null && dialogos.Length > 0) Pensamiento.Decir("cloacas.intro", 0.2f, dialogos);
+        yield return new WaitForSeconds(2f);
+        yield return Acercarse();
+    }
+
+    // Como en el guion: el protagonista se da vuelta y, al volver a mirar, la muñeca esta mas cerca
+    IEnumerator Acercarse()
+    {
+        Camera cam = Camera.main;
+        float sinVerla = 0f;
+        while (practica != null && !PracticaHecha && cam != null)
+        {
+            sinVerla = VeMuneca(cam) ? 0f : sinVerla + Time.deltaTime;
+            if (sinVerla > 0.8f) break;
+            yield return null;
+        }
+        if (practica == null || PracticaHecha || jugador == null) yield break;
+        Vector3 hacia = jugador.position - practica.transform.position; hacia.y = 0f;
+        float d = hacia.magnitude;
+        if (d > 3f)
+        {
+            Vector3 nueva = practica.transform.position + hacia / d * Mathf.Min(metrosAcercarse, d - 2.5f);
+            if (NavMesh.SamplePosition(nueva, out NavMeshHit h, 1.5f, NavMesh.AllAreas))
+                nueva.y = h.position.y + (practica.TryGetComponent(out NavMeshAgent ag) ? ag.baseOffset : 0f);
+            practica.transform.SetPositionAndRotation(nueva, Quaternion.LookRotation(hacia / d, Vector3.up));
+        }
+        // Al volver a verla
+        while (practica != null && !PracticaHecha && !VeMuneca(cam)) yield return null;
+        if (practica == null || PracticaHecha) yield break;
+        Jugo.Sacudir(0.25f);
+        Jugo.PatadaFOV(-3f);
+        if (!string.IsNullOrEmpty(alMoverse)) Pensamiento.Decir("cloacas.moverse", 0.15f, alMoverse);
     }
 
     void AlDestruirse(MunecaLuz m)
@@ -126,6 +172,7 @@ public class AparicionMunecas : MonoBehaviour
         if (barrera != null) barrera.enabled = false;
         if (practica != null && !string.IsNullOrEmpty(alDestruirPractica)) Pensamiento.Decir("cloacas.practica", 0.7f, alDestruirPractica);
         proxima = Time.time + primeraAparicion;
+        desdePractica = Time.time;
     }
 
     // Una muñeca nueva en un punto que el jugador no ve
@@ -133,10 +180,18 @@ public class AparicionMunecas : MonoBehaviour
     {
         if (prefab == null || puntos == null || puntos.Length == 0) return false;
         Camera cam = Camera.main;
-        int inicio = Random.Range(0, puntos.Length);
-        for (int i = 0; i < puntos.Length; i++)
+        // Primero los puntos cerca (entre la distancia minima y la maxima), en orden al azar; despues el resto
+        var orden = new List<Transform>();
+        foreach (Transform t in puntos) if (t != null) orden.Insert(Random.Range(0, orden.Count + 1), t);
+        orden.Sort((a, b) =>
         {
-            Transform p = puntos[(inicio + i) % puntos.Length];
+            bool ca = (a.position - jugador.position).sqrMagnitude <= distanciaMaxima * distanciaMaxima;
+            bool cb = (b.position - jugador.position).sqrMagnitude <= distanciaMaxima * distanciaMaxima;
+            return cb.CompareTo(ca);
+        });
+        for (int i = 0; i < orden.Count; i++)
+        {
+            Transform p = orden[i];
             if (p == null || (p.position - jugador.position).sqrMagnitude < distanciaMinima * distanciaMinima) continue;
             if (cam != null && LoVe(cam, p.position + Vector3.up * 0.8f)) continue;
             if (!NavMesh.SamplePosition(p.position, out NavMeshHit h, 2.5f, NavMesh.AllAreas)) continue;
@@ -167,6 +222,22 @@ public class AparicionMunecas : MonoBehaviour
         llave.gameObject.SetActive(true);
         llave.ElegirMano();
         llaveDada = true;
+    }
+
+    // La muñeca de practica esta a la vista (sin contar sus propios colliders)
+    bool VeMuneca(Camera cam)
+    {
+        Vector3 p = practica.transform.position + Vector3.up * 0.8f;
+        Vector3 v = cam.WorldToViewportPoint(p);
+        if (v.z <= 0f || v.x < 0f || v.x > 1f || v.y < 0f || v.y > 1f) return false;
+        Vector3 d = p - cam.transform.position;
+        foreach (RaycastHit h in Physics.RaycastAll(cam.transform.position, d.normalized, d.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        {
+            if (h.collider.transform.IsChildOf(practica.transform)) continue;
+            if (jugador != null && h.collider.transform.IsChildOf(jugador.root)) continue;
+            return false;
+        }
+        return true;
     }
 
     static bool LoVe(Camera cam, Vector3 p)

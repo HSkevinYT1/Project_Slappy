@@ -27,7 +27,11 @@ public static class CloacasLuzSetup
             () => EditorApplication.delayCall += () => EditorApplication.delayCall += () => EditorApplication.delayCall += () =>
             {
                 if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-                if (Raiz("Cloacas", out Transform cl) && !cl.GetComponentInChildren<AparicionMunecas>(true)) Aplicar(cl);
+                if (!Raiz("Cloacas", out Transform cl)) return;
+                AparicionMunecas ap = cl.GetComponentInChildren<AparicionMunecas>(true);
+                if (!ap) Aplicar(cl, true);
+                // v2: las Cloacas se cambiaron (NavMesh nuevo): se rehacen los enemigos (las pinturas se quedan)
+                else if (!ap.transform.Find(Version)) RehacerEnemigos(cl);
             };
     }
 
@@ -41,10 +45,26 @@ public static class CloacasLuzSetup
             Transform t = cl.Find(n);
             if (t) Undo.DestroyObjectImmediate(t.gameObject);
         }
-        Aplicar(cl);
+        Aplicar(cl, true);
     }
 
-    static void Aplicar(Transform cl)
+    const string Version = "_v2";
+
+    [MenuItem("Tools/Cloacas/Rehacer solo los enemigos")]
+    static void MenuEnemigos() { if (Raiz("Cloacas", out Transform cl)) RehacerEnemigos(cl); }
+
+    static void RehacerEnemigos(Transform cl)
+    {
+        foreach (AparicionMunecas a in cl.GetComponentsInChildren<AparicionMunecas>(true)) Undo.DestroyObjectImmediate(a.gameObject);
+        foreach (string n in new[] { "Muñeca de practica", "Barrera Muñeca" })
+        {
+            Transform t = cl.Find(n);
+            if (t) Undo.DestroyObjectImmediate(t.gameObject);
+        }
+        Aplicar(cl, !cl.Find("Pinturas Rupestres"));
+    }
+
+    static void Aplicar(Transform cl, bool pintar)
     {
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabMuneca);
         if (!prefab) { Debug.LogWarning("[Cloacas] No encuentro " + PrefabMuneca); return; }
@@ -71,16 +91,24 @@ public static class CloacasLuzSetup
             if (t.GetComponent<EstatuaAI>()) { puntos.Add(t.position - Vector3.up * (t.TryGetComponent(out NavMeshAgent a) ? a.baseOffset : 0f)); quitar.Add(t.gameObject); }
         foreach (GameObject g in quitar) Undo.DestroyObjectImmediate(g);
 
-        // Mas puntos repartidos dentro de las paredes, lejos de la entrada
+        // Puntos repartidos parejo por TODO el mapa (el mas lejano a los que ya hay, cada vez), lejos de la entrada
         var nav = CentrosNavMesh();
-        var rnd = new System.Random(3);
-        for (int intento = 0; intento < 4000 && puntos.Count < 14 && nav.Count > 0; intento++)
+        var candidatos = nav.FindAll(p => Plano(p - entrada) > 18f && Dentro(p));
+        if (candidatos.Count < 8) candidatos = nav.FindAll(p => Plano(p - entrada) > 18f && (area == null || area.Contiene(p + Vector3.up)));
+        puntos.Clear();   // los de las muñecas viejas ya no sirven (el mapa cambio)
+        var evitar = new List<Vector3> { entrada };
+        while (puntos.Count < 24 && candidatos.Count > 0)
         {
-            Vector3 p = nav[rnd.Next(nav.Count)];
-            if (Plano(p - entrada) < 16f || !Dentro(p)) continue;
-            bool cerca = false;
-            foreach (Vector3 q in puntos) if (Plano(p - q) < 9f) { cerca = true; break; }
-            if (!cerca) puntos.Add(p);
+            Vector3 mejor = default; float lejos = -1f;
+            foreach (Vector3 c in candidatos)
+            {
+                float d = float.MaxValue;
+                foreach (Vector3 e in evitar) d = Mathf.Min(d, Plano(c - e));
+                if (d > lejos) { lejos = d; mejor = c; }
+            }
+            if (lejos < 8f) break;   // ya esta todo cubierto
+            puntos.Add(mejor);
+            evitar.Add(mejor);
         }
 
         var ap = new GameObject(Nombre).AddComponent<AparicionMunecas>();
@@ -88,6 +116,7 @@ public static class CloacasLuzSetup
         ap.transform.SetParent(grupo, false);
         ap.prefab = prefab;
         ap.salida = salida;
+        new GameObject(Version).transform.SetParent(ap.transform, false);
         Transform contPuntos = new GameObject("Puntos").transform;
         contPuntos.SetParent(ap.transform, false);
         var lista = new List<Transform>();
@@ -104,7 +133,16 @@ public static class CloacasLuzSetup
         if (ap.llave != null) { Undo.RecordObject(ap.llave, "Llave"); ap.llave.manos = new Transform[0]; }
 
         // ---- La muñeca de practica: en medio del camino, mirando hacia la reja
+        // En medio del camino y a la vista desde la reja (se prueban varias distancias)
         Vector3 sitio = entrada + adentro * 10f;
+        Vector3 ojos = entrada + adentro * 3f + Vector3.up * 1.6f;
+        foreach (float metros in new[] { 10f, 8f, 12f, 7f, 14f })
+        {
+            if (!NavMesh.SamplePosition(entrada + adentro * metros, out NavMeshHit hh, 3f, NavMesh.AllAreas)) continue;
+            if (Physics.Linecast(ojos, hh.position + Vector3.up * 0.8f, ~0, QueryTriggerInteraction.Ignore)) continue;
+            sitio = hh.position;
+            break;
+        }
         if (NavMesh.SamplePosition(sitio, out NavMeshHit h, 4f, NavMesh.AllAreas)) sitio = h.position;
         var m = (GameObject)PrefabUtility.InstantiatePrefab(prefab, cl);
         m.name = "Muñeca de practica";
@@ -131,7 +169,7 @@ public static class CloacasLuzSetup
         ap.barrera = caja;
 
         // ---- Pinturas rupestres
-        int pintadas = PintarParedes(cl, nav, Dentro, sitio, entrada);
+        int pintadas = pintar ? PintarParedes(cl, nav, Dentro, sitio, entrada) : 0;
 
         EditorSceneManager.MarkSceneDirty(cl.gameObject.scene);
         Debug.Log("[Cloacas] Listo: " + quitar.Count + " muñecas puestas quitadas, " + puntos.Count + " puntos de aparicion, la muñeca de practica " +

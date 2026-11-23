@@ -424,7 +424,7 @@ public class DulceVidente : MonoBehaviour
 
     void OnGUI()
     {
-        if (usado || string.IsNullOrEmpty(ayuda) || !EnMano() || MenuPrincipal.Abierto) return;
+        if (usado || string.IsNullOrEmpty(ayuda) || !EnMano() || MenuPrincipal.Abierto || PanelDebug.HUDOculto) return;
         var estilo = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(Screen.height * 0.025f * HUD.Escala) };
         estilo.normal.textColor = new Color(1f, 1f, 1f, 0.85f);
         GUI.Label(new Rect(0f, Screen.height * 0.85f, Screen.width, Screen.height * 0.06f), ayuda, estilo);

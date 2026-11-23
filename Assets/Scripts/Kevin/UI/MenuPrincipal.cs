@@ -158,11 +158,24 @@ public class MenuPrincipal : MonoBehaviour
         }
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         apagados.Clear();
+        // Los brazos del jugador siempre se ven al empezar (en la escena estaban guardados apagados: al saltar la
+        // intro nadie los volvia a prender y no salia la mano)
+        ActivarBrazos();
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         Abierto = false;
         gameObject.SetActive(false);
+    }
+
+    void ActivarBrazos()
+    {
+        foreach (Transform raiz in new[] { camaraJugador != null ? camaraJugador.transform : null, cuerpoJugador })
+        {
+            if (raiz == null) continue;
+            foreach (Transform x in raiz.GetComponentsInChildren<Transform>(true))
+                if (x.name == "Player_Arms") { x.gameObject.SetActive(true); return; }
+        }
     }
 
     void Apagar<T>() where T : Behaviour
