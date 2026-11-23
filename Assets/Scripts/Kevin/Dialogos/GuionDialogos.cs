@@ -269,9 +269,19 @@ public class GuionDialogos : MonoBehaviour
         return n > 0 ? s / n : contrasena.transform.position;
     }
 
+    float proximasEstatuas;
+
     void RevisarCloacas()
     {
         if (salida == null || salida.Abierta) return;
+        // Las muñecas ahora van apareciendo (AparicionMunecas): la lista se actualiza cada tanto
+        if (Time.time > proximasEstatuas)
+        {
+            proximasEstatuas = Time.time + 2f;
+            estatuas = FindObjectsByType<EstatuaAI>(FindObjectsSortMode.None);
+        }
+        // Mientras dura la entrada (la muñeca de practica) no se dan las pistas de la llave
+        if (AparicionMunecas.Instance != null && !AparicionMunecas.Instance.PracticaHecha && salida.Cerrada) return;
 
         // Una estatua que se movio mientras no la veia, y ahora la ve
         foreach (EstatuaAI e in estatuas)

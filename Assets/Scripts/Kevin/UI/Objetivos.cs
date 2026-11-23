@@ -41,6 +41,7 @@ public class Objetivos : MonoBehaviour
 
     [Header("Cloacas (los de la llave salen de Salida Cloacas)")]
     public string explorarCloacas = "Explora las cloacas";
+    public string destruirMuneca = "Destruye la muñeca con la linterna";
 
     [Header("Zona Roja")]
     public string explorarZonaRoja = "Explora el faro";
@@ -260,6 +261,7 @@ public class Objetivos : MonoBehaviour
         if (salida == null) { texto = explorarCloacas; return; }
         if (hecha || salida.Abierta) { texto = salida.misionSalir; return; }
         if (!salida.Cerrada) { texto = explorarCloacas; return; }
+        if (AparicionMunecas.Instance != null && AparicionMunecas.Instance.EsperandoPractica) { texto = destruirMuneca; return; }
         if (salida.TieneLaLlave()) { texto = salida.misionUsar; return; }
         texto = salida.misionBuscar;
     }

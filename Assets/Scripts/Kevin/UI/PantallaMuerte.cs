@@ -77,7 +77,8 @@ public class PantallaMuerte : MonoBehaviour
 
     void Start() => Suscribir();
 
-    void Suscribir()
+    // Tambien la llama AparicionMunecas al aparecer una muñeca nueva
+    public void Suscribir()
     {
         foreach (JefeIndigoAI e in FindObjectsByType<JefeIndigoAI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             if (suscritos.Add(e)) { JefeIndigoAI x = e; e.onPlayerCaught.AddListener(() => Morir(x.transform)); }

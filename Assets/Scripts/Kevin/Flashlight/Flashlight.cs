@@ -75,6 +75,26 @@ public class Flashlight : MonoBehaviour
         proximaFalla = Time.time + 2f;
     }
 
+    // La linterna que el jugador tiene en la mano (o null) y si esta alumbrando (para MunecaLuz)
+    public static Flashlight EnMano { get; private set; }
+    public bool Encendida => lightObject != null && lightObject.activeInHierarchy && !apagandose && IsHeld();
+    // El haz (la primera luz spot)
+    public Light Haz
+    {
+        get
+        {
+            if (luces != null) foreach (Light l in luces) if (l != null && l.type == LightType.Spot) return l;
+            return lightObject != null ? lightObject.GetComponentInChildren<Light>() : null;
+        }
+    }
+
+    void LateUpdate()
+    {
+        if (IsHeld()) EnMano = this;
+        else if (EnMano == this) EnMano = null;
+    }
+
+
     bool IsHeld()
     {
         // Si la linterna no se puede agarrar, se asume que siempre esta en la mano
@@ -178,6 +198,7 @@ public class Flashlight : MonoBehaviour
     // Al guardarla en el inventario (se desactiva) se cortan los parpadeos y vuelve a su brillo normal
     void OnDisable()
     {
+        if (EnMano == this) EnMano = null;
         bool sinPila = apagandose;
         parpadeo = null;
         apagandose = false;

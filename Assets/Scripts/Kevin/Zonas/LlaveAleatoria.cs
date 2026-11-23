@@ -67,10 +67,28 @@ public class LlaveAleatoria : MonoBehaviour
         Debug.Log(name + ": la tiene " + ManoActual.root.name + " / " + ManoActual.parent.name, this);
     }
 
+    // La muñeca que la tenia se deshizo (MunecaLuz): cae al piso, donde se puede agarrar, y sigue sonando
+    public void Soltar()
+    {
+        transform.SetParent(null, true);
+        ManoActual = null;
+        enElPiso = true;
+        foreach (Collider c in GetComponentsInChildren<Collider>(true)) c.enabled = true;
+        if (TryGetComponent(out Rigidbody rb))
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.linearVelocity = Vector3.up * 1.5f;
+        }
+    }
+
+    bool enElPiso;
+
     void Update()
     {
-        // Solo suena mientras la estatua la tiene
-        if (ManoActual == null || !transform.IsChildOf(ManoActual)) return;
+        // Suena mientras la estatua la tiene o mientras esta tirada (cuando el jugador la agarra, deja de sonar)
+        if (enElPiso && transform.parent != null) enElPiso = false;
+        if (!enElPiso && (ManoActual == null || !transform.IsChildOf(ManoActual))) return;
 
         timer -= Time.deltaTime;
         if (timer > 0f) return;
