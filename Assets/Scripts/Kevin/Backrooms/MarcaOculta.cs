@@ -10,9 +10,16 @@ public class MarcaOculta : MonoBehaviour
     private static readonly int ColorId = Shader.PropertyToID("_BaseColor");
     private static float visibilidad;
 
+    // Cuanto se ve ahora lo oculto (0..1): la usa tambien VisionPiedra (el gato a traves de las paredes)
+    public static float Visibilidad => visibilidad;
+
+    [Tooltip("Opcional: la marca deja de verse cuando esta palanca ya esta bajada (las flechas que llevan hasta ella)")]
+    public Palanca seApagaCon;
+
     private Renderer rend;
     private MaterialPropertyBlock bloque;
     private Color color = Color.white;
+    private bool apagada;
 
     void Awake()
     {
@@ -39,9 +46,16 @@ public class MarcaOculta : MonoBehaviour
         foreach (MarcaOculta m in todas) m.Aplicar();
     }
 
+    void Update()
+    {
+        if (seApagaCon == null || seApagaCon.Bajada == apagada) return;
+        apagada = seApagaCon.Bajada;
+        Aplicar();
+    }
+
     void Aplicar()
     {
-        rend.enabled = visibilidad > 0.001f;
+        rend.enabled = visibilidad > 0.001f && !apagada;
         if (!rend.enabled) return;
         Color c = color;
         c.a *= visibilidad;

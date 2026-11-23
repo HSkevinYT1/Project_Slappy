@@ -107,7 +107,53 @@ public class Flashlight : MonoBehaviour
         else if (EnMano == this) EnMano = null;
         // Menos fuerte en las zonas ya iluminadas (los Backrooms)
         factorZona = Mathf.MoveTowards(factorZona, FactorDeseado(), Time.deltaTime * 1.5f);
+        // Menos fuerte cuando alumbra algo de cerca
+        float objetivo = FactorCerca();
+        factorCerca = Mathf.Lerp(factorCerca, objetivo, 1f - Mathf.Exp(-(objetivo < factorCerca ? 14f : 6f) * Time.deltaTime));
         if (parpadeo == null && !apagandose) Nivel(1f);
+    }
+
+    [Header("De cerca")]
+    [Tooltip("A menos de esta distancia (m) de lo que alumbra, el haz baja su fuerza: la luz crece con 1/distancia^2 y " +
+             "de cerca las paredes y los objetos (palancas, pilas, el tablero...) se veian quemados, blancos")]
+    public float distanciaCerca = 4f;
+    [Tooltip("Fuerza minima del haz pegado a algo (0..1)")]
+    [Range(0.01f, 1f)] public float minimoCerca = 0.05f;
+    [Tooltip("Que tan rapido baja al acercarse (2 = el brillo de cerca queda igual que a 'distanciaCerca'; menos = algo mas brillante de cerca)")]
+    [Range(1f, 2f)] public float curvaCerca = 1.6f;
+    float factorCerca = 1f;
+    readonly RaycastHit[] golpes = new RaycastHit[8];
+
+    // Distancia a lo que tiene delante el haz (el centro y un poco a los lados) -> cuanto bajar la fuerza
+    float FactorCerca()
+    {
+        Light haz = Haz;
+        if (haz == null || distanciaCerca <= 0.01f || !haz.isActiveAndEnabled) return 1f;
+        Transform t = haz.transform;
+        float d = Distancia(t.position, t.forward);
+        // A los lados cuentan menos (asi una pared al borde del haz no lo apaga todo)
+        for (int k = 0; k < 4; k++)
+        {
+            Vector3 eje = k == 0 ? t.up : k == 1 ? -t.up : k == 2 ? t.right : -t.right;
+            d = Mathf.Min(d, Distancia(t.position, Quaternion.AngleAxis(14f, eje) * t.forward) * 1.5f);
+        }
+        if (d >= distanciaCerca) return 1f;
+        return Mathf.Max(minimoCerca, Mathf.Pow(d / distanciaCerca, curvaCerca));
+    }
+
+    float Distancia(Vector3 desde, Vector3 dir)
+    {
+        int n = Physics.RaycastNonAlloc(desde, dir, golpes, distanciaCerca, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float d = distanciaCerca;
+        Transform propio = transform.root;
+        Transform jugador = interactor != null ? interactor.transform.root : null;
+        for (int i = 0; i < n; i++)
+        {
+            Transform c = golpes[i].collider.transform;
+            if (c.IsChildOf(propio) || (jugador != null && c.IsChildOf(jugador))) continue;   // la propia linterna y el jugador
+            d = Mathf.Min(d, golpes[i].distance);
+        }
+        return d;
     }
 
 
@@ -163,7 +209,9 @@ public class Flashlight : MonoBehaviour
     void Nivel(float k)
     {
         if (luces == null) return;
-        for (int i = 0; i < luces.Length; i++) if (luces[i] != null) luces[i].intensity = intensidades[i] * k * factorZona;
+        // La de cerca solo baja el haz (la luz chica de las manos no)
+        for (int i = 0; i < luces.Length; i++)
+            if (luces[i] != null) luces[i].intensity = intensidades[i] * k * factorZona * (luces[i].type == LightType.Spot ? factorCerca : 1f);
     }
 
     // Prende con un par de titileos rapidos

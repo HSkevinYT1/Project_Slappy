@@ -244,7 +244,7 @@ public static class EnemigosZonasSetup
         if (hubo) EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
     }
 
-    static void GuardarNavMesh(NavMeshSurface surface)
+    internal static void GuardarNavMesh(NavMeshSurface surface)
     {
         NavMeshData vieja = surface.navMeshData;
         surface.BuildNavMesh();

@@ -615,6 +615,8 @@ public static class NovedadesGuionSetup
         {
             Transform m = root.transform.Find("Modelo");
             if (!m) return;
+            // El modelo animado (con huesos) lo arregla GatoSombraSetup: aqui solo se medirian sus ojos (mallas fijas)
+            if (m.GetComponentInChildren<SkinnedMeshRenderer>(true)) return;
             float antes = m.localScale.x;
             m.localScale = Vector3.one;
             if (!Vertices(root.transform, m, out List<Vector3> vs, out Bounds b) || b.size.magnitude < 0.0001f) { m.localScale = Vector3.one * antes; return; }
