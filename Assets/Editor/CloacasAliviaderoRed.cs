@@ -268,9 +268,11 @@ public static partial class CloacasAliviaderoSetup
         if (n.tipo == 2)
         {
             float ri = r * 0.25f, largoP = r - acera - ri + 0.2f;
-            Cilindro(n.c + Vector3.up * -1.2f, ri, 2.4f, mLadrillo, true);
+            // el cuerpo de ladrillo termina bajo la tapa (si no, sus caras de arriba coinciden y parpadean)
+            Cilindro(n.c + Vector3.up * -1.24f, ri, 2.32f, mLadrillo, true);
             var prev = colActual; colActual = colPiso; Cilindro(n.c + Vector3.up * -0.03f, ri + 0.1f, 0.06f, mAcera, true); colActual = prev;
-            EnPiso(() => Caja(n.c + Vector3.back * (ri + largoP * 0.5f - 0.1f) + Vector3.down * 0.06f, new Vector3(1.6f, 0.12f, largoP), mMetal));
+            // la pasarela queda 1,5 cm sobre la tapa y la acera para no compartir plano con ellas
+            EnPiso(() => Caja(n.c + Vector3.back * (ri + largoP * 0.5f - 0.1f) + Vector3.down * 0.045f, new Vector3(1.6f, 0.12f, largoP), mMetal));
             Baranda(n.c + new Vector3(0.8f, 0, -ri), n.c + new Vector3(0.8f, 0, -(r - acera)));
             Baranda(n.c + new Vector3(-0.8f, 0, -ri), n.c + new Vector3(-0.8f, 0, -(r - acera)));
             for (int i = 0; i < 12; i++)
