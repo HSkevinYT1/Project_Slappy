@@ -219,6 +219,32 @@ public class JefeIndigoAI : MonoBehaviour
         if (CurrentState != State.Caught) agent.speed = velocidadBase * MultiplicadorDistancia();
         SonidoAmbiente();
         AcercarseSiLejos();
+        Acechar();
+    }
+
+    // ------------------------------------------------------------------ Acecho
+
+    [Header("Acecho (para encontrarse mas seguido)")]
+    [Tooltip("Patrullando, cada tanto va a revisar la zona donde anda el jugador (con error: no va directo)")]
+    public bool acechar = true;
+    [Tooltip("Segundos entre una revisada y la siguiente (al azar entre x e y)")]
+    public Vector2 acechoCada = new Vector2(14f, 26f);
+    [Tooltip("Metros de error alrededor del jugador")]
+    public float errorAcecho = 7f;
+    private float proximoAcecho = -1f;
+
+    void Acechar()
+    {
+        if (!acechar || CurrentState != State.Patrol || PantallaMuerte.Muerto || Escondite.JugadorEscondido || target == null) return;
+        if (proximoAcecho < 0f) { proximoAcecho = Time.time + Random.Range(acechoCada.x, acechoCada.y); return; }
+        if (Time.time < proximoAcecho) return;
+        proximoAcecho = Time.time + Random.Range(acechoCada.x, Mathf.Max(acechoCada.x, acechoCada.y));
+        // Solo si el jugador esta en su misma area
+        Bounds area = Area();
+        Vector3 pj = target.position;
+        if (pj.x < area.min.x || pj.x > area.max.x || pj.z < area.min.z || pj.z > area.max.z) return;
+        Vector3 error = Random.insideUnitSphere * errorAcecho; error.y = 0f;
+        Investigar(pj + error);
     }
 
     // ------------------------------------------------------------------ Acercarse si esta lejos
@@ -437,7 +463,8 @@ public class JefeIndigoAI : MonoBehaviour
         Vector3 toPlayer = aim - eyes;
         float distance = toPlayer.magnitude;
 
-        if (distance > viewDistance) return false;
+        // Corriendo se le nota mucho mas (y de lejos); caminando, un poco menos
+        if (distance > viewDistance * FactorVista()) return false;
 
         // El angulo se mide en horizontal para que la diferencia de altura no cuente
         Vector3 flat = new Vector3(toPlayer.x, 0f, toPlayer.z);
@@ -467,6 +494,24 @@ public class JefeIndigoAI : MonoBehaviour
         if (c.attachedRigidbody != null && c.attachedRigidbody.CompareTag("Player")) return true;
         return c.transform.IsChildOf(player) || player.IsChildOf(c.transform);
     }
+
+    [Header("Correr vs caminar")]
+    [Tooltip("Cuanto mas lejos lo ve si esta corriendo (1 = igual)")]
+    public float vistaCorriendo = 1.35f;
+    [Tooltip("Cuanto mas lejos lo ve si camina o esta quieto (menos de 1 = le cuesta mas notarlo)")]
+    public float vistaCaminando = 0.85f;
+    [Tooltip("Al oirlo correr va a investigar mas rapido")]
+    public float prisaAlOirCorrer = 1.4f;
+
+    bool JugadorCorre()
+    {
+        if (playerBody == null) return false;
+        PlayerMovement pm = playerBody.GetComponent<PlayerMovement>();
+        Vector3 v = playerBody.linearVelocity; v.y = 0f;
+        return pm != null && pm.Corriendo && v.magnitude > noiseSpeedThreshold;
+    }
+
+    float FactorVista() => JugadorCorre() ? vistaCorriendo : vistaCaminando;
 
     bool CanHearPlayer()
     {
@@ -516,7 +561,7 @@ public class JefeIndigoAI : MonoBehaviour
             Investigando = true;
             if (!yaBuscaba) EnterState(State.Search);
             else { agent.SetDestination(lastKnownPosition); stateTimer = 0f; mirandoHasta = -1f; }
-            velocidadBase = velocidadInvestigar;
+            velocidadBase = velocidadInvestigar * (pm != null && pm.Corriendo ? prisaAlOirCorrer : 1f);
         }
         return false;
     }
@@ -617,6 +662,19 @@ public class JefeIndigoAI : MonoBehaviour
                 return hit.position;
         }
         return center;
+    }
+
+    // Acecho (lo usa BackroomsGuion con el gato): si esta patrullando, va a revisar cerca de un punto (ej: donde
+    // anda el jugador, con algo de error) como si hubiera oido algo. No lo persigue directo: lo busca
+    public void Investigar(Vector3 punto)
+    {
+        if (!enabled || agent == null || !agent.isOnNavMesh || CurrentState != State.Patrol) return;
+        if (NavMesh.SamplePosition(punto, out NavMeshHit h, 6f, NavMesh.AllAreas)) punto = h.position;
+        lastKnownPosition = punto;
+        direccionBusqueda = (punto - transform.position).normalized;
+        Investigando = true;
+        EnterState(State.Search);
+        velocidadBase = velocidadInvestigar;
     }
 
     // ------------------------------------------------------------------ Mandar lejos / reiniciar

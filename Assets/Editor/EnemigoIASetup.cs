@@ -1,13 +1,17 @@
 using UnityEditor;
 using UnityEngine;
 
-// Inteligencia del enemigo 1 (JefeIndigoAI.inteligente): se activa sola UNA vez en el prefab "Enemy 1 (fede)"
-// (el gato y el enemigo 4 quedan como estaban). Cada prefab se marca con versionIA para no volver a tocarlo:
-// si despues se cambia a mano en el Inspector, se respeta.
+// IA de los enemigos (JefeIndigoAI) en sus prefabs:
+// - v1: inteligencia (oye los pasos, investiga y busca mejor) solo en "Enemy 1 (fede)".
+// - v2: inteligencia en TODOS (Fede, el gato y Slappy), y mucha mas diferencia entre caminar y correr:
+//   caminando casi no lo oyen (3.5 m), corriendo lo oyen de lejos (16 m; el gato 18) y lo ven desde mas lejos.
+// Cada prefab se marca con versionIA para no volver a tocarlo: si despues se cambia a mano en el Inspector, se respeta.
 [InitializeOnLoad]
 public static class EnemigoIASetup
 {
-    const int Version = 1;
+    // v3: para encontrarse mas seguido: acecho (cada 14-26 s va a revisar donde anda el jugador) y, si pasa mucho
+    // tiempo lejos, reaparece mas cerca (fuera de la vista y del alcance del reloj)
+    const int Version = 3;
 
     static EnemigoIASetup()
     {
@@ -28,10 +32,22 @@ public static class EnemigoIASetup
             try
             {
                 var ai = root.GetComponent<JefeIndigoAI>();
+                string n = root.name.ToLowerInvariant();
                 ai.versionIA = Version;
-                ai.inteligente = root.name.ToLowerInvariant().Contains("fede");
+                ai.inteligente = true;
+                ai.oidoCaminando = 3.5f;
+                ai.oidoCorriendo = n.Contains("gato") ? 18f : 16f;
+                ai.oidoTrasPared = 0.55f;
+                ai.vistaCorriendo = 1.35f;
+                ai.vistaCaminando = 0.85f;
+                ai.prisaAlOirCorrer = 1.4f;
+                ai.acechar = true;
+                ai.acechoCada = n.Contains("gato") ? new Vector2(12f, 22f) : new Vector2(14f, 26f);
+                ai.errorAcecho = 7f;
+                ai.acercarseSiLejos = true;
+                ai.esperaAcercarse = new Vector2(12f, 22f);
                 PrefabUtility.SaveAsPrefabAsset(root, ruta);
-                if (ai.inteligente) Debug.Log("[Enemigos] " + root.name + ": inteligencia activada (oye los pasos, investiga y busca mejor).", prefab);
+                Debug.Log("[Enemigos] " + root.name + ": IA v2 (inteligente; caminando lo oye a " + ai.oidoCaminando + " m, corriendo a " + ai.oidoCorriendo + " m).", prefab);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }
         }

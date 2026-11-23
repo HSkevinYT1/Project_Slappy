@@ -10,6 +10,11 @@ public class EstatuaAI : MonoBehaviour
     public Transform player;
     public Camera playerCamera;
     public float moveSpeed = 3.5f;
+    [Tooltip("Si el jugador corre a menos de estos metros, lo oyen y se mueven mas rapido un rato")]
+    public float oidoCorriendo = 14f;
+    public float rapidezAlOir = 1.6f;
+    public float segundosAlerta = 4f;
+    private float alertaHasta;
     public int stepFrames = 5;
 
     public LayerMask obstacleMask = ~0;
@@ -103,6 +108,14 @@ public class EstatuaAI : MonoBehaviour
             if (!PegarAlNavMesh()) return;
             EnterState(State.Frozen);
         }
+
+        // Correr cerca hace ruido: durante un rato se mueven mas rapido (caminando no se enteran)
+        if (target != null && (target.position - transform.position).sqrMagnitude < oidoCorriendo * oidoCorriendo)
+        {
+            PlayerMovement pm = target.GetComponentInParent<PlayerMovement>();
+            if (pm != null && pm.Corriendo) alertaHasta = Time.time + segundosAlerta;
+        }
+        agent.speed = moveSpeed * (Time.time < alertaHasta ? rapidezAlOir : 1f);
 
         bool seen = IsSeenByPlayer();
 

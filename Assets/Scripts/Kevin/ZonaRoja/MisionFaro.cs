@@ -99,6 +99,8 @@ public class MisionFaro : MonoBehaviour
         }
         if (diario != null) diario.alLeer.AddListener(AlLeerDiario);
         if (notas != null) foreach (Lectura l in notas) if (l != null) l.alLeer.AddListener(AlLeerNota);
+        // Sin diario (no se armo): las notas ya estan activas
+        if (diario == null) AlLeerDiario();
         if (deposito != null)
         {
             deposito.objetoEsperado = bidon;
@@ -184,6 +186,8 @@ public class MisionFaro : MonoBehaviour
     {
         Brillar(notas, true);
         Interactuable(notas, true);
+        // Sin notas (no se armaron): el bidon queda disponible ya
+        if (TotalNotas == 0) AlLeerNota();
     }
 
     void AlLeerNota()
@@ -223,6 +227,11 @@ public class MisionFaro : MonoBehaviour
     public Color colorNoche = new Color(0.03f, 0.035f, 0.05f);
     [Tooltip("Pasos de la niebla en esta zona (en las demas, los del material: 12). Menos = mas rapido")]
     [Range(4, 12)] public int pasosNiebla = 7;
+    [Tooltip("Cuanto ilumina la luz del faro a la niebla (0-1). Con mucho, el foco es tan fuerte que el faro parece el sol")]
+    [Range(0f, 1f)] public float nieblaConLuces = 0.06f;
+    [Tooltip("Brillo de la lente de la luz (lo que se ve en el faro mismo)")]
+    public float brilloLente = 1.1f;
+    float lucesNieblaAntes = -1f;
 
     FogVolume niebla;
     MaterialPropertyBlock bloqueNiebla;
@@ -255,6 +264,7 @@ public class MisionFaro : MonoBehaviour
             camOscura = Camera.main;
             if (camOscura != null) { fondoAntes = camOscura.clearFlags; colorAntes = camOscura.backgroundColor; }
             niebla = volumen != null ? volumen.niebla : null;
+            if (niebla != null) lucesNieblaAntes = niebla.pointLights;
             proximoRepaso = 0f;
         }
         // Todas las luces de la escena menos la del faro y las del jugador (la linterna): las de las otras zonas
@@ -294,6 +304,8 @@ public class MisionFaro : MonoBehaviour
             camOscura.clearFlags = oscuro > 0.5f ? CameraClearFlags.SolidColor : fondoAntes;
             camOscura.backgroundColor = oscuro > 0.5f ? Color.black : colorAntes;
         }
+        // La niebla casi no recoge la luz del foco (si no, hace un halo enorme: el faro parece el sol)
+        if (niebla != null && lucesNieblaAntes >= 0f) niebla.pointLights = Mathf.Lerp(lucesNieblaAntes, Mathf.Min(lucesNieblaAntes, nieblaConLuces), oscuro);
         if (oscuro <= 0f) Restaurar();
     }
 
@@ -306,6 +318,7 @@ public class MisionFaro : MonoBehaviour
         if (camOscura != null) { camOscura.clearFlags = fondoAntes; camOscura.backgroundColor = colorAntes; }
         foreach (Light l in apagadas) if (l != null) l.enabled = true;
         apagadas.Clear();
+        if (niebla != null && lucesNieblaAntes >= 0f) { niebla.pointLights = lucesNieblaAntes; lucesNieblaAntes = -1f; }
         if (niebla != null && niebla.TryGetComponent(out Renderer rn) && rn.sharedMaterial != null && rn.sharedMaterial.HasProperty("_Steps"))
         {
             if (bloqueNiebla == null) bloqueNiebla = new MaterialPropertyBlock();
@@ -324,7 +337,7 @@ public class MisionFaro : MonoBehaviour
         if (lente == null) return;
         if (bloque == null) bloque = new MaterialPropertyBlock();
         lente.GetPropertyBlock(bloque);
-        bloque.SetColor("_EmissionColor", new Color(4f, 3.6f, 2.6f) * k);
+        bloque.SetColor("_EmissionColor", new Color(1f, 0.92f, 0.7f) * (brilloLente * k));
         bloque.SetColor("_BaseColor", Color.Lerp(new Color(0.5f, 0.5f, 0.5f), new Color(1f, 0.97f, 0.85f), k));
         lente.SetPropertyBlock(bloque);
     }

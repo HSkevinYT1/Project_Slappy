@@ -75,6 +75,19 @@ public class Flashlight : MonoBehaviour
         proximaFalla = Time.time + 2f;
     }
 
+    [Header("Por zona")]
+    [Tooltip("Fuerza de la linterna en los Backrooms (ya estan iluminados: a toda potencia se ve todo quemado)")]
+    [Range(0.1f, 1f)] public float potenciaBackrooms = 0.4f;
+    float factorZona = 1f;
+    VolumenZonas volumenZonas;
+
+    float FactorDeseado()
+    {
+        if (volumenZonas == null) volumenZonas = FindFirstObjectByType<VolumenZonas>();
+        ZonaVolumen z = volumenZonas != null ? volumenZonas.ZonaActual : null;
+        return z != null && z.name == "Trigger Backrooms" ? potenciaBackrooms : 1f;
+    }
+
     // La linterna que el jugador tiene en la mano (o null) y si esta alumbrando (para MunecaLuz)
     public static Flashlight EnMano { get; private set; }
     public bool Encendida => lightObject != null && lightObject.activeInHierarchy && !apagandose && IsHeld();
@@ -92,6 +105,9 @@ public class Flashlight : MonoBehaviour
     {
         if (IsHeld()) EnMano = this;
         else if (EnMano == this) EnMano = null;
+        // Menos fuerte en las zonas ya iluminadas (los Backrooms)
+        factorZona = Mathf.MoveTowards(factorZona, FactorDeseado(), Time.deltaTime * 1.5f);
+        if (parpadeo == null && !apagandose) Nivel(1f);
     }
 
 
@@ -147,7 +163,7 @@ public class Flashlight : MonoBehaviour
     void Nivel(float k)
     {
         if (luces == null) return;
-        for (int i = 0; i < luces.Length; i++) if (luces[i] != null) luces[i].intensity = intensidades[i] * k;
+        for (int i = 0; i < luces.Length; i++) if (luces[i] != null) luces[i].intensity = intensidades[i] * k * factorZona;
     }
 
     // Prende con un par de titileos rapidos

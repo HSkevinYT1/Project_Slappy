@@ -96,7 +96,7 @@ public class BackroomsGuion : MonoBehaviour
         if (!Entro && entrada != null && zona != null && zona.JugadorDentro)
         {
             float adentro = -Vector3.Dot(jugador.position - entrada.position, entrada.forward);
-            if (adentro >= metrosEntrada) { Entro = true; StartCoroutine(CinematicaEntrada()); }
+            if (adentro >= metrosEntrada) { Entro = true; entroEn = Time.time; StartCoroutine(CinematicaEntrada()); }
         }
 
         // 2. El gato
@@ -106,6 +106,16 @@ public class BackroomsGuion : MonoBehaviour
             gatoVisto = true;
             StartCoroutine(GatoHuye());
         }
+
+        // 2a. No lo encontro en el cuarto: el gato se baja del cadaver y sale a buscarlo
+        if (Entro && !gatoVisto && gato != null && segundosSoltarGato > 0f && Time.time - entroEn > segundosSoltarGato)
+        {
+            gatoVisto = true;
+            StartCoroutine(GatoSale());
+        }
+
+        // 2b. El gato acecha
+        Acechar();
 
         // 3. La palanca y la piedra
         if (GatoSuelto && !habitacionDicha && enHabitacion)
@@ -177,6 +187,51 @@ public class BackroomsGuion : MonoBehaviour
         }
         GatoSuelto = true;
         if (gato != null) gato.enabled = true;   // desde aqui patrulla, oye y persigue solo
+        proximoAcecho = Time.time + Random.Range(acechoCada.x, acechoCada.y);
+    }
+
+    [Tooltip("Segundos dentro de los Backrooms sin haber visto al gato hasta que se baja del cadaver y sale a buscar al jugador (0 = nunca)")]
+    public float segundosSoltarGato = 60f;
+    float entroEn;
+
+    // Sale a buscarlo (sin la frase de verlo): salta del cuerpo y va hacia donde anda el jugador
+    IEnumerator GatoSale()
+    {
+        NavMeshAgent agent = gato.GetComponent<NavMeshAgent>();
+        if (agent != null && !agent.updatePosition)
+        {
+            Vector3 desde = gato.transform.position, hasta = agent.nextPosition + Vector3.up * agent.baseOffset;
+            for (float t = 0f; t < 0.18f; t += Time.deltaTime)
+            {
+                gato.transform.position = Vector3.Lerp(desde, hasta, t / 0.18f);
+                yield return null;
+            }
+            agent.updatePosition = true;
+        }
+        if (agent != null && agent.isOnNavMesh) agent.isStopped = false;
+        GatoSuelto = true;
+        gato.enabled = true;
+        yield return null;
+        Vector3 error = Random.insideUnitSphere * errorAcecho; error.y = 0f;
+        if (jugador != null) gato.Investigar(jugador.position + error);
+        proximoAcecho = Time.time + Random.Range(acechoCada.x, acechoCada.y);
+    }
+
+    [Header("Acecho del gato")]
+    [Tooltip("Cada cuantos segundos (min, max) el gato, si esta patrullando, va a buscar al jugador cerca de donde esta")]
+    public Vector2 acechoCada = new Vector2(18f, 32f);
+    [Tooltip("Metros de error: no va directo a donde esta el jugador, sino a la zona")]
+    public float errorAcecho = 7f;
+    float proximoAcecho = float.MaxValue;
+
+    // El gato no se queda dando vueltas lejos: cada tanto va a rondar donde anda el jugador
+    void Acechar()
+    {
+        if (!GatoSuelto || gato == null || !gato.enabled || Time.time < proximoAcecho || PantallaMuerte.Muerto) return;
+        proximoAcecho = Time.time + Random.Range(acechoCada.x, acechoCada.y);
+        if (PuzzlePalancas.Instance != null && PuzzlePalancas.Instance.PortalAbierto) return;
+        Vector3 error = Random.insideUnitSphere * errorAcecho; error.y = 0f;
+        gato.Investigar(jugador.position + error);
     }
 
     // El jugador se gira hacia la entrada y ve como la puerta desaparece
