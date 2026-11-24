@@ -6,11 +6,14 @@ using UnityEngine.AI;
 
 // Zona Roja con las notas del guion (NotasCompletas.pdf). Cada nota da una pista de hacia donde ir y, al leerla, la
 // brujula apunta alli (MisionFaro.DestinoBrujula). Se leen en orden: la siguiente aparece al leer la anterior.
-// - Nota 1 (Dia 1): afuera, en un poste delante de la salida del faro (la puerta del piso 1): se ve al salir.
-//   Dice: "el noreste de la playa".
+// - La bitacora del faro, en la mesa del piso 1: se lee primero (la del farero, y al final la letra de uno de los
+//   chicos, que avisa que dejo sus notas afuera). Con ella aparece la nota 1.
+// - Nota 1 (Dia 1): clavada en un arbol del borde del bosque, a 16-30 m de la salida del faro (la puerta del piso 1):
+//   se alcanza a ver desde la puerta, pero no esta pegada a ella. Dice: "el noreste de la playa".
 // - Nota 2 (Dia 30): en la playa NORESTE de la isla, sobre una caja. Dice: "al noroeste, al borde del lago".
-// - Nota 3 (Dia 60): en el borde del lago, en la parte mas cercana al faro, en un poste. Dice: "un cobertizo
-//   cerca de la playa, en el este, con un deposito subterraneo".
+// - Nota 3 (Dia 60): en el borde del lago, en la parte mas cercana al faro (en el arbol mas cercano, o en un poste).
+//   Dice: "un cobertizo cerca de la playa, en el este, con un deposito subterraneo".
+// - Las notas no brillan de lejos: solo de cerca (MisionFaro.distanciaBrillo) y el papel es viejo, apagado.
 // Al pie de cada nota sale hacia donde marca la brujula (la direccion de su pista: "La brújula marca: NORESTE").
 // - El bidon de gasolina: dentro de ese cobertizo (playa ESTE, al sur del faro), junto a la trampilla abierta.
 // Norte del mapa = +Z (como en ZonaRojaSetup: la Tienda queda al norte de la isla), este = +X.
@@ -23,8 +26,19 @@ public static class NotasFaroSetup
     const string Glow = "Assets/Materials/GlowMaterial.mat";
     // v2: nota 1 afuera (vista desde la salida del faro), nota 3 en el borde del lago mas cercano al faro y el rumbo
     // de la brujula al pie de cada nota
-    const string Marca = "_notas pdf v2";
-    static readonly string[] MarcasViejas = { "_notas pdf v1" };
+    // v3: vuelve la bitacora, nota 1 en un arbol mas lejos de la puerta, nota 3 en un arbol del lago, papel apagado
+    const string Marca = "_notas pdf v3";
+    static readonly string[] MarcasViejas = { "_notas pdf v1", "_notas pdf v2" };
+    const string TituloBitacora = "Bitácora del faro";
+    const string TextoBitacora =
+        "Registro del farero.\n\n" +
+        "12 de marzo. — El combustible llegó tarde otra vez. La lámpara aguanta, pero no sé por cuántas noches más.\n\n" +
+        "3 de abril. — Volví a escuchar pasos alrededor del faro. Cuando la luz barre el bosque, a veces hay algo de pie entre los árboles. Cuando vuelve a pasar, ya no está.\n\n" +
+        "18 de abril. — No salgo de la luz. Guardé lo que quedaba de combustible lejos del faro, por si la lámpara se incendia.\n\n" +
+        "21 de abril. — Está más cerca.\n\n" +
+        "(Más abajo, con otra letra:)\n\n" +
+        "Encontramos esta bitácora al llegar. Del farero no hay rastro. Voy a ir dejando lo que escribo afuera, donde se pueda encontrar, por si alguien llega después de nosotros. La primera hoja está cerca, saliendo por la puerta, entre los árboles.";
+    const string RumboBitacora = "La brújula marca: OESTE";
     const string NombreCobertizo = "Cobertizo de la playa";
     const string NombreCaja = "Caja de la playa (nota 2)";
     const string NombrePoste = "Poste del lago (nota 3)";
@@ -116,7 +130,9 @@ public static class NotasFaroSetup
         Vector3 centro = new Vector3(isla.position.x, y0, isla.position.z);
 
         // ---- Materiales (todos sin brillo)
-        Material papel = Mat("Papel", new Color(0.88f, 0.84f, 0.7f));
+        // Papel viejo y apagado (blanco se veia desde lejos con la linterna)
+        Material papel = Mat("PapelViejo", new Color(0.5f, 0.46f, 0.36f));
+        Material cuero = Mat("Cuero", new Color(0.28f, 0.09f, 0.06f));
         Material madera = Mat("Madera", new Color(0.32f, 0.2f, 0.11f));
         Material maderaVieja = Mat("MaderaVieja", new Color(0.24f, 0.17f, 0.11f));
         Material hueco = Mat("HuecoNegro", new Color(0.01f, 0.01f, 0.01f));
@@ -137,15 +153,38 @@ public static class NotasFaroSetup
         var viejas = new List<GameObject>();
         foreach (Transform t in grupo) viejas.Add(t.gameObject);
         foreach (GameObject g in viejas) Undo.DestroyObjectImmediate(g);
-        foreach (string n in new[] { "Diario", "Nota 1" })
+        foreach (string n in new[] { "Diario", "Nota 1", "Bitacora" })
         {
             Transform t = mesa ? mesa.Find(n) : null;
             if (t) Undo.DestroyObjectImmediate(t.gameObject);
         }
         var log = new List<string>();
+        Transform bosque = zr.Find("Bosque");
 
-        // ---- Nota 1: afuera, en un poste delante de la salida del faro (la puerta del piso 1, del lado de la isla),
-        //      mirando hacia la puerta: se ve apenas se sale
+        // ---- La bitacora: en la mesa del piso 1 (donde estaba el diario)
+        Lectura bitacora = null;
+        if (mesa)
+        {
+            var b = new GameObject("Bitacora");
+            Undo.RegisterCreatedObjectUndo(b, "Bitacora");
+            b.transform.SetParent(mesa, false);
+            b.transform.localPosition = new Vector3(0.05f, 0.81f, 0f);
+            b.transform.localRotation = Quaternion.Euler(0f, 18f, 0f);
+            Cubo(b.transform, "Tapa", Vector3.zero, new Vector3(0.24f, 0.045f, 0.32f), cuero, false);
+            Cubo(b.transform, "Hojas", new Vector3(0.008f, 0f, 0f), new Vector3(0.23f, 0.035f, 0.305f), papel, false);
+            b.AddComponent<BoxCollider>().size = new Vector3(0.3f, 0.12f, 0.38f);
+            b.AddComponent<Interactable>();
+            bitacora = b.AddComponent<Lectura>();
+            bitacora.titulo = TituloBitacora;
+            bitacora.texto = TextoBitacora;
+            bitacora.prompt = "Leer bitácora";
+            bitacora.pie = RumboBitacora;
+            log.Add("bitácora en la mesa del piso 1");
+        }
+        else Debug.LogWarning("[Notas faro] No encontre la \"Mesa del diario\": va sin bitácora (la nota 1 queda disponible desde el principio).");
+
+        // ---- Nota 1: clavada en un arbol del borde del bosque, delante de la salida del faro (la puerta del piso 1,
+        //      del lado de la isla): se alcanza a ver desde la puerta, pero lejos (16-30 m)
         Transform entrada = zr.Find("Entrada Pasillo");
         Vector3 haciaPasillo = entrada ? entrada.position - faro.position : faro.right;
         haciaPasillo.y = 0f;
@@ -154,34 +193,34 @@ public static class NotasFaroSetup
         Vector3 puerta = new Vector3(faro.position.x, y0, faro.position.z) + afuera * RadioFaro;
         if (Tierra(suelo, puerta + afuera * 1.5f, y0, out Vector3 sp, true)) puerta.y = sp.y;
         Vector3 ojos = puerta + afuera * 0.6f + Vector3.up * 1.6f;
-        Vector3 pSalida = puerta + afuera * 7f;
-        Quaternion gSalida = Quaternion.LookRotation(-afuera);
-        bool okSalida = false;
-        foreach (float m in new[] { 7f, 6f, 8f, 5f, 9.5f })
-        {
-            foreach (float lado in new[] { 1.2f, -1.2f, 2.4f, -2.4f, 0f })
-            {
-                Vector3 p = puerta + afuera * m + Vector3.Cross(Vector3.up, afuera) * lado;
-                if (!Tierra(suelo, p, y0, out Vector3 s)) continue;
-                if (!Libre(s, new Vector3(0.3f, 0.8f, 0.3f), Quaternion.identity, suelo)) continue;
-                // Que se vea desde la puerta (nada en medio)
-                Vector3 nota = s + Vector3.up * 1.2f;
-                if (Physics.Linecast(ojos, nota, out RaycastHit hv, ~0, QueryTriggerInteraction.Ignore) && (hv.point - nota).sqrMagnitude > 0.25f) continue;
-                Vector3 alaPuerta = ojos - nota; alaPuerta.y = 0f;
-                pSalida = s;
-                gSalida = Quaternion.LookRotation(alaPuerta.normalized);
-                okSalida = true;
-                break;
-            }
-            if (okSalida) break;
-        }
-        if (!okSalida) Debug.LogWarning("[Notas faro] No encontre un sitio despejado frente a la salida del faro: el poste de la nota 1 quedo donde se pudo, muevelo si hace falta.");
-        var posteSalida = Raiz(zr, NombrePosteSalida, pSalida, gSalida);
-        Cubo(posteSalida, "Poste", new Vector3(0f, 0.6f, 0f), new Vector3(0.12f, 1.4f, 0.12f), maderaVieja, true);
-        Cubo(posteSalida, "Tabla", new Vector3(0f, 1.2f, 0.065f), new Vector3(0.38f, 0.44f, 0.03f), madera, false);
         var n1 = Nota(grupo, "Nota 1", papel, madera, 0);
-        n1.transform.SetPositionAndRotation(posteSalida.TransformPoint(new Vector3(0f, 1.2f, 0.082f)), posteSalida.rotation);
-        log.Add($"Nota 1 en un poste a {Plano(pSalida - puerta):0.#} m de la salida del faro{(okSalida ? " (se ve desde la puerta)" : "")}");
+        Transform arbol1 = null;
+        float mejor = float.MaxValue;
+        if (bosque)
+            foreach (Transform a in bosque)
+            {
+                if (!a.TryGetComponent(out CapsuleCollider cc)) continue;
+                Vector3 d = a.position - puerta; d.y = 0f;
+                float m = d.magnitude;
+                if (m < 16f || m > 30f || Vector3.Angle(afuera, d) > 40f) continue;
+                // El lado del tronco que da a la puerta, a la altura de la nota: que se vea desde la puerta
+                Vector3 cara = new Vector3(a.position.x, a.position.y + 1.75f, a.position.z) - d / m * (cc.radius * a.lossyScale.x + 0.05f);
+                if (Physics.Linecast(ojos, cara, out RaycastHit hv, ~0, QueryTriggerInteraction.Ignore) && hv.collider != cc) continue;
+                float puntos = Mathf.Abs(m - 22f) + Vector3.Angle(afuera, d) * 0.1f;
+                if (puntos < mejor) { mejor = puntos; arbol1 = a; }
+            }
+        if (arbol1 != null) Clavar(n1.transform, arbol1, puerta);
+        else
+        {
+            // Sin arbol a la vista: en un poste a 14 m
+            Debug.LogWarning("[Notas faro] No encontre un arbol a la vista frente a la salida del faro: la nota 1 va en un poste, muevela si hace falta.");
+            Vector3 p = puerta + afuera * 14f;
+            if (Tierra(suelo, p, y0, out Vector3 s, true)) p = s;
+            var posteSalida = Raiz(zr, NombrePosteSalida, p, Quaternion.LookRotation(-afuera));
+            Cubo(posteSalida, "Poste", new Vector3(0f, 0.6f, 0f), new Vector3(0.12f, 1.4f, 0.12f), maderaVieja, true);
+            n1.transform.SetPositionAndRotation(posteSalida.TransformPoint(new Vector3(0f, 1.2f, 0.064f)), posteSalida.rotation);
+        }
+        log.Add($"Nota 1 {(arbol1 != null ? "clavada en un árbol" : "en un poste")} a {Plano(n1.transform.position - puerta):0} m de la salida del faro");
 
         // ---- Nota 2: playa noreste, en una caja
         Vector3 ne = (Vector3.forward + Vector3.right).normalized;
@@ -228,12 +267,25 @@ public static class NotasFaroSetup
             if (!ok) Debug.LogWarning("[Notas faro] No encontre un sitio libre al borde del lago: el poste quedo donde se pudo, muevelo si hace falta.");
         }
         else Debug.LogWarning("[Notas faro] No encontre \"Zona Roja/Lago\".");
-        var poste = Raiz(zr, NombrePoste, pPoste, gPoste);
-        Cubo(poste, "Poste", new Vector3(0f, 0.6f, 0f), new Vector3(0.12f, 1.4f, 0.12f), maderaVieja, true);
-        Cubo(poste, "Tabla", new Vector3(0f, 1.2f, 0.065f), new Vector3(0.38f, 0.44f, 0.03f), madera, false);
         var n3 = Nota(grupo, "Nota 3", papel, madera, 2);
-        n3.transform.SetPositionAndRotation(poste.TransformPoint(new Vector3(0f, 1.2f, 0.082f)), poste.rotation);
-        log.Add($"Nota 3 al borde del lago, del lado del faro ({pPoste.x:0}, {pPoste.z:0}), a {Plano(pPoste - faro.position):0} m del faro");
+        // En el arbol mas cercano a ese punto del borde (si hay uno a menos de 7 m); si no, en un poste
+        Transform arbol3 = null;
+        float d3 = 7f;
+        if (bosque)
+            foreach (Transform a in bosque)
+            {
+                if (!a.GetComponent<CapsuleCollider>()) continue;
+                float dd = Plano(a.position - pPoste);
+                if (dd < d3) { d3 = dd; arbol3 = a; }
+            }
+        if (arbol3 != null) Clavar(n3.transform, arbol3, pPoste + gPoste * Vector3.forward * 3f);
+        else
+        {
+            var poste = Raiz(zr, NombrePoste, pPoste, gPoste);
+            Cubo(poste, "Poste", new Vector3(0f, 0.6f, 0f), new Vector3(0.12f, 1.4f, 0.12f), maderaVieja, true);
+            n3.transform.SetPositionAndRotation(poste.TransformPoint(new Vector3(0f, 1.2f, 0.064f)), poste.rotation);
+        }
+        log.Add($"Nota 3 al borde del lago, del lado del faro, {(arbol3 != null ? "clavada en un árbol" : "en un poste")} ({n3.transform.position.x:0}, {n3.transform.position.z:0}), a {Plano(n3.transform.position - faro.position):0} m del faro");
 
         // ---- El cobertizo de la playa este (al sur del faro), con el deposito y el bidon
         Vector3 mitadCob = new Vector3(1.9f, 1.3f, 1.7f);
@@ -253,12 +305,14 @@ public static class NotasFaroSetup
         }
         else Debug.LogWarning("[Notas faro] No encontre \"Zona Roja/Bidon de gasolina\".");
 
-        // ---- La mision: notas en orden, sin diario
+        // ---- La mision: primero la bitacora, despues las notas en orden (brillan solo de cerca: MisionFaro)
         Undo.RecordObject(mision, "Mision Faro");
-        mision.diario = null;
+        mision.diario = bitacora;
         mision.notas = new[] { n1.GetComponent<Lectura>(), n2.GetComponent<Lectura>(), n3.GetComponent<Lectura>() };
         mision.alVerNota = "¿Una nota?";
+        mision.alVerDiario = "¿Una bitácora?";
         foreach (Lectura l in mision.notas) Brillo(l.gameObject, glow);
+        if (bitacora) Brillo(bitacora.gameObject, glow);
         EditorUtility.SetDirty(mision);
 
         new GameObject(Marca).transform.SetParent(mision.transform, false);
@@ -346,6 +400,20 @@ public static class NotasFaroSetup
         dondeBidon = c.TransformPoint(h + new Vector3(0.95f, 0.1f + 0.25f, 0.15f));
         giroBidon = c.rotation * Quaternion.Euler(0f, 35f, 0f);
         return c;
+    }
+
+    // Clava la nota en el tronco del arbol, del lado que da hacia "desde", a 1.75 m del suelo (algo alto: no se ve tan facil)
+    static void Clavar(Transform nota, Transform arbol, Vector3 desde)
+    {
+        var cc = arbol.GetComponent<CapsuleCollider>();
+        Vector3 fuera = desde - arbol.position; fuera.y = 0f;
+        fuera = fuera.sqrMagnitude > 0.01f ? fuera.normalized : arbol.forward;
+        Vector3 eje = new Vector3(arbol.position.x, arbol.position.y + 1.75f, arbol.position.z);
+        Vector3 punto = eje + fuera * (cc ? cc.radius * arbol.lossyScale.x : 0.2f), normal = fuera;
+        if (cc)
+            foreach (RaycastHit h in Physics.RaycastAll(eje + fuera * 3f, -fuera, 3f, ~0, QueryTriggerInteraction.Ignore))
+                if (h.collider == cc) { punto = h.point; normal = new Vector3(h.normal.x, 0f, h.normal.z).normalized; break; }
+        nota.SetPositionAndRotation(punto + normal * 0.004f, Quaternion.LookRotation(normal, Vector3.up));
     }
 
     // Los muros y la caja no dejan pasar al enemigo (el NavMesh es del terreno, sin el cobertizo)

@@ -45,8 +45,8 @@ public class Objetivos : MonoBehaviour
 
     [Header("Zona Roja")]
     public string explorarZonaRoja = "Explora el faro";
-    public string leerDiario = "Lee el diario del faro";
-    public string leerPrimeraNota = "Busca una pista en el faro";
+    public string leerDiario = "Lee la bitácora del faro";
+    public string leerPrimeraNota = "Busca la primera nota, saliendo del faro";
     public string buscarNotas = "Sigue la brújula hasta la siguiente nota ({0}/{1})";
     public string buscarBrujula = "Busca algo que te guíe ({0}/{1} notas)";
     public string buscarBidon = "Sigue la brújula hasta la gasolina";

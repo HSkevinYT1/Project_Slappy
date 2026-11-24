@@ -280,6 +280,7 @@ public class PanelDebug : MonoBehaviour
         }
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsActive) DialogueManager.Instance.EndDialogue();
         DarLinterna();
+        DarReloj();
 
         CabinaTeletransporte cab = FindFirstObjectByType<CabinaTeletransporte>(FindObjectsInactive.Include);
         Transform j = Jugador();
@@ -324,6 +325,8 @@ public class PanelDebug : MonoBehaviour
         bool tutorial = !TutorialHecho();
         if (tutorial) SaltarTutorial();
         else SaltarMenu();
+        // En las zonas hace falta el reloj (avisa de los enemigos 1, 2 y 4)
+        DarReloj();
         p.SaltarA(i);
         Aviso(p.tramos[i].nombre + " abierta: entra desde la estación." + (tutorial ? " (Tutorial saltado.)" : ""));
     }
@@ -393,6 +396,23 @@ public class PanelDebug : MonoBehaviour
         if (!TieneLinterna() || !l.gameObject.activeInHierarchy)
             Debug.LogWarning("[PanelDebug] No pude dejarte la linterna en la mano: padre=" + (l.transform.parent ? l.transform.parent.name : "ninguno") +
                              " activa=" + l.gameObject.activeInHierarchy + " enLaMano=" + (pi.Held == l), l);
+    }
+
+    // El reloj de pulsera (normalmente se desbloquea en la presentacion del primer enemigo)
+    static bool TieneReloj() => RelojJugador.Instance != null && RelojJugador.Instance.Desbloqueado;
+
+    static void DarReloj()
+    {
+        RelojJugador r = RelojJugador.Instance != null ? RelojJugador.Instance : FindFirstObjectByType<RelojJugador>(FindObjectsInactive.Include);
+        if (r == null) { Debug.LogWarning("[PanelDebug] No encontré el reloj del jugador (RelojJugador)."); return; }
+        r.Desbloquear();
+    }
+
+    void Reloj()
+    {
+        bool tenia = TieneReloj();
+        DarReloj();
+        Aviso(tenia ? "Ya tenías el reloj (tecla " + GameInput.KeyName("Reloj") + " para mirarlo)." : "Ahí tienes el reloj: tecla " + GameInput.KeyName("Reloj") + " para mirarlo.");
     }
 
     void Linterna()
@@ -561,8 +581,9 @@ public class PanelDebug : MonoBehaviour
         Opciones("Velocidad", velocidad, new[] { 1f, 1.5f, 2f, 3f }, AplicarVelocidad);
         GUILayout.BeginHorizontal();
         if (Boton(TieneLinterna() ? "Recargar linterna" : "Dar linterna")) Hacer(Linterna, false);
-        if (Boton("Ir adonde miro")) pendiente = () => { if (IrAdondeMiro()) Cerrar(); };
+        if (Boton(TieneReloj() ? "Reloj (ya lo tienes)" : "Dar reloj")) Hacer(Reloj, false);
         GUILayout.EndHorizontal();
+        if (Boton("Ir adonde miro")) pendiente = () => { if (IrAdondeMiro()) Cerrar(); };
         GUI.enabled = PiedraColeccionable.Recogidas < PiedraColeccionable.Total;
         if (Boton("Dar las 4 piedras (" + PiedraColeccionable.Recogidas + "/" + PiedraColeccionable.Total + ")"))
             Hacer(() => { PiedraColeccionable.DarTodas(); Aviso("Tienes las 4 piedras: al final sale la cinemática secreta."); }, false);

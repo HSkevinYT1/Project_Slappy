@@ -7,9 +7,12 @@ using UnityEngine.Rendering.Universal;
 // izquierda de los brazos (objeto "Reloj 3D" bajo el hueso Forearm.L, lo coloca Tools > Jugador > Reloj 3D en la muneca).
 // Con la tecla del reloj (C) se levanta el brazo izquierdo y se mira el reloj.
 // - Normal: las agujas marcan la hora del juego.
-// - Con una entidad cerca (JefeIndigoAI o EstatuaAI) DE LA MISMA AREA (ZonaVolumen) que el jugador se vuelve loco
-//   (las de otras zonas no cuentan aunque esten cerca a traves de una pared): las agujas giran cada vez mas rapido,
-//   el brazo tiembla, la esfera se pone roja y brilla, y suena un tic-tac acelerado. Cuanto mas cerca, peor.
+// - Detecta a los enemigos 1 (Fede), 2 (el gato) y 4 (Slappy): los JefeIndigoAI. Las muñecas de las Cloacas
+//   (EstatuaAI) no, salvo con "detectarMunecas". Con uno cerca DE LA MISMA AREA (ZonaVolumen) que el jugador se vuelve
+//   loco (los de otras zonas no cuentan aunque esten cerca a traves de una pared): las agujas giran cada vez mas
+//   rapido, el brazo tiembla, la esfera se pone roja y brilla, y el tic-tac se acelera. Cuanto mas cerca, peor.
+// - El tic-tac se oye aunque no se este mirando (bajo y apagado, como dentro de la manga) y con un enemigo cerca sube
+//   y se acelera: sirve de aviso sin levantar el brazo.
 // Se desbloquea en el tutorial de la presentacion del primer enemigo (o con "Desbloqueado al inicio").
 public class RelojJugador : MonoBehaviour
 {
@@ -40,10 +43,14 @@ public class RelojJugador : MonoBehaviour
     [Range(0f, 1f)] public float volumenTic = 0.6f;
     [Tooltip("Tic-tac del reloj (en bucle mientras se mira). Vacio = tic-tac generado por codigo")]
     public AudioClip sonidoManecillas;
-    [Tooltip("Cuanto se acelera el tic-tac con la entidad encima (2.5 = dos veces y media)")]
-    public float aceleracionManecillas = 2.5f;
+    [Tooltip("Cuanto se acelera el tic-tac con el enemigo encima (3.2 = tres veces y pico). Sube parejo con la cercania")]
+    public float aceleracionTicTac = 3.2f;   // (antes aceleracionManecillas = 2.5, y subia con la cercania al cuadrado: casi no se notaba)
     [Tooltip("Guardado (sin mirarlo) el tic-tac se sigue oyendo, muy bajo y apagado, como dentro de la manga (0 = no se oye)")]
     [Range(0f, 1f)] public float volumenSinMirar = 0.04f;   // (antes se llamaba volumenGuardado y estaba en 0.12)
+    [Tooltip("Guardado, con el enemigo encima, el tic-tac sube hasta este volumen (asi avisa aunque no se mire)")]
+    [Range(0f, 1f)] public float volumenSinMirarCerca = 0.35f;
+    [Tooltip("Las muñecas de las Cloacas tambien lo vuelven loco (son muchas: apagado, solo los enemigos 1, 2 y 4)")]
+    public bool detectarMunecas = false;
 
     [Header("Brazo al mirar el reloj")]
     [Tooltip("Donde queda el reloj, en espacio de la camara (x derecha, y arriba, z adelante)")]
@@ -276,8 +283,10 @@ public class RelojJugador : MonoBehaviour
         if (Time.time < proximaBusqueda) return;
         proximaBusqueda = Time.time + 1.5f;
         entidades.Clear();
-        foreach (JefeIndigoAI e in FindObjectsByType<JefeIndigoAI>(FindObjectsSortMode.None)) entidades.Add(e.transform);
-        foreach (EstatuaAI e in FindObjectsByType<EstatuaAI>(FindObjectsSortMode.None)) entidades.Add(e.transform);
+        // Los enemigos 1 (Fede), 2 (gato) y 4 (Slappy)
+        foreach (JefeIndigoAI e in FindObjectsByType<JefeIndigoAI>(FindObjectsSortMode.None)) if (e.enabled) entidades.Add(e.transform);
+        if (detectarMunecas)
+            foreach (EstatuaAI e in FindObjectsByType<EstatuaAI>(FindObjectsSortMode.None)) entidades.Add(e.transform);
         zonas = FindObjectsByType<ZonaVolumen>(FindObjectsSortMode.None);
         if (jugador == null) jugador = HUD.Jugador();
     }
@@ -368,7 +377,8 @@ public class RelojJugador : MonoBehaviour
     }
 
     // Cuanto se oye segun lo levantado que esta: guardado muy bajo (y apagado por el filtro), mirandolo normal
-    float FactorVolumen() => Mathf.Lerp(volumenSinMirar, 1f, Mathf.Clamp01(subida * 1.5f));
+    // (guardado, con un enemigo cerca, se oye mas: avisa sin tener que mirar)
+    float FactorVolumen() => Mathf.Lerp(Mathf.Lerp(volumenSinMirar, Mathf.Max(volumenSinMirar, volumenSinMirarCerca), Cercania), 1f, Mathf.Clamp01(subida * 1.5f));
 
     // Guardado suena apagado (sin agudos), como tapado por la manga; levantado, claro
     void Filtro()
@@ -435,7 +445,8 @@ public class RelojJugador : MonoBehaviour
         }
         float k = Cercania;
         float temblor = k > 0.5f ? (Mathf.PerlinNoise(Time.time * 6f, 4.2f) - 0.5f) * 0.6f * k : 0f;
-        audioManecillas.pitch = Mathf.Lerp(1f, Mathf.Max(1f, aceleracionManecillas), k * k) + temblor;
+        // Mas rapido parejo con la cercania (antes era al cuadrado y a media distancia casi no cambiaba)
+        audioManecillas.pitch = Mathf.Lerp(1f, Mathf.Max(1f, aceleracionTicTac), k) + temblor;
         audioManecillas.volume = volumenTic * FactorVolumen() * (0.6f + 0.4f * k);
     }
 

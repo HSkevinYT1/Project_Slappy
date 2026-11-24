@@ -184,7 +184,8 @@ public class EstatuaAI : MonoBehaviour
     {
         // Si no hay camino hasta el jugador (esta en otra area) se queda quieta donde esta.
         // Tambien mientras otra muñeca lo tiene agarrado (y un rato despues): nunca se monta otra al instante
-        if (AgarreMuneca.Bloquea || !PlayerReachable())
+        // (Y leyendo una nota: ahi no lo pueden matar)
+        if (AgarreMuneca.Bloquea || Lectura.Abierta || !PlayerReachable())
         {
             agent.ResetPath();
             agent.nextPosition = transform.position;

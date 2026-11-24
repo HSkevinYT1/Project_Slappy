@@ -33,6 +33,12 @@ public class MisionFaro : MonoBehaviour
     public string zona = "Zona Roja";
     [Tooltip("Metros desde el centro del faro a los que ya se considera que entro (el faro mide ~8 de radio)")]
     public float radioDentro = 5.5f;
+    [Tooltip("La silueta que se ve a lo lejos en el bosque (SiluetaFaro), como Herobrine: nunca ataca")]
+    public bool silueta = true;
+    [Tooltip("La imagen se distorsiona cuando el enemigo de la zona esta cerca (DistorsionCercana)")]
+    public bool distorsionEnemigo = true;
+    [Tooltip("Las notas (y la bitacora) solo brillan a menos de estos metros: de lejos no se notan")]
+    public float distanciaBrillo = 6f;
 
     [Header("Luz del faro")]
     [Tooltip("Grados por segundo que gira la luz")]
@@ -41,6 +47,14 @@ public class MisionFaro : MonoBehaviour
     public float inclinacionHaz = 10f;
     [Tooltip("Apertura minima del haz y su alcance minimo")]
     public float anguloHaz = 40f, alcanceHaz = 180f;
+    [Tooltip("La luz solo alumbra con el jugador en la isla (la zona): apenas sale (al pasillo, a la estacion) se apaga")]
+    public bool soloEnLaIsla = true;
+    [Tooltip("Grados a cada lado del pasillo de entrada en los que el haz no alumbra (como el sector oscuro hacia tierra de los faros de verdad): asi no da en la cara al entrar")]
+    public float sectorOscuro = 40f;
+    [Tooltip("Dentro del cuarto de la luz, el haz se apaga al pasar por donde esta el jugador (grados a cada lado)")]
+    public float sombraJugador = 30f;
+    float intensidadFoco = -1f, encendido = 0f;
+    Vector3 haciaPasillo;
 
     [Header("Pensamientos")]
     [TextArea] public string alEntrar = "Ahora un faro, ya veo.";
@@ -99,6 +113,11 @@ public class MisionFaro : MonoBehaviour
     void Start()
     {
         Completar();
+        if (silueta) SiluetaFaro.Crear(this);
+        // El enemigo de la zona distorsiona la imagen cuando esta cerca (DistorsionCercana)
+        if (distorsionEnemigo && transform.parent != null)
+            foreach (JefeIndigoAI e in transform.parent.GetComponentsInChildren<JefeIndigoAI>(true))
+                if (!e.GetComponent<DistorsionCercana>()) e.gameObject.AddComponent<DistorsionCercana>();
         if (muroEntrada != null) muroEntrada.SetActive(false);
         if (bidon != null)
         {
@@ -129,7 +148,14 @@ public class MisionFaro : MonoBehaviour
             foco.range = Mathf.Max(foco.range, alcanceHaz);
             // Sombras duras: la niebla las mira muchas veces por pixel (las suaves son varias veces mas caras)
             if (foco.shadows == LightShadows.Soft) foco.shadows = LightShadows.Hard;
-            Lente(1f);
+            intensidadFoco = foco.intensity;
+            // Hacia donde esta el pasillo de entrada (el sector oscuro)
+            Transform entrada = transform.parent != null ? transform.parent.Find("Entrada Pasillo") : null;
+            Vector3 c = centroFaro != null ? centroFaro.position : foco.transform.position;
+            haciaPasillo = entrada != null ? entrada.position - c : (muroEntrada != null ? muroEntrada.transform.position - c : Vector3.zero);
+            haciaPasillo.y = 0f;
+            if (haciaPasillo.sqrMagnitude > 0.01f) haciaPasillo.Normalize();
+            LuzFaro(true);
         }
     }
 
@@ -143,6 +169,7 @@ public class MisionFaro : MonoBehaviour
             && Mathf.Abs(jugador.position.y - centroFaro.position.y) < 4f)
             StartCoroutine(Entrada());
         RevisarAfuera();
+        Brillos();
 
         if (diario != null && !diario.Leida && Cerca(diario.transform.position, 4f)) Pensamiento.Decir("faro.diario", 0.2f, alVerDiario);
 
@@ -233,9 +260,25 @@ public class MisionFaro : MonoBehaviour
             if (l == null) continue;
             bool esta = i == s;
             if (!l.Leida) l.gameObject.SetActive(esta);
-            if (l.TryGetComponent(out Highlightable h)) { if (esta) h.Show(); else h.Hide(); }
+            // El brillo lo pone Brillos(), solo de cerca
+            if (l.TryGetComponent(out Highlightable h)) h.Hide();
             if (l.TryGetComponent(out Interactable it)) it.enabled = esta || l.Leida;
         }
+    }
+
+    // Brilla solo lo que toca leer (la bitacora o la siguiente nota) y solo si el jugador esta cerca
+    void Brillos()
+    {
+        Lectura toca = !DiarioLeido ? diario : (Siguiente >= 0 ? notas[Siguiente] : null);
+        BrilloCerca(diario, toca);
+        if (notas != null) foreach (Lectura l in notas) BrilloCerca(l, toca);
+    }
+
+    void BrilloCerca(Lectura l, Lectura toca)
+    {
+        if (l == null || !l.TryGetComponent(out Highlightable h)) return;
+        bool si = l == toca && !l.Leida && l.gameObject.activeInHierarchy && Cerca(l.transform.position, distanciaBrillo);
+        if (si != h.IsHighlighted) { if (si) h.Show(); else h.Hide(); }
     }
 
     // A donde apunta la brujula: lo que dice la ultima nota leida (la siguiente nota, y despues de la ultima el
@@ -276,7 +319,43 @@ public class MisionFaro : MonoBehaviour
     void LateUpdate()
     {
         if (giratoria != null) giratoria.Rotate(0f, velocidadGiro * Time.deltaTime, 0f, Space.World);
+        LuzFaro(false);
         Oscuridad();
+    }
+
+    // Cuanto alumbra el foco: nada fuera de la isla, ni hacia el pasillo de entrada (sector oscuro), ni en la cara del
+    // jugador cuando esta en el cuarto de la luz
+    void LuzFaro(bool deGolpe)
+    {
+        if (foco == null || intensidadFoco < 0f) return;
+        if (volumen == null) volumen = FindFirstObjectByType<VolumenZonas>();
+        ZonaVolumen actual = volumen != null ? volumen.ZonaActual : null;
+        bool enIsla = !soloEnLaIsla || (actual != null && actual.name == "Trigger " + zona);
+        encendido = deGolpe ? (enIsla ? 1f : 0f) : Mathf.MoveTowards(encendido, enIsla ? 1f : 0f, Time.deltaTime / 0.6f);
+
+        Vector3 haz = foco.transform.forward; haz.y = 0f;
+        float k = 1f;
+        if (haz.sqrMagnitude > 0.0001f)
+        {
+            haz.Normalize();
+            // Sector oscuro: mirando hacia el pasillo no alumbra (con un borde suave de 15 grados)
+            if (sectorOscuro > 0f && haciaPasillo.sqrMagnitude > 0.01f)
+                k = Mathf.Min(k, Mathf.InverseLerp(sectorOscuro, sectorOscuro + 15f, Vector3.Angle(haz, haciaPasillo)));
+            // En el cuarto de la luz (o pegado al faro a esa altura): el haz no le da en la cara
+            Transform j = jugador != null ? jugador : HUD.Jugador();
+            if (j != null && sombraJugador > 0f)
+            {
+                Vector3 alJ = j.position - foco.transform.position;
+                float alto = Mathf.Abs(alJ.y);
+                alJ.y = 0f;
+                if (alto < 6f && alJ.magnitude < 16f && alJ.sqrMagnitude > 0.01f)
+                    k = Mathf.Min(k, Mathf.InverseLerp(sombraJugador, sombraJugador + 15f, Vector3.Angle(haz, alJ.normalized)));
+            }
+        }
+        float intensidad = intensidadFoco * k * encendido;
+        foco.intensity = intensidad;
+        foco.enabled = intensidad > 0.0001f;
+        Lente(encendido);
     }
 
     // ------------------------------------------------------------------ Oscuridad

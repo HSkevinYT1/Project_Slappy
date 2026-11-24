@@ -214,6 +214,13 @@ public class JefeIndigoAI : MonoBehaviour
     void Update()
     {
         if (player == null || CurrentState == State.Caught || !agent.isOnNavMesh) return;
+        // Leyendo una nota (Lectura) no lo pueden matar: se queda quieto hasta que cierre la hoja
+        if (Lectura.Abierta)
+        {
+            agent.speed = 0f;
+            agent.velocity = Vector3.zero;
+            return;
+        }
 
         bool sees = CanSeePlayer();
         bool hears = inteligente ? Escuchar() : CanHearPlayer();

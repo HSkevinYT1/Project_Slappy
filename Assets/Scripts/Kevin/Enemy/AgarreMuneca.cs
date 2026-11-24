@@ -84,7 +84,7 @@ public class AgarreMuneca : MonoBehaviour
     // Lo llama PantallaMuerte al atrapar una EstatuaAI. false = no se pudo (ya hay otra, o ya esta muerto)
     public static bool Empezar(EstatuaAI m)
     {
-        if (m == null || Activo || PantallaMuerte.Muerto || Camera.main == null) return false;
+        if (m == null || Activo || PantallaMuerte.Muerto || Lectura.Abierta || Camera.main == null) return false;
         var go = new GameObject("Agarre de muñeca");
         var a = go.AddComponent<AgarreMuneca>();
         a.muneca = m;

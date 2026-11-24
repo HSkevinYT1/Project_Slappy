@@ -204,7 +204,8 @@ public class PantallaMuerte : MonoBehaviour
 
     public void Morir(Transform enemigo)
     {
-        if (Muerto || reintentando || Invencible) return;
+        // Leyendo una nota no se puede morir (los enemigos ademas se quedan quietos mientras tanto)
+        if (Muerto || reintentando || Invencible || Lectura.Abierta) return;
         if (jugador == null) { jugador = HUD.Jugador(); if (jugador != null) cuerpo = jugador.GetComponent<Rigidbody>(); }
         StartCoroutine(Secuencia(enemigo));
     }
