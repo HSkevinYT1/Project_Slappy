@@ -7341,6 +7341,8 @@ MonoBehaviour:
   sonidoScreamer: {fileID: 0}
   volumenSonidos: 1
   distanciaSonido: 35
+  sonidoPersecucion: {fileID: 8300000, guid: 5ce9838e871fc664fad3f0e23b006bfc, type: 3}
+  sonidoPasos: {fileID: 8300000, guid: a5d0d64673cd2124da7dbc9a9bfa16f6, type: 3}
   pararAlGritar: 1
   onPlayerSpotted:
     m_PersistentCalls:

@@ -70,7 +70,7 @@ public class AgarreMuneca : MonoBehaviour
     Camera cam;
     float empuje;          // + se aleja (acierto), - se acerca (fallo)
     int fallos;
-    AudioSource fuente;
+    AudioSource fuente, ataque;
     static AudioClip clipAviso, clipBien, clipMal;
 
     // UI
@@ -140,6 +140,16 @@ public class AgarreMuneca : MonoBehaviour
 
         CrearUI();
         Sonar(Golpe());
+        // Sonido de la muñeca atacando, en bucle mientras dura el minijuego
+        if (muneca.sonidoAtaque != null)
+        {
+            ataque = gameObject.AddComponent<AudioSource>();
+            ataque.spatialBlend = 0f;
+            ataque.playOnAwake = false;
+            ataque.loop = true;
+            ataque.clip = muneca.sonidoAtaque;
+            ataque.Play();
+        }
         if (!string.IsNullOrEmpty(alMontarse)) Pensamiento.Decir("agarre.montarse", 0.15f, alMontarse);
         // Salta a la cara: en arco, achicandose y girandose hacia el jugador; al llegar, el golpe
         for (float t = 0f; t < 1f && cuerpo != null; t += Time.deltaTime / Mathf.Max(0.05f, salto))
@@ -210,6 +220,7 @@ public class AgarreMuneca : MonoBehaviour
             yield return Respuesta(exito, perfecta);
         }
 
+        if (ataque != null) ataque.Stop();
         if (cuerpo == null || bien >= aciertosParaSoltarse || PantallaMuerte.Invencible) Soltarse();
         else Matar();
     }

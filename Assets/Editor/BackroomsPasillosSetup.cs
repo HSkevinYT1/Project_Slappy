@@ -470,6 +470,7 @@ public static class BackroomsPasillosSetup
             Undo.RecordObject(guion, "Backrooms sonidos");
             if (!guion.sonidoGlitch && (guion.sonidoGlitch = Clip("glitch puerta.wav"))) cambio = true;
             if (!guion.suspiro && (guion.suspiro = Clip("suspiro rapido.wav"))) cambio = true;
+            if (!guion.pasosGato && (guion.pasosGato = Clip("Pasos.mp3"))) cambio = true;
             if (!guion.sonidoKill && (guion.sonidoKill = Clip("sonido kill enemigo 2 y 4.mp3")))
             {
                 guion.inicioKill = Inicio(guion.sonidoKill);

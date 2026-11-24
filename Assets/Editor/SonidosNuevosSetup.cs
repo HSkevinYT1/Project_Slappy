@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 // - "puerta abriendose": la puerta de la cabina al abrirse (CabinaSalida).
 // - "fede grito ambiente", "fede grito cuando te ve", "fede screamer": el enemigo 1 (JefeIndigoAI).
 // - "sonido cable 1/2/3": al conectar un cable en el minijuego del telefono (prefab Telefono).
+// - "sonido munecas atacando": las muñecas (EstatuaAI) mientras estan encima del jugador.
 // Solo rellena lo que esta vacio. Rehacer: Tools > Sonidos > Asignar sonidos nuevos.
 [InitializeOnLoad]
 public static class SonidosNuevosSetup
@@ -27,6 +28,19 @@ public static class SonidosNuevosSetup
     static void Rehacer() => Aplicar(true);
 
     static AudioClip Clip(string nombre) => AssetDatabase.LoadAssetAtPath<AudioClip>(Carpeta + nombre);
+
+    // Clip largo (musica): en Streaming en vez de descomprimido entero en memoria
+    static AudioClip ClipLargo(string nombre)
+    {
+        if (AssetImporter.GetAtPath(Carpeta + nombre) is AudioImporter imp && imp.defaultSampleSettings.loadType != AudioClipLoadType.Streaming)
+        {
+            AudioImporterSampleSettings s = imp.defaultSampleSettings;
+            s.loadType = AudioClipLoadType.Streaming;
+            imp.defaultSampleSettings = s;
+            imp.SaveAndReimport();
+        }
+        return Clip(nombre);
+    }
 
     static void Aplicar(bool forzar)
     {
@@ -122,6 +136,59 @@ public static class SonidosNuevosSetup
                 if (cambio) { PrefabUtility.SaveAsPrefabAsset(raiz, RutaTelefono); informe += " cables del telefono;"; }
             }
             finally { PrefabUtility.UnloadPrefabContents(raiz); }
+        }
+
+        // Muñecas atacando: en las muñecas de la escena y en los prefabs que usan las apariciones
+        var ataque = Clip("sonido munecas atacando.mp3");
+        if (ataque)
+        {
+            foreach (var m in Object.FindObjectsByType<EstatuaAI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (m.sonidoAtaque && !forzar) continue;
+                if (PrefabUtility.IsPartOfPrefabAsset(m)) continue;
+                Undo.RecordObject(m, "Sonidos nuevos");
+                m.sonidoAtaque = ataque;
+                Marcar(m);
+                informe += " ataque de " + m.name + ";";
+            }
+            var prefabs = new System.Collections.Generic.HashSet<GameObject>();
+            foreach (var a in Object.FindObjectsByType<AparicionMunecas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (a.prefab && PrefabUtility.IsPartOfPrefabAsset(a.prefab)) prefabs.Add(a.prefab);
+            foreach (var p in prefabs)
+            {
+                string ruta = AssetDatabase.GetAssetPath(p);
+                GameObject raiz = PrefabUtility.LoadPrefabContents(ruta);
+                try
+                {
+                    bool cambio = false;
+                    foreach (var m in raiz.GetComponentsInChildren<EstatuaAI>(true))
+                        if (!m.sonidoAtaque || forzar) { m.sonidoAtaque = ataque; cambio = true; }
+                    if (cambio) { PrefabUtility.SaveAsPrefabAsset(raiz, ruta); informe += " ataque en " + p.name + ";"; }
+                }
+                finally { PrefabUtility.UnloadPrefabContents(raiz); }
+            }
+        }
+
+        // Musica de fondo de la Zona Principal: un objeto "Musica Zona Principal" en la escena
+        var sala = ClipLargo("sala central sonido.mp3");
+        GameObject zp = GameObject.Find("Zona_Principal");
+        if (sala && zp)
+        {
+            var mz = Object.FindFirstObjectByType<MusicaZonaPrincipal>(FindObjectsInactive.Include);
+            if (!mz)
+            {
+                var go = new GameObject("Musica Zona Principal");
+                SceneManager.MoveGameObjectToScene(go, zp.scene);
+                Undo.RegisterCreatedObjectUndo(go, "Sonidos nuevos");
+                mz = go.AddComponent<MusicaZonaPrincipal>();
+            }
+            if (!mz.musica || forzar)
+            {
+                Undo.RecordObject(mz, "Sonidos nuevos");
+                mz.musica = sala;
+                Marcar(mz);
+                informe += " musica de la Zona Principal;";
+            }
         }
 
         EditorPrefs.SetBool(Application.dataPath + ".OtrosNormales", true);

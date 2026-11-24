@@ -62,6 +62,34 @@ public class JefeIndigoAI : MonoBehaviour
     [Range(0f, 1f)] public float volumenSonidos = 1f;
     [Tooltip("Hasta donde se oyen sus gritos (m)")]
     public float distanciaSonido = 35f;
+    [Tooltip("Sonido de persecucion: suena en bucle (para el jugador, no en 3D) mientras te persigue; al dejar de " +
+             "perseguirte se va apagando poco a poco")]
+    public AudioClip sonidoPersecucion;
+    [Range(0f, 1f)] public float volumenPersecucion = 0.8f;
+    [Tooltip("Segundos en llegar a todo volumen al empezar a perseguirte")]
+    public float entradaPersecucion = 0.4f;
+    [Tooltip("Segundos en apagarse del todo cuando deja de perseguirte")]
+    public float salidaPersecucion = 5f;
+    private AudioSource musicaPersecucion;
+
+    [Header("Pasos")]
+    [Tooltip("Tira de pasos (la del jugador, Sounds/SFX/Pasos.mp3): en cada pisada del modelo (AnimacionesModelo.alPisar) " +
+             "suena UN paso de la tira, mas grave")]
+    public AudioClip sonidoPasos;
+    [Range(0f, 1f)] public float volumenPasos = 1f;
+    [Tooltip("Tono de los pasos (menos de 1 = mas grave)")]
+    public float tonoPasos = 0.6f;
+    [Tooltip("Hasta donde se oyen sus pasos (m)")]
+    public float distanciaPasos = 28f;
+    [Tooltip("Sacudida de la pantalla en cada pisada mientras te persigue (mas fuerte cuanto mas cerca)")]
+    public float sacudidaPasos = 0.12f;
+    [Tooltip("A esta distancia (m) o mas, sus pisadas ya no sacuden la pantalla")]
+    public float radioSacudidaPasos = 16f;
+    private AudioSource[] fuentesPasos;
+    private int siguientePaso;
+    private float[] inicioPisadas;   // segundos de la tira donde empieza cada pisada
+    private static readonly System.Collections.Generic.Dictionary<AudioClip, float[]> pisadasPorClip =
+        new System.Collections.Generic.Dictionary<AudioClip, float[]>();
 
     [Header("Grito (animacion)")]
     [Tooltip("Si el modelo tiene animacion de grito: al gritar (al verte y los gritos de ambiente) se queda quieto " +
@@ -211,8 +239,128 @@ public class JefeIndigoAI : MonoBehaviour
         Gritar(sonidoAmbiente);
     }
 
+    // Sonido de persecucion: sube rapido al perseguirte y se va apagando despacio al dejar de hacerlo
+    // (al atraparte se corta enseguida: suena el screamer)
+    void SonidoPersecucion()
+    {
+        if (sonidoPersecucion == null) return;
+        bool persigue = CurrentState == State.Chase && !PantallaMuerte.Muerto;
+        if (musicaPersecucion == null)
+        {
+            if (!persigue) return;
+            musicaPersecucion = gameObject.AddComponent<AudioSource>();
+            musicaPersecucion.clip = sonidoPersecucion;
+            musicaPersecucion.loop = true;
+            musicaPersecucion.playOnAwake = false;
+            musicaPersecucion.spatialBlend = 0f;
+            musicaPersecucion.priority = 64;
+            musicaPersecucion.volume = 0f;
+        }
+        if (persigue && !musicaPersecucion.isPlaying) { musicaPersecucion.volume = 0f; musicaPersecucion.Play(); }
+        float duracion = persigue ? entradaPersecucion : CurrentState == State.Caught || PantallaMuerte.Muerto ? 0.3f : salidaPersecucion;
+        musicaPersecucion.volume = Mathf.MoveTowards(musicaPersecucion.volume, persigue ? volumenPersecucion : 0f,
+            Mathf.Max(0.01f, volumenPersecucion) / Mathf.Max(0.01f, duracion) * Time.deltaTime);
+        if (!persigue && musicaPersecucion.isPlaying && musicaPersecucion.volume <= 0.001f) musicaPersecucion.Stop();
+    }
+
+    void OnDisable()
+    {
+        if (musicaPersecucion != null) musicaPersecucion.Stop();
+    }
+
+    // ------------------------------------------------------------------ Pasos
+
+    void OnEnable()
+    {
+        var am = GetComponentInChildren<AnimacionesModelo>(true);
+        if (am != null) { am.alPisar -= Pisar; am.alPisar += Pisar; }
+    }
+
+    void Pisar(Vector3 punto)
+    {
+        if (!enabled || PantallaMuerte.Muerto) return;
+        if (sonidoPasos != null) SonarPaso();
+        // Estruendo: cada pisada sacude un poco la pantalla mientras te persigue
+        if (CurrentState == State.Chase && sacudidaPasos > 0f) Jugo.SacudirEn(punto, sacudidaPasos, radioSacudidaPasos);
+    }
+
+    void SonarPaso()
+    {
+        if (fuentesPasos == null)
+        {
+            fuentesPasos = new AudioSource[3];
+            for (int i = 0; i < fuentesPasos.Length; i++)
+            {
+                var f = gameObject.AddComponent<AudioSource>();
+                f.playOnAwake = false;
+                f.loop = false;
+                f.clip = sonidoPasos;
+                f.spatialBlend = 1f;
+                f.rolloffMode = AudioRolloffMode.Linear;
+                f.minDistance = 2f;
+                f.dopplerLevel = 0f;
+                fuentesPasos[i] = f;
+            }
+        }
+        if (inicioPisadas == null) inicioPisadas = Pisadas(sonidoPasos);
+        if (inicioPisadas.Length == 0) return;
+        // Una pisada al azar de la tira, hasta justo antes de la siguiente
+        int k = Random.Range(0, inicioPisadas.Length);
+        float desde = inicioPisadas[k];
+        float hasta = k + 1 < inicioPisadas.Length ? inicioPisadas[k + 1] : sonidoPasos.length;
+        float largo = Mathf.Min(hasta - desde - 0.02f, 0.6f);
+        if (largo <= 0.05f) return;
+        AudioSource s = fuentesPasos[siguientePaso];
+        siguientePaso = (siguientePaso + 1) % fuentesPasos.Length;
+        float tono = Mathf.Max(0.1f, tonoPasos * Random.Range(0.95f, 1.05f));
+        s.maxDistance = distanciaPasos;
+        s.volume = volumenPasos;
+        s.pitch = tono;
+        s.Stop();
+        s.time = desde;
+        s.Play();
+        s.SetScheduledEndTime(AudioSettings.dspTime + largo / tono);
+    }
+
+    // Donde empieza cada pisada en la tira (picos de volumen separados por silencio). Si no se puede leer: cada 0.5 s
+    static float[] Pisadas(AudioClip clip)
+    {
+        if (pisadasPorClip.TryGetValue(clip, out float[] guardadas)) return guardadas;
+        var res = new System.Collections.Generic.List<float>();
+        if (clip.loadState != AudioDataLoadState.Loaded) clip.LoadAudioData();
+        int canales = Mathf.Max(1, clip.channels);
+        float[] datos = new float[clip.samples * canales];
+        if (clip.loadState == AudioDataLoadState.Loaded && clip.GetData(datos, 0))
+        {
+            int ventana = Mathf.Max(1, clip.frequency / 100);   // 10 ms
+            int n = clip.samples / ventana;
+            var energia = new float[n];
+            float max = 0f;
+            for (int w = 0; w < n; w++)
+            {
+                float e = 0f;
+                for (int i = w * ventana * canales; i < (w + 1) * ventana * canales && i < datos.Length; i++) e += datos[i] * datos[i];
+                energia[w] = Mathf.Sqrt(e / (ventana * canales));
+                max = Mathf.Max(max, energia[w]);
+            }
+            bool silencio = true;
+            float ultimo = -1f;
+            for (int w = 0; w < n; w++)
+            {
+                float t = w * 0.01f;
+                if (silencio && energia[w] > max * 0.35f && t - ultimo > 0.2f) { res.Add(Mathf.Max(0f, t - 0.02f)); ultimo = t; silencio = false; }
+                else if (!silencio && energia[w] < max * 0.12f) silencio = true;
+            }
+        }
+        if (res.Count == 0) for (float t = 0f; t < clip.length - 0.3f; t += 0.5f) res.Add(t);
+        var arr = res.ToArray();
+        pisadasPorClip[clip] = arr;
+        return arr;
+    }
+
     void Update()
     {
+        SonidoPersecucion();
         if (player == null || CurrentState == State.Caught || !agent.isOnNavMesh) return;
         // Leyendo una nota (Lectura) no lo pueden matar: se queda quieto hasta que cierre la hoja
         if (Lectura.Abierta)

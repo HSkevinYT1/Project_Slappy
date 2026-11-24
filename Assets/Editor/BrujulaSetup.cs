@@ -4,8 +4,9 @@ using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-// La brujula de la Zona Roja (Brujula.cs): un pedestal de madera en el piso 3 del faro (donde se entra desde el
-// pasillo) con la brujula encima, lista para agarrar. Se pone sola si falta; rehacer:
+// La brujula de la Zona Roja (Brujula.cs): un pedestal de madera en el piso 2 del faro (junto a los colchones del
+// refugio, mirando hacia donde llega la escalera) con la brujula encima, lista para agarrar. Se pone sola si falta
+// (y si estaba en el piso 3, como antes, se mueve al 2 sin rehacerla); rehacer:
 // Tools > Zona Roja > Colocar brujula (rehacer). Despues guarda la escena (Ctrl+S).
 [InitializeOnLoad]
 public static class BrujulaSetup
@@ -27,8 +28,39 @@ public static class BrujulaSetup
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         if (!ZonaRoja(out Transform zr) || !zr.Find("Mision Faro")) return;
-        if (Object.FindFirstObjectByType<Brujula>(FindObjectsInactive.Include)) return;
-        Colocar(zr);
+        Brujula existente = Object.FindFirstObjectByType<Brujula>(FindObjectsInactive.Include);
+        if (!existente) { Colocar(zr); return; }
+        // Antes iba en el piso 3 (junto a la entrada): se mueve al piso 2 conservando la misma brujula
+        Transform faro = zr.Find("Faro");
+        if (faro && faro.InverseTransformPoint(existente.transform.position).y > -5f) Mover(zr, faro, existente.transform);
+    }
+
+    // Piso 2 (local al faro: el piso 3 esta en y = 0 y cada piso mide 10 m), junto a los colchones del refugio
+    // (InteriorFaroSetup deja libre este lugar)
+    internal static readonly Vector3 LugarPiso2 = new Vector3(1.3f, -10f, 1.5f);
+
+    // Donde va y hacia donde mira: hacia donde llega la escalera del piso 1 (angulo 180 = -X local)
+    static void Lugar(Transform faro, out Vector3 pos, out Quaternion giro)
+    {
+        pos = faro.TransformPoint(LugarPiso2);
+        Vector3 llegada = faro.TransformPoint(new Vector3(-6.5f, LugarPiso2.y, 0f)) - pos;
+        llegada.y = 0f;
+        giro = Quaternion.LookRotation(llegada.sqrMagnitude > 0.01f ? llegada : faro.forward);
+    }
+
+    static void Mover(Transform zr, Transform faro, Transform brujula)
+    {
+        Lugar(faro, out Vector3 pos, out Quaternion giro);
+        Transform pedestal = zr.Find(NombrePedestal);
+        if (pedestal)
+        {
+            Undo.RecordObject(pedestal, "Mover brujula");
+            pedestal.SetPositionAndRotation(pos, giro);
+        }
+        Undo.RecordObject(brujula, "Mover brujula");
+        brujula.SetPositionAndRotation(pos + Vector3.up * 0.976f, giro * Quaternion.Euler(0f, 25f, 0f));
+        EditorSceneManager.MarkSceneDirty(zr.gameObject.scene);
+        Debug.Log("[Brujula] Movida al piso 2 del faro. Guarda la escena (Ctrl+S).", brujula);
     }
 
     [MenuItem("Tools/Zona Roja/Colocar brujula (rehacer)")]
@@ -47,32 +79,7 @@ public static class BrujulaSetup
         Transform faro = zr.Find("Faro");
         if (!faro) { Debug.LogWarning("[Brujula] No encontre \"Zona Roja/Faro\"."); return; }
         Directory.CreateDirectory(Carpeta);
-        Physics.SyncTransforms();
-
-        // Piso 3 (a la altura del faro), a un lado de la entrada: hacia el pasillo, girando hasta encontrar suelo
-        // firme y libre (no el hueco de la escalera ni la luz del centro)
-        Transform entrada = zr.Find("Entrada Pasillo");
-        Vector3 dir = entrada ? entrada.position - faro.position : faro.right;
-        dir.y = 0f;
-        dir = dir.sqrMagnitude > 0.01f ? dir.normalized : Vector3.forward;
-        Vector3 centro = faro.position;
-        Vector3 pos = centro + Quaternion.Euler(0f, 40f, 0f) * dir * 4.5f;
-        bool hallado = false;
-        foreach (float r in new[] { 4.5f, 4f, 5.2f, 3.6f })
-        {
-            foreach (float a in new[] { 40f, -40f, 55f, -55f, 28f, -28f, 70f, -70f, 90f, -90f })
-            {
-                Vector3 p = centro + Quaternion.Euler(0f, a, 0f) * dir * r;
-                if (!Physics.Raycast(p + Vector3.up * 1.6f, Vector3.down, out RaycastHit h, 3f, ~0, QueryTriggerInteraction.Ignore)) continue;
-                if (h.normal.y < 0.8f || Mathf.Abs(h.point.y - centro.y) > 0.6f) continue;
-                if (Physics.CheckBox(h.point + Vector3.up * 0.65f, new Vector3(0.3f, 0.55f, 0.3f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore)) continue;
-                pos = h.point;
-                hallado = true;
-                break;
-            }
-            if (hallado) break;
-        }
-        if (!hallado) Debug.LogWarning("[Brujula] No encontre suelo libre en el piso 3: la puse junto a la entrada, muevela si hace falta.");
+        Lugar(faro, out Vector3 pos, out Quaternion giro);
 
         Material madera = Mat("Madera", new Color(0.32f, 0.2f, 0.11f), 0.25f, 0f);
         Material laton = Mat("BrujulaLaton", new Color(0.62f, 0.45f, 0.18f), 0.7f, 0.9f);
@@ -81,9 +88,7 @@ public static class BrujulaSetup
         Material blanco = Mat("BrujulaBlanco", new Color(0.92f, 0.92f, 0.9f), 0.5f, 0f);
         Material negro = Mat("BrujulaNegro", new Color(0.08f, 0.07f, 0.06f), 0.3f, 0f);
 
-        // ---- Pedestal (mirando hacia el centro del faro)
-        Vector3 haciaCentro = centro - pos; haciaCentro.y = 0f;
-        Quaternion giro = Quaternion.LookRotation(haciaCentro.sqrMagnitude > 0.01f ? haciaCentro : dir);
+        // ---- Pedestal (mirando hacia donde llega la escalera)
         var pedestal = new GameObject(NombrePedestal);
         Undo.RegisterCreatedObjectUndo(pedestal, "Pedestal brujula");
         pedestal.transform.SetParent(zr, true);
@@ -150,7 +155,9 @@ public static class BrujulaSetup
         t = null;
         foreach (GameObject g in EditorSceneManager.GetActiveScene().GetRootGameObjects())
             if (g.name == "Zona Roja") { t = g.transform; return true; }
-        return false;
+        GameObject zr = GameObject.Find("Zona Roja"); // abierta en otra escena (no la activa)
+        if (zr) t = zr.transform;
+        return t;
     }
 
     static GameObject Cubo(Transform padre, string nombre, Vector3 pos, Vector3 tam, Material m, bool collider, PrimitiveType tipo = PrimitiveType.Cube)

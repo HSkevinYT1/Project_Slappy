@@ -88,12 +88,15 @@ public class AnimacionesModelo : MonoBehaviour
     [Tooltip("Largo de cada paso (m) con pasosIK. 0 = automatico (lo que alcanzan las piernas)")]
     public float largoPaso = 0f;
     float cicloSuave;   // metros que avanza el cuerpo en un ciclo de la caminata (suavizado)
+    // Cada vez que un pie toca el piso caminando con pasosIK (punto del pie): lo usa JefeIndigoAI para los pasos
+    public event System.Action<Vector3> alPisar;
 
     // Una pierna para el IK: muslo -> rodilla -> punta (el pie), y en que fase del clip (0..1) apoya el pie
     public class Pierna
     {
         public Transform muslo, rodilla, punta;
         public float inicio, fin;
+        public float tAnterior = -1f;   // (para saber cuando el pie toca el piso)
         public float Apoyo => Mathf.Repeat(fin - inicio, 1f) is float d && d > 0.1f && d < 0.9f ? d : 0.5f;
     }
     [Tooltip("Velocidad (m/s) a la que la carrera se ve natural (con JefeIndigoAI se usa su chaseSpeed)")]
@@ -336,6 +339,14 @@ public class AnimacionesModelo : MonoBehaviour
         // Lo que avanza el cuerpo en un ciclo (a este ritmo); quieto = 0 (los pies vuelven a su sitio poco a poco)
         float objetivo = moviendose && k > 0.01f ? velocidad * largo / k : 0f;
         cicloSuave = Mathf.Lerp(cicloSuave, objetivo, 1f - Mathf.Exp(-8f * dt));
+        // Pisada: un pie pasa del aire al apoyo (para el sonido de los pasos y la sacudida)
+        foreach (Pierna l in p.piernas)
+        {
+            float t = Mathf.Repeat(fase - l.inicio, 1f);
+            bool pisa = l.tAnterior > l.Apoyo && t < l.Apoyo && t < 0.25f;
+            l.tAnterior = t;
+            if (pisa && cicloSuave > 0.05f && l.punta != null) alPisar?.Invoke(l.punta.position);
+        }
         if (cicloSuave < 0.005f) return;
         Vector3 adelante = transform.forward, arriba = transform.up;
         foreach (Pierna l in p.piernas)

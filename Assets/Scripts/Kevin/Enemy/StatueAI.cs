@@ -23,6 +23,8 @@ public class EstatuaAI : MonoBehaviour
     public bool faceTargetWhenMoving = true;
 
     public float catchDistance = 1.2f;
+    [Tooltip("Suena en bucle mientras la muñeca esta encima del jugador (minijuego de quitarsela)")]
+    public AudioClip sonidoAtaque;
 
     public UnityEvent onPlayerCaught;
     public UnityEvent onFreeze;

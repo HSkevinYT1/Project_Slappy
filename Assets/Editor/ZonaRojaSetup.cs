@@ -17,7 +17,8 @@ using UnityEngine.Rendering.Universal;
 // - El mar y el lago usan una COPIA del material de agua de las Cloacas (el shader no se modifica).
 //
 // Se crea sola una vez (si no existe "Zona Roja") y se puede rehacer con Tools > Zona Roja > Reconstruir.
-public static class ZonaRojaSetup
+// La orilla (paredes invisibles y sonido de olas) esta en ZonaRojaOrillaSetup.cs.
+public static partial class ZonaRojaSetup
 {
     const string Version = "_zona roja v5";
     const string Carpeta = "Assets/ZonaRoja";
@@ -70,6 +71,7 @@ public static class ZonaRojaSetup
         {
             // Sin reconstruir (para no perder cambios hechos a mano): solo se asegura la capa del faro.
             ConfigurarLuzFaro(existente.transform);
+            AsegurarOrilla(existente.transform);
             return;
         }
         if (!GameObject.Find("Zona_Principal")) return;
@@ -243,10 +245,10 @@ public static class ZonaRojaSetup
 
         float ySuelo = -2f * AltoPiso; // el piso 1 del faro esta al nivel del suelo de la isla
         // El faro queda en el centro del borde ESTE de la isla (lado del pasillo).
-        Vector3 centroIsla = new Vector3(-(MitadIsla - 1f), ySuelo, -DesplazamientoSur);
-        var terreno = new Terreno(centroIsla);
+        var terreno = TerrenoIsla(); // centro en (-(MitadIsla - 1), ySuelo, -DesplazamientoSur)
         ConstruirIsla(raiz.transform, terreno, mats);
         ConstruirBosque(raiz.transform, terreno, ySuelo, mats);
+        ConstruirOrilla(raiz.transform, terreno);
         MoverTiendaLejos(raiz.transform, terreno);
 
         if (marcaRoja)

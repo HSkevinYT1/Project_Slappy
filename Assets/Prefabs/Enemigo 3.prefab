@@ -221,6 +221,7 @@ MonoBehaviour:
   maxSeenDistance: 0
   faceTargetWhenMoving: 1
   catchDistance: 1.2
+  sonidoAtaque: {fileID: 8300000, guid: abf57fcf9d63aa64690583756d0b08da, type: 3}
   onPlayerCaught:
     m_PersistentCalls:
       m_Calls: []

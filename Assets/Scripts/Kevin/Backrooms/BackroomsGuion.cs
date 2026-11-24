@@ -70,6 +70,9 @@ public class BackroomsGuion : MonoBehaviour
     public AudioClip suspiro;
     [Range(0f, 1f)] public float volumenSuspiro = 0.85f;
 
+    [Tooltip("Pisadas del gato: la tira de pasos del jugador (Sounds/SFX/Pasos.mp3), que PasosGato pone mas aguda")]
+    public AudioClip pasosGato;
+
     [Header("Muerte del gato")]
     [Tooltip("Sonido cuando el gato salta sobre el jugador (MuerteGato): suena solo lo que dura el salto")]
     public AudioClip sonidoKill;
@@ -99,6 +102,14 @@ public class BackroomsGuion : MonoBehaviour
             MuerteGato muerte = gato.GetComponent<MuerteGato>();
             if (!muerte) muerte = gato.gameObject.AddComponent<MuerteGato>();
             if (muerte.sonidoKill == null) { muerte.sonidoKill = sonidoKill; muerte.inicioKill = inicioKill; }
+            // Pisadas: las del jugador, mas agudas
+            if (pasosGato != null)
+            {
+                PasosGato pasos = gato.GetComponent<PasosGato>();
+                if (!pasos) pasos = gato.gameObject.AddComponent<PasosGato>();
+                if (pasos.clip == null) pasos.clip = pasosGato;
+                pasos.velocidadNormal = gato.patrolSpeed;
+            }
             StartCoroutine(PonerGato());
         }
     }

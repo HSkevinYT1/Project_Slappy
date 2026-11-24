@@ -5,10 +5,11 @@ using UnityEngine;
 using UnityEngine.UI;
 
 // El final del guion: con las 4 zonas completadas, al volver a la estacion los muros empiezan a cerrarse y se abre
-// un agujero en el piso (la unica salida). Al tirarse empieza la cinematica final; si lleva las 4 piedras
-// coleccionables (PiedraColeccionable), la cinematica secreta (el collar del sotano se completa).
-// Las cinematicas son provisionales (texto sobre negro y el collar dibujado): se pueden cambiar por las de verdad.
-// Se crea solo al jugar; los textos y tiempos se editan en el objeto "Final del juego" (en Play) o aqui.
+// un agujero en el piso (la unica salida). Al tirarse empieza la cinematica final: una serie de imagenes
+// (Assets/Resources/FinalRenders). Final normal: Prim, Seg y Terc (lo atrapan). Si lleva las 4 piedras
+// coleccionables (PiedraColeccionable), el final secreto: Prim, Cuart y Quinto (las gemas lo salvan y sale).
+// En los dos suena la cancion de Slappy (Resources/FinalRenders/slappy) y se callan los demas sonidos.
+// Se crea solo al jugar; las imagenes, textos y tiempos se editan en el objeto "Final del juego" (en Play) o aqui.
 public class FinalJuego : MonoBehaviour
 {
     [Header("Muros y agujero")]
@@ -21,11 +22,24 @@ public class FinalJuego : MonoBehaviour
     [TextArea] public string alTemblar = "¿Y ahora qué está pasando?";
     [TextArea] public string alAbrirAgujero = "No me queda otra... tengo que tirarme.";
 
-    [Header("Cinematica final")]
-    [TextArea] public string[] lineasFinal = { "...", "SLAPPY", "Fin" };
-    [Header("Cinematica secreta (con las 4 piedras)")]
-    [TextArea] public string[] lineasSecreto = { "Las cuatro piedras brillan en mi bolsillo...", "El collar está completo.", "SLAPPY", "Final secreto" };
-    public Color[] coloresGemas = { new Color(0.35f, 0.1f, 1f), new Color(1f, 0.85f, 0.1f), new Color(0.12f, 0.12f, 0.14f), new Color(1f, 0.08f, 0.08f) };
+    const string CarpetaRenders = "FinalRenders";   // Assets/Resources/FinalRenders
+
+    [Header("Cinematica (imagenes de Resources/FinalRenders, sin extension)")]
+    [Tooltip("Segundos que cada imagen queda a la vista (sin contar los fundidos)")]
+    public float segundosPorImagen = 5f;
+    public float fundido = 1.2f;
+    [Tooltip("Cuanto se acerca la camara a cada imagen mientras se ve (1 = nada)")]
+    public float zoomImagen = 1.06f;
+    [Tooltip("Cancion de los dos finales (Resources/FinalRenders, sin extension)")]
+    public string cancion = "slappy";
+    [Range(0f, 1f)] public float volumenCancion = 0.85f;
+
+    [Header("Final normal")]
+    public string[] rendersFinal = { "Prim_Render", "SegRend", "TercRend" };
+    [TextArea] public string[] lineasFinal = { "SLAPPY", "Fin" };
+    [Header("Final secreto (con las 4 piedras)")]
+    public string[] rendersSecreto = { "Prim_Render", "CuartRend", "QuintoRend" };
+    [TextArea] public string[] lineasSecreto = { "SLAPPY", "Final secreto" };
 
     public bool Empezado { get; private set; }
     public bool AgujeroAbierto { get; private set; }
@@ -102,7 +116,10 @@ public class FinalJuego : MonoBehaviour
             go.transform.SetParent(transform, true);
             go.transform.position = desde;
             go.transform.localScale = tam;
-            if (mat != null) go.GetComponent<Renderer>().sharedMaterial = mat;
+            var r = go.GetComponent<Renderer>();
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
             var rb = go.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
@@ -177,13 +194,28 @@ public class FinalJuego : MonoBehaviour
         }
     }
 
+    // Muros de sombra negra: el mismo humo que el "Humo Plano" de las entradas de los pasillos (Humo_Fondo,
+    // shader Slappy/HumoNegro opaco). Para entonces las sombras ya se abrieron y estan desactivadas: se buscan inactivas.
     Material MaterialMuro()
     {
-        GameObject zp = GameObject.Find("Zona_Principal");
-        if (zp == null) return null;
-        foreach (Renderer r in zp.GetComponentsInChildren<Renderer>())
-            if (r.sharedMaterial != null && r.bounds.size.y > 2f) return r.sharedMaterial;
-        return null;
+        foreach (Renderer r in FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (r.name == "Humo Plano" && r.sharedMaterial != null) return r.sharedMaterial;
+        // Sin "Humo Plano" en la escena: humo negro con los mismos valores, o negro liso si falta el shader
+        Shader sh = Shader.Find("Slappy/HumoNegro");
+        if (sh != null)
+        {
+            var m = new Material(sh) { renderQueue = 2450 };
+            m.SetColor("_Color", new Color(0.002f, 0.002f, 0.0025f));
+            m.SetColor("_ColorClaro", new Color(0.03f, 0.03f, 0.032f));
+            m.SetFloat("_Densidad", 2f); m.SetFloat("_Nucleo", 1f); m.SetFloat("_Escala", 0.8f);
+            m.SetFloat("_Remolino", 0.6f); m.SetFloat("_VelRemolino", 0.3f); m.SetFloat("_Estirar", 2.2f);
+            m.SetFloat("_Capas", 0.6f); m.SetFloat("_Contraste", 2.4f); m.SetVector("_Velocidad", new Vector4(0f, 0.6f, 0f, 0f));
+            m.SetFloat("_Bordes", 0f); m.SetFloat("_ZWrite", 1f);
+            return m;
+        }
+        var negro = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = Color.black };
+        if (negro.HasProperty("_BaseColor")) negro.SetColor("_BaseColor", Color.black);
+        return negro;
     }
 
     // ------------------------------------------------------------------ Caida y cinematica
@@ -220,16 +252,38 @@ public class FinalJuego : MonoBehaviour
             yield return null;
         }
         negro.color = Color.black;
+        float volumen = AudioListener.volume;   // el volumen que eligio el jugador en el menu
         AudioListener.volume = 0f;
         yield return new WaitForSeconds(1.2f);
-        AudioListener.volume = 1f;
+        // Se callan todos los sonidos del juego (aunque algun script los vuelva a dar Play) y suena la cancion de Slappy
+        foreach (AudioSource a in FindObjectsByType<AudioSource>(FindObjectsSortMode.None)) a.mute = true;
+        AudioListener.volume = volumen;
+        AudioSource musica = Cancion();
 
         bool secreto = PiedraColeccionable.Recogidas >= PiedraColeccionable.Total;
-        string[] lineas = secreto ? lineasSecreto : lineasFinal;
-        if (secreto) yield return Collar(canvas.transform);
-        foreach (string l in lineas) yield return Linea(canvas.transform, l, l == "SLAPPY" ? 96f : 40f);
-        yield return new WaitForSeconds(1.5f);
+        yield return Imagenes(canvas.transform, secreto ? rendersSecreto : rendersFinal);
+        foreach (string l in secreto ? lineasSecreto : lineasFinal) yield return Linea(canvas.transform, l, l == "SLAPPY" ? 96f : 40f);
+        // La cancion se apaga mientras se vuelve al inicio
+        for (float t = 0f; t < 1.5f; t += Time.deltaTime)
+        {
+            if (musica != null) musica.volume = volumenCancion * (1f - t / 1.5f);
+            yield return null;
+        }
         if (PantallaMuerte.Instance != null) PantallaMuerte.Instance.VolverAlInicio();
+    }
+
+    AudioSource Cancion()
+    {
+        AudioClip clip = Resources.Load<AudioClip>(CarpetaRenders + "/" + cancion);
+        if (clip == null) { Debug.LogWarning($"[Final] No encontré la canción Resources/{CarpetaRenders}/{cancion}.", this); return null; }
+        var a = gameObject.AddComponent<AudioSource>();
+        a.clip = clip;
+        a.spatialBlend = 0f;
+        a.volume = volumenCancion;
+        a.loop = false;
+        a.ignoreListenerPause = true;
+        a.Play();
+        return a;
     }
 
     IEnumerator Linea(Transform padre, string texto, float tam)
@@ -247,52 +301,31 @@ public class FinalJuego : MonoBehaviour
         yield return new WaitForSeconds(0.3f);
     }
 
-    // El collar de la caja del sotano: la cadena y sus 4 huecos, que se van llenando con las gemas
-    IEnumerator Collar(Transform padre)
+    // Las imagenes de la cinematica, una tras otra: aparece desde negro, se acerca despacio y se vuelve a negro.
+    // Se ajustan a la pantalla sin deformarse (bandas negras si la proporcion no coincide).
+    IEnumerator Imagenes(Transform padre, string[] nombres)
     {
-        RectTransform raiz = HUD.Llenar(padre, "Collar");
-        var grupo = raiz.gameObject.AddComponent<CanvasGroup>();
-        grupo.alpha = 0f;
-        Sprite circulo = HUD.Circulo(), anillo = HUD.Circulo(0.25f);
-        const int cuentas = 26;
-        for (int i = 0; i < cuentas; i++)
+        foreach (string n in nombres)
         {
-            float a = Mathf.Lerp(200f, 340f, i / (float)(cuentas - 1)) * Mathf.Deg2Rad;
-            RectTransform c = HUD.Rect(raiz, "Cuenta", new Vector2(0.5f, 0.5f), new Vector2(Mathf.Cos(a) * 300f, Mathf.Sin(a) * 300f + 260f), Vector2.one * 14f);
-            HUD.Imagen(c, new Color(0.7f, 0.62f, 0.4f), circulo);
-        }
-        var huecos = new List<RectTransform>();
-        for (int i = 0; i < 4; i++)
-        {
-            float a = Mathf.Lerp(235f, 305f, i / 3f) * Mathf.Deg2Rad;
-            RectTransform h = HUD.Rect(raiz, "Hueco", new Vector2(0.5f, 0.5f), new Vector2(Mathf.Cos(a) * 300f, Mathf.Sin(a) * 300f + 260f), Vector2.one * 56f);
-            HUD.Imagen(h, new Color(0.75f, 0.66f, 0.42f), anillo);
-            huecos.Add(h);
-        }
-        for (float t = 0f; t < 1f; t += Time.deltaTime) { grupo.alpha = t; yield return null; }
-        grupo.alpha = 1f;
-        yield return new WaitForSeconds(0.6f);
-        for (int i = 0; i < huecos.Count; i++)
-        {
-            RectTransform g = HUD.Rect(raiz, "Gema", new Vector2(0.5f, 0.5f), new Vector2(Mathf.Lerp(-500f, 500f, i / 3f), -420f), Vector2.one * 40f);
-            Image img = HUD.Imagen(g, coloresGemas[i % coloresGemas.Length], circulo);
-            Vector2 desde = g.anchoredPosition, hasta = huecos[i].anchoredPosition;
-            for (float t = 0f; t < 0.9f; t += Time.deltaTime)
+            Texture2D tex = Resources.Load<Texture2D>(CarpetaRenders + "/" + n);
+            if (tex == null) { Debug.LogWarning($"[Final] No encontré la imagen Resources/{CarpetaRenders}/{n}.", this); continue; }
+            RectTransform r = HUD.Llenar(padre, n);
+            var ajuste = r.gameObject.AddComponent<AspectRatioFitter>();
+            ajuste.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            ajuste.aspectRatio = tex.width / (float)tex.height;
+            var img = r.gameObject.AddComponent<RawImage>();
+            img.texture = tex;
+            img.raycastTarget = false;
+            img.color = new Color(1f, 1f, 1f, 0f);
+            float total = segundosPorImagen + fundido * 2f;
+            for (float t = 0f; t < total; t += Time.deltaTime)
             {
-                float k = Jugo.SalidaCubica(t / 0.9f);
-                g.anchoredPosition = Vector2.Lerp(desde, hasta, k);
-                g.localScale = Vector3.one * Mathf.Lerp(0.6f, 1f, k);
+                img.color = new Color(1f, 1f, 1f, Mathf.Min(Mathf.Clamp01(t / fundido), Mathf.Clamp01((total - t) / fundido)));
+                r.localScale = Vector3.one * Mathf.Lerp(1f, zoomImagen, t / total);
                 yield return null;
             }
-            g.anchoredPosition = hasta;
-            // Encaja: destello
-            for (float t = 0f; t < 0.3f; t += Time.deltaTime) { g.localScale = Vector3.one * (1f + 0.5f * Mathf.Sin(t / 0.3f * Mathf.PI)); yield return null; }
-            g.localScale = Vector3.one;
-            img.color = Color.Lerp(img.color, Color.white, 0.15f);
-            yield return new WaitForSeconds(0.35f);
+            Destroy(r.gameObject);
+            yield return new WaitForSeconds(0.4f);
         }
-        yield return new WaitForSeconds(1.2f);
-        for (float t = 0f; t < 1f; t += Time.deltaTime) { grupo.alpha = 1f - t; yield return null; }
-        Destroy(raiz.gameObject);
     }
 }
