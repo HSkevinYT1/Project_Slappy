@@ -21,6 +21,9 @@ public class PortalSalida : MonoBehaviour
     bool usado;
     float tAparecer;
 
+    // El jugador ya cruzo (y esta en la salida)
+    public event System.Action alCruzar;
+
     public static PortalSalida Crear(Vector3 pos, Quaternion rot, Transform destino, string zona, Material material)
     {
         var go = new GameObject("Portal");
@@ -184,6 +187,7 @@ public class PortalSalida : MonoBehaviour
 
         ProgresoCaminos p = ProgresoCaminos.Instance;
         if (p != null && p.TramoActual != null && p.TramoActual.nombre == zona) p.CompletarZonaActual();
+        alCruzar?.Invoke();
         Destroy(gameObject);
     }
 }

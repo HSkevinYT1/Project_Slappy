@@ -38,6 +38,9 @@ public class PuzzlePalancas : MonoBehaviour
     [Tooltip("Donde deja el portal al jugador (la salida de la zona, mirando hacia la estacion)")]
     public Transform salida;
     public Material materialPortal;
+    [Tooltip("Lo que desaparece al salir por el portal (la puerta de la entrada de los Backrooms, que quedaba abierta " +
+             "pegada al muro). Vacio = se busca \"Puerta Entrada\" en los Backrooms")]
+    public GameObject[] quitarAlSalir;
 
     public bool BotonListo { get; private set; }
     public bool PortalAbierto { get; private set; }
@@ -232,7 +235,19 @@ public class PuzzlePalancas : MonoBehaviour
             dist = Mathf.Max(1.1f, h.distance - 0.6f);
         Vector3 pos = j.position + atras * dist;
         if (Physics.Raycast(pos + Vector3.up * 1f, Vector3.down, out RaycastHit hs, 3f, ~0, QueryTriggerInteraction.Ignore)) pos.y = hs.point.y;
-        PortalSalida.Crear(pos, Quaternion.LookRotation(-atras, Vector3.up), salida, zona, materialPortal);
+        PortalSalida portal = PortalSalida.Crear(pos, Quaternion.LookRotation(-atras, Vector3.up), salida, zona, materialPortal);
+        portal.alCruzar += AlSalir;
+    }
+
+    // Ya afuera: la puerta de la entrada desaparece (la entrada quedo tapada por el muro)
+    void AlSalir()
+    {
+        bool alguno = false;
+        if (quitarAlSalir != null)
+            foreach (GameObject g in quitarAlSalir) if (g != null) { g.SetActive(false); alguno = true; }
+        if (alguno) return;
+        Transform puerta = transform.root.Find("Puerta Entrada");
+        if (puerta != null) puerta.gameObject.SetActive(false);
     }
 
     // El foco titila y se queda prendido

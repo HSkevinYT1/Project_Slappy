@@ -5,7 +5,9 @@ using UnityEngine.SceneManagement;
 
 // Asigna los sonidos nuevos de Assets/Sounds/SFX:
 // - "puerta abriendose": la puerta de la cabina al abrirse (CabinaSalida).
-// - "fede grito ambiente", "fede grito cuando te ve", "fede screamer": el enemigo 1 (JefeIndigoAI).
+// - "fede grito ambiente", "fede grito cuando te ve": el enemigo 1 (JefeIndigoAI). Al matarte (screamer de la pantalla
+//   de muerte) grita con "sonido kill enemigo 2 y 4" (antes "fede screamer", que se reemplaza).
+// - "sonido-palanca": las palancas de los Backrooms (Palanca) al bajarlas.
 // - "sonido cable 1/2/3": al conectar un cable en el minijuego del telefono (prefab Telefono).
 // - "sonido munecas atacando": las muñecas (EstatuaAI) mientras estan encima del jugador.
 // Solo rellena lo que esta vacio. Rehacer: Tools > Sonidos > Asignar sonidos nuevos.
@@ -48,7 +50,8 @@ public static class SonidosNuevosSetup
         var puerta = Clip("puerta abriendose.wav");
         var ambiente = Clip("fede grito ambiente.mp3");
         var alVer = Clip("fede grito cuando te ve.mp3");
-        var screamer = Clip("fede screamer.mp3");
+        var screamerViejo = Clip("fede screamer.mp3");
+        var screamer = Clip("sonido kill enemigo 2 y 4.mp3");   // el grito de Fede al matarte
 
         // Cabina que se abre
         foreach (var c in Object.FindObjectsByType<CabinaSalida>(FindObjectsInactive.Include, FindObjectsSortMode.None))
@@ -70,7 +73,7 @@ public static class SonidosNuevosSetup
                 // Los sonidos de Fede son solo del enemigo 1
                 if (e.sonidoAmbiente == ambiente && ambiente) { e.sonidoAmbiente = null; cambio = true; }
                 if (e.sonidoAlVer == alVer && alVer) { e.sonidoAlVer = null; cambio = true; }
-                if (e.sonidoScreamer == screamer && screamer) { e.sonidoScreamer = null; cambio = true; }
+                if (e.sonidoScreamer == screamerViejo && screamerViejo) { e.sonidoScreamer = null; cambio = true; }
                 // La velocidad por distancia es solo de Fede (una vez; despues se respeta el Inspector)
                 if (e.acelerarConDistancia && !EditorPrefs.GetBool(Application.dataPath + ".OtrosNormales", false)) { e.acelerarConDistancia = false; cambio = true; }
                 if (cambio) { Marcar(e); informe += " quitados de " + e.name + ";"; }
@@ -86,7 +89,8 @@ public static class SonidosNuevosSetup
             }
             if (ambiente && (!e.sonidoAmbiente || forzar)) { e.sonidoAmbiente = ambiente; cambio = true; }
             if (alVer && (!e.sonidoAlVer || forzar)) { e.sonidoAlVer = alVer; cambio = true; }
-            if (screamer && (!e.sonidoScreamer || forzar)) { e.sonidoScreamer = screamer; cambio = true; }
+            if (screamer && e.sonidoScreamer != screamer && (!e.sonidoScreamer || e.sonidoScreamer == screamerViejo || forzar))
+            { e.sonidoScreamer = screamer; cambio = true; informe += " grito al matar de " + e.name + ";"; }
             if (!cambio) continue;
             Marcar(e);
             informe += " sonidos de " + e.name + ";";
@@ -168,6 +172,18 @@ public static class SonidosNuevosSetup
                 finally { PrefabUtility.UnloadPrefabContents(raiz); }
             }
         }
+
+        // Palancas de los Backrooms: suenan al bajarlas
+        var palanca = Clip("sonido-palanca.mp3");
+        if (palanca)
+            foreach (var p in Object.FindObjectsByType<Palanca>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (p.sonido == palanca || (p.sonido && !forzar)) continue;
+                Undo.RecordObject(p, "Sonidos nuevos");
+                p.sonido = palanca;
+                Marcar(p);
+                informe += " " + p.name + ";";
+            }
 
         // Musica de fondo de la Zona Principal: un objeto "Musica Zona Principal" en la escena
         var sala = ClipLargo("sala central sonido.mp3");

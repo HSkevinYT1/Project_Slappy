@@ -412,7 +412,7 @@ MonoBehaviour:
   lightSound: {fileID: 8300000, guid: 6aa87e1ea51837a44b51891da7be38a7, type: 3}
   battery: 100
   maxBattery: 100
-  drainPerSecond: 2
+  drainPerSecond: 0.6666667
 --- !u!65 &5411161112105315408
 BoxCollider:
   m_ObjectHideFlags: 0

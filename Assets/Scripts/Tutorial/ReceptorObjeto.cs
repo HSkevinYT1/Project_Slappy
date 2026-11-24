@@ -23,6 +23,13 @@ public class ReceptorObjeto : MonoBehaviour
     [Tooltip("Con Punto Mano asignado: el objeto toma tambien la rotacion de ese punto (ej: el cuchillo bien agarrado).")]
     public bool alinearConMano = true;
 
+    [Tooltip("Con un personaje animado (AnimacionesModelo): hueso de la mano (final del nombre, ej. RightHand). Al recibir, " +
+             "el Punto Mano se pone en el puño de esa mano y la sigue en todas las poses (quieto, caminando...). " +
+             "Vacio = el Punto Mano se queda donde esta")]
+    public string huesoMano = "RightHand";
+    [Tooltip("Distancia (m) del puño al centro del objeto, a lo largo del eje azul del Punto Mano (el cuchillo se agarra por el mango)")]
+    public float distanciaAgarre = 0.095f;
+
     [Tooltip("Si se marca, el objeto recibido se oculta en lugar de quedar en la mano.")]
     public bool ocultarAlRecibir = false;
 
@@ -87,6 +94,7 @@ public class ReceptorObjeto : MonoBehaviour
         }
         else
         {
+            PegarAMano();
             Transform mano = puntoMano;
             if (mano == null)
             {
@@ -101,5 +109,35 @@ public class ReceptorObjeto : MonoBehaviour
         }
 
         alRecibir?.Invoke(objeto);
+    }
+
+    // El Punto Mano estaba suelto en el NPC (el cambio de modelo lo saco del hueso de la mano): se pone en el puño de la
+    // mano del modelo que se ve (entre la muñeca y los nudillos, como lo armo CuchilloTutorialSetup) con su misma
+    // rotacion, y queda pegado a ese hueso
+    void PegarAMano()
+    {
+        if (puntoMano == null || string.IsNullOrEmpty(huesoMano)) return;
+        AnimacionesModelo anim = GetComponentInChildren<AnimacionesModelo>();
+        if (anim == null) anim = GetComponentInParent<AnimacionesModelo>();
+        if (anim == null) return;
+        Transform mano = anim.Hueso(huesoMano);
+        if (mano == null) return;
+        Transform medio = Hijo(mano, "Middle"), indice = Hijo(mano, "Index"), pulgar = Hijo(mano, "Thumb");
+        Transform nudillo = medio != null ? medio : indice;
+        Vector3 puno = mano.position;
+        if (nudillo != null)
+        {
+            Transform falange = nudillo.childCount > 0 ? nudillo.GetChild(0) : null;
+            puno = falange != null ? Vector3.Lerp(mano.position, falange.position, 0.75f) : Vector3.LerpUnclamped(mano.position, nudillo.position, 1.1f);
+        }
+        if (pulgar != null) puno = Vector3.Lerp(puno, pulgar.position, 0.25f);
+        puntoMano.position = puno + puntoMano.forward * distanciaAgarre;
+        anim.Adjuntar(puntoMano, huesoMano);
+    }
+
+    static Transform Hijo(Transform t, string parte)
+    {
+        foreach (Transform c in t) if (c.name.IndexOf(parte, System.StringComparison.OrdinalIgnoreCase) >= 0) return c;
+        return null;
     }
 }

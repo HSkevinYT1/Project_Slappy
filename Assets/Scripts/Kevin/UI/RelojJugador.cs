@@ -45,10 +45,12 @@ public class RelojJugador : MonoBehaviour
     public AudioClip sonidoManecillas;
     [Tooltip("Cuanto se acelera el tic-tac con el enemigo encima (3.2 = tres veces y pico). Sube parejo con la cercania")]
     public float aceleracionTicTac = 3.2f;   // (antes aceleracionManecillas = 2.5, y subia con la cercania al cuadrado: casi no se notaba)
-    [Tooltip("Guardado (sin mirarlo) el tic-tac se sigue oyendo, muy bajo y apagado, como dentro de la manga (0 = no se oye)")]
-    [Range(0f, 1f)] public float volumenSinMirar = 0.04f;   // (antes se llamaba volumenGuardado y estaba en 0.12)
+    [Tooltip("Guardado (sin mirarlo) el tic-tac se sigue oyendo, bajito y algo apagado, como dentro de la manga (0 = no se oye)")]
+    [Range(0f, 1f)] public float volumenEnManga = 0.3f;   // (antes volumenSinMirar = 0.04 con el filtro a 1400 Hz: no se oia)
     [Tooltip("Guardado, con el enemigo encima, el tic-tac sube hasta este volumen (asi avisa aunque no se mire)")]
-    [Range(0f, 1f)] public float volumenSinMirarCerca = 0.35f;
+    [Range(0f, 1f)] public float volumenEnMangaCerca = 0.65f;
+    [Tooltip("Frecuencia de corte del filtro con el reloj guardado (Hz): mas baja = mas apagado")]
+    public float filtroEnManga = 3200f;
     [Tooltip("Las muñecas de las Cloacas tambien lo vuelven loco (son muchas: apagado, solo los enemigos 1, 2 y 4)")]
     public bool detectarMunecas = false;
 
@@ -122,7 +124,18 @@ public class RelojJugador : MonoBehaviour
     {
         if (mostrar && !Desbloqueado) return;
         Visible = mostrar;
+        mostradoPorEscena = mostrar;
     }
+
+    // Lo levanto una escena (Mostrar), no el jugador: en una cinematica no se baja solo
+    bool mostradoPorEscena;
+
+    // Cercania minima que pone una cinematica (0 = ninguna). La presentacion del enemigo: su IA esta apagada durante
+    // la escena, asi que el reloj no lo detectaba y no se volvia loco
+    public void Forzar(float cercania) => cercaniaForzadaObjetivo = Mathf.Clamp01(cercania);
+    float cercaniaForzada, cercaniaForzadaObjetivo;
+    // Cercania suavizada para el sonido (la de las agujas cambia de golpe cada vez que se buscan las entidades)
+    float cercaniaSonido;
 
     // Cartel de tutorial (abajo al centro). Vacio = se oculta
     public void Tutorial(string mensaje) => tutorialMensaje = mensaje;
@@ -136,14 +149,20 @@ public class RelojJugador : MonoBehaviour
 
     void Update()
     {
-        bool bloqueado = PauseMenu.IsPaused || PantallaMuerte.Muerto || HUD.Oculto;
-        if (!bloqueado && Desbloqueado && GameInput.Watch) Visible = !Visible;
+        // En cinematicas no se saca (salvo cuando la cinematica pide mirarlo: el tutorial de la presentacion del enemigo);
+        // guardarlo si se puede. Si el jugador lo tenia levantado al empezar la cinematica, se baja solo (si no, quedaba
+        // delante de la camara de la escena todo el rato)
+        bool cinematica = HUD.EnCinematica && string.IsNullOrEmpty(tutorialMensaje);
+        bool bloqueado = PauseMenu.IsPaused || PantallaMuerte.Muerto || HUD.Oculto || (cinematica && !Visible);
+        if (!bloqueado && Desbloqueado && GameInput.Watch) { Visible = !Visible; mostradoPorEscena = false; }
+        if (cinematica && Visible && !mostradoPorEscena) Visible = false;
         if (PantallaMuerte.Muerto || HUD.Oculto) Visible = false;
 
-        BuscarEntidades();
-        Cercania = CalcularCercania();
-
         float dt = Time.deltaTime;
+        BuscarEntidades();
+        cercaniaForzada = Mathf.MoveTowards(cercaniaForzada, cercaniaForzadaObjetivo, dt * 1.5f);
+        Cercania = Mathf.Max(CalcularCercania(), cercaniaForzada);
+        cercaniaSonido = Mathf.MoveTowards(cercaniaSonido, Cercania, dt * 2f);
         subida = Mathf.MoveTowards(subida, Visible ? 1f : 0f, dt * velocidadSubida);
         hora = (hora + dt * minutosPorSegundo / 60f) % 24f;
 
@@ -378,7 +397,7 @@ public class RelojJugador : MonoBehaviour
 
     // Cuanto se oye segun lo levantado que esta: guardado muy bajo (y apagado por el filtro), mirandolo normal
     // (guardado, con un enemigo cerca, se oye mas: avisa sin tener que mirar)
-    float FactorVolumen() => Mathf.Lerp(Mathf.Lerp(volumenSinMirar, Mathf.Max(volumenSinMirar, volumenSinMirarCerca), Cercania), 1f, Mathf.Clamp01(subida * 1.5f));
+    float FactorVolumen() => Mathf.Lerp(Mathf.Lerp(volumenEnManga, Mathf.Max(volumenEnManga, volumenEnMangaCerca), cercaniaSonido), 1f, Mathf.Clamp01(subida * 1.5f));
 
     // Guardado suena apagado (sin agudos), como tapado por la manga; levantado, claro
     void Filtro()
@@ -388,7 +407,7 @@ public class RelojJugador : MonoBehaviour
             filtroManga = FuenteReloj().GetComponent<AudioLowPassFilter>();
             if (filtroManga == null) filtroManga = FuenteReloj().AddComponent<AudioLowPassFilter>();
         }
-        filtroManga.cutoffFrequency = Mathf.Lerp(1400f, 22000f, Mathf.Clamp01(subida * 1.5f));
+        filtroManga.cutoffFrequency = Mathf.Lerp(Mathf.Clamp(filtroEnManga, 500f, 22000f), 22000f, Mathf.Clamp01(subida * 1.5f));
     }
 
     AudioLowPassFilter filtroManga;
@@ -407,12 +426,13 @@ public class RelojJugador : MonoBehaviour
 
     void Sonido()
     {
-        bool puede = Desbloqueado && Time.timeScale > 0f && !PantallaMuerte.Muerto && !HUD.Oculto && (volumenSinMirar > 0f || Visible);
+        bool puede = Desbloqueado && Time.timeScale > 0f && !PantallaMuerte.Muerto && !HUD.Oculto && (volumenEnManga > 0f || Visible);
         if (puede) Filtro();
         if (sonidoManecillas != null) { SonidoManecillas(puede); return; }
-        if (!puede || (!Visible && volumenSinMirar <= 0f)) return;
-        float k = Cercania;
-        float intervalo = k > 0.01f ? Mathf.Lerp(0.35f, 0.045f, k) : 1f;
+        if (!puede || (!Visible && volumenEnManga <= 0f)) return;
+        float k = cercaniaSonido;
+        // Un tic por segundo y, con el enemigo cerca, mas seguido cuanto mas cerca (hasta 'aceleracionTicTac' veces y pico)
+        float intervalo = 1f / Mathf.Lerp(1f, Mathf.Max(1f, aceleracionTicTac) * 6f, k * k);
         if (Time.time < proximoTic) return;
         proximoTic = Time.time + intervalo * (k > 0.5f ? Random.Range(0.6f, 1.4f) : 1f);
         alterna = !alterna;
@@ -431,7 +451,7 @@ public class RelojJugador : MonoBehaviour
             audioManecillas.spatialBlend = 0f;
             audioManecillas.clip = sonidoManecillas;
         }
-        bool sonar = puede && (subida > 0.05f || volumenSinMirar > 0f);
+        bool sonar = puede && (subida > 0.05f || volumenEnManga > 0f);
         if (!sonar)
         {
             if (audioManecillas.isPlaying) audioManecillas.Pause();
@@ -443,10 +463,12 @@ public class RelojJugador : MonoBehaviour
             if (audioManecillas.time <= 0f || Random.value < 0.5f) audioManecillas.time = Random.Range(0f, Mathf.Max(0f, sonidoManecillas.length - 5f));
             audioManecillas.Play();
         }
-        float k = Cercania;
+        // Mas rapido cuanto mas cerca: ya se nota desde lejos y se dispara al final (hasta 'aceleracionTicTac' veces).
+        // Suavizada para que no salte cada vez que se buscan las entidades
+        float k = cercaniaSonido;
         float temblor = k > 0.5f ? (Mathf.PerlinNoise(Time.time * 6f, 4.2f) - 0.5f) * 0.6f * k : 0f;
-        // Mas rapido parejo con la cercania (antes era al cuadrado y a media distancia casi no cambiaba)
-        audioManecillas.pitch = Mathf.Lerp(1f, Mathf.Max(1f, aceleracionTicTac), k) + temblor;
+        float curva = Mathf.Lerp(Mathf.Sqrt(k), k * k, 0.5f);   // (entre raiz y cuadrado: sube parejo, mas al final)
+        audioManecillas.pitch = Mathf.Lerp(1f, Mathf.Max(1f, aceleracionTicTac), curva) + temblor;
         audioManecillas.volume = volumenTic * FactorVolumen() * (0.6f + 0.4f * k);
     }
 

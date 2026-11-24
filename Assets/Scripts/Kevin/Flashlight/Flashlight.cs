@@ -11,8 +11,8 @@ public class Flashlight : MonoBehaviour
 
     public float battery = 100f;
     public float maxBattery = 100f;
-    // Energia que gasta por segundo encendida
-    public float drainPerSecond = 2f;
+    // Energia que gasta por segundo encendida (0.67 = 150 s de luz con la pila llena; antes 2 = 50 s)
+    public float drainPerSecond = 0.6666667f;
 
     [Header("Parpadeos")]
     [Tooltip("Por debajo de esta carga (0..1) la luz falla de vez en cuando")]
@@ -43,11 +43,13 @@ public class Flashlight : MonoBehaviour
 
     void Update()
     {
-        // Solo se puede prender/apagar si el jugador la tiene en la mano
-        if (GameInput.Flashlight && IsHeld() && !apagandose)
+        // Solo se puede prender/apagar si el jugador la tiene en la mano (y no en medio de una cinematica)
+        if (GameInput.Flashlight && IsHeld() && !apagandose && !HUD.EnCinematica)
         {
             LightManager();
         }
+
+        RecargarEnEstacion(Time.deltaTime);
 
         // Descargar bateria
         if (lightObject.activeSelf && !apagandose && !Lectura.Abierta)   // leyendo una nota o el diario no se gasta
@@ -73,6 +75,55 @@ public class Flashlight : MonoBehaviour
     {
         battery = Mathf.Min(maxBattery, battery + amount);
         proximaFalla = Time.time + 2f;
+    }
+
+    [Header("Recarga en la estacion")]
+    [Tooltip("Carga por segundo mientras el jugador esta en la Zona Principal (la estacion). 0 = no se recarga sola")]
+    public float recargaEstacion = 25f;
+    [Tooltip("Metros por encima/debajo del piso de la estacion que siguen contando como estacion")]
+    public float alturaEstacion = 3.5f;
+    static Bounds estacion;
+    static int estacionBuscada;   // 0 = sin buscar, 1 = hay, 2 = no hay
+    static float reintentarEstacion;
+    static UnityEngine.SceneManagement.Scene escenaEstacion;
+    Transform jugadorEstacion;
+
+    // En la Zona Principal (la estacion) se recarga sola. La llama su Update y, mientras esta guardada en el
+    // inventario (objeto inactivo, sin Update), el Inventario
+    public void RecargarEnEstacion(float dt)
+    {
+        if (battery >= maxBattery || !EnEstacion()) return;
+        battery = Mathf.MoveTowards(battery, maxBattery, recargaEstacion * dt);
+        proximaFalla = Time.time + 2f;
+    }
+
+    // El jugador esta en la estacion: dentro del piso de la Zona Principal y fuera de cualquier zona (igual que
+    // MusicaZonaPrincipal). La tienda, el sotano y los pasillos no cuentan
+    bool EnEstacion()
+    {
+        if (recargaEstacion <= 0f || MenuPrincipal.Abierto) return false;
+        // (si no aparece, p. ej. porque la estacion esta apagada, se vuelve a buscar cada tanto)
+        if (estacionBuscada == 0 || escenaEstacion != gameObject.scene || (estacionBuscada == 2 && Time.unscaledTime >= reintentarEstacion))
+        {
+            escenaEstacion = gameObject.scene;
+            estacionBuscada = 2;
+            reintentarEstacion = Time.unscaledTime + 3f;
+            GameObject zp = GameObject.Find("Zona_Principal");
+            Transform piso = zp != null ? zp.transform.Find("piso") : null;
+            if (piso != null)
+                foreach (Collider c in piso.GetComponentsInChildren<Collider>())
+                {
+                    if (c.isTrigger) continue;
+                    if (estacionBuscada == 2) { estacion = c.bounds; estacionBuscada = 1; } else estacion.Encapsulate(c.bounds);
+                }
+        }
+        if (estacionBuscada != 1) return false;
+        if (volumenZonas == null) volumenZonas = FindFirstObjectByType<VolumenZonas>();
+        if (volumenZonas != null && volumenZonas.ZonaActual != null) return false;
+        if (jugadorEstacion == null) { jugadorEstacion = HUD.Jugador(); if (jugadorEstacion == null) return false; }
+        Vector3 p = jugadorEstacion.position;
+        return p.x >= estacion.min.x && p.x <= estacion.max.x && p.z >= estacion.min.z && p.z <= estacion.max.z &&
+               Mathf.Abs(p.y - estacion.max.y) <= alturaEstacion;
     }
 
     [Header("Por zona")]

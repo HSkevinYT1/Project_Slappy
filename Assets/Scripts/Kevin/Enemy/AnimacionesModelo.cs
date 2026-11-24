@@ -51,6 +51,11 @@ public class AnimacionesModelo : MonoBehaviour
         // pasosIK: las dos piernas (con en que parte del clip apoya cada pie) y el paso mas largo que alcanzan (m)
         [NonSerialized] public Pierna[] piernas;
         [NonSerialized] public float pasoMax, apoyoMedio;
+        // Sin Idle (PrepararParado): momentos de la caminata con los pies juntos, las piernas que se estiran al piso y la
+        // espalda (respira)
+        [NonSerialized] public float[] tiemposParado;
+        [NonSerialized] public Pierna[] piernasParado;
+        [NonSerialized] public Transform espalda;
     }
 
     // Vertices de los pies de una malla con huesos (se deforman a mano para saber donde esta la planta)
@@ -124,6 +129,8 @@ public class AnimacionesModelo : MonoBehaviour
         if (preparado) return;
         preparado = true;
         ia = GetComponentInParent<JefeIndigoAI>();
+        // NPCs (sin IA, ej. el cliente): todas las poses con la misma ropa
+        if (ia == null && Application.isPlaying) UnificarMateriales();
         var agente = GetComponent<UnityEngine.AI.NavMeshAgent>();
         suelo = agente != null ? -agente.baseOffset / Mathf.Max(0.0001f, transform.lossyScale.y) : 0f;
         if (ia != null) { velocidadCaminar = ia.patrolSpeed; velocidadCorrer = ia.chaseSpeed; }
@@ -179,6 +186,8 @@ public class AnimacionesModelo : MonoBehaviour
             if (soloLasQueFuncionan && !pegarAlSuelo) Validar(p);
             PrepararSuelo(p);
         }
+        // (todas en su primer cuadro)
+        if (Application.isPlaying) AlinearPoses();
         foreach (Pose p in poses) if (p != null && p.animator != null) p.luces = p.animator.GetComponentsInChildren<Light>(true);
         if (ia != null)
         {
@@ -186,6 +195,7 @@ public class AnimacionesModelo : MonoBehaviour
             ia.duracionAnimGrito = g != null && g.valida && g.playables != null ? Largo(g) : 0f;
         }
         IdleQueCamina();
+        PrepararParado();
         foreach (Pose p in poses) Mostrar(p, false);
         Cambiar(Elegir());
     }
@@ -260,8 +270,8 @@ public class AnimacionesModelo : MonoBehaviour
 
     void LateUpdate()
     {
-        if (!reproducir) return;
-        Paso(Time.deltaTime);
+        if (reproducir) Paso(Time.deltaTime);
+        MoverAdjuntos();
     }
 
     // Un cuadro (lo llama LateUpdate; desde el editor se usa para simular la caminata sin dar Play)
@@ -294,6 +304,10 @@ public class AnimacionesModelo : MonoBehaviour
         else if (actual.nombre == Correr) k = moviendose ? Mathf.Clamp(velocidad / Mathf.Max(0.1f, velocidadCorrer), 0.6f, 2.2f) : 0f;
         // Grito: va al ritmo del grito de la IA (dura lo que dura el sonido); si un grito empieza encima de otro, arranca de nuevo
         if (actual.nombre == Grito && ia != null && ia.Gritando) { actual.tiempo = ia.ProgresoGrito * Largo(actual); k = 0f; }
+        // Sin Idle (el cultista): al pararse termina el paso hasta tener los pies juntos y ahi se queda (ver Parado)
+        bool parado = !moviendose && actual.tiemposParado != null;
+        if (parado) { actual.tiempo += Mathf.Min(FaltaParado(actual), dt * 1.4f); k = 0f; }
+        pesoParado = Mathf.MoveTowards(pesoParado, parado ? 1f : 0f, dt / 0.4f);
         actual.tiempo += dt * k;
 
         if (pegarAlSuelo && usarPisoReal && Application.isPlaying) PisoReal(dt);
@@ -309,6 +323,264 @@ public class AnimacionesModelo : MonoBehaviour
 
         Evaluar(actual);
         if (ik) PasosIK(actual, k, dt);
+        if (pesoParado > 0.001f && actual.tiemposParado != null) Parado(actual, pesoParado);
+    }
+
+    // ------------------------------------------------------------------ Parado sin animacion de quieto
+
+    float pesoParado;
+
+    // Sin Idle (ej. el cultista, que solo trae caminata; su "modelo normal" es la malla en pose A, sin esqueleto): parado
+    // se usa la caminata en un momento de pies juntos (hay dos por ciclo: se va al mas cercano terminando el paso), con
+    // las dos piernas estiradas hasta el piso debajo de la cadera (IK) y respirando. Solo NPCs (los enemigos no cambian)
+    void PrepararParado()
+    {
+        if (ia != null || Buscar(Idle) != null) return;
+        Pose c = Buscar(Caminar);
+        if (c == null || !c.valida || c.playables == null) return;
+        Pierna izq = BuscarPierna(c, true), der = BuscarPierna(c, false);
+        if (izq == null || der == null) return;
+        float largo = Largo(c);
+        const int n = 40;
+        var dist = new float[n];
+        Vector3 arriba = transform.up;
+        for (int i = 0; i < n; i++)
+        {
+            c.tiempo = largo * i / n;
+            Evaluar(c);
+            Vector3 d = izq.punta.position - der.punta.position;
+            float vertical = Vector3.Dot(d, arriba);
+            dist[i] = (d - arriba * vertical).magnitude + Mathf.Abs(vertical) * 2f;
+        }
+        // El mejor de cada mitad del ciclo (un pie pasa al lado del otro dos veces)
+        int a = 0, b = n / 2;
+        for (int i = 0; i < n / 2; i++) if (dist[i] < dist[a]) a = i;
+        for (int i = n / 2; i < n; i++) if (dist[i] < dist[b]) b = i;
+        c.tiemposParado = new[] { largo * a / n, largo * b / n };
+        c.piernasParado = new[] { izq, der };
+        c.espalda = BuscarHueso(c, "Spine1");
+        if (c.espalda == null) c.espalda = BuscarHueso(c, "Spine");
+        c.tiempo = c.tiemposParado[0];
+        Evaluar(c);
+    }
+
+    // Cuanto falta (s del clip, hacia adelante) para el momento de pies juntos mas cercano
+    static float FaltaParado(Pose p)
+    {
+        float largo = Largo(p), t = Mathf.Repeat(p.tiempo, largo), falta = largo;
+        foreach (float tp in p.tiemposParado) falta = Mathf.Min(falta, Mathf.Repeat(tp - t, largo));
+        return falta > largo - 0.02f ? 0f : falta;
+    }
+
+    void Parado(Pose p, float w)
+    {
+        Vector3 arriba = transform.up;
+        if (p.piernasParado != null)
+        {
+            // Los dos pies a la altura del que esta apoyado, cada uno debajo de su cadera
+            float piso = float.MaxValue;
+            foreach (Pierna l in p.piernasParado) piso = Mathf.Min(piso, Vector3.Dot(l.punta.position, arriba));
+            foreach (Pierna l in p.piernasParado)
+            {
+                Vector3 debajo = l.muslo.position - arriba * (Vector3.Dot(l.muslo.position, arriba) - piso);
+                ResolverIK(l, Vector3.Lerp(l.punta.position, debajo, w));
+            }
+        }
+        if (p.espalda != null)
+        {
+            float grados = Mathf.Sin(Time.time * (2f * Mathf.PI / 3.6f)) * 1.6f * w;
+            p.espalda.rotation = Quaternion.AngleAxis(grados, transform.right) * p.espalda.rotation;
+        }
+    }
+
+    static Pierna BuscarPierna(Pose p, bool izq)
+    {
+        Transform muslo = null;
+        foreach (Transform t in p.animator.GetComponentsInChildren<Transform>(true))
+        {
+            string n = t.name.ToLowerInvariant();
+            if ((n.Contains("thigh") || n.Contains("upleg") || n.Contains("muslo")) && !n.EndsWith("_end") && (izq ? EsIzquierda(t.name) : EsDerecha(t.name))) { muslo = t; break; }
+        }
+        if (muslo == null || muslo.childCount == 0) return null;
+        Transform rodilla = null;
+        foreach (Transform c in muslo) { string n = c.name.ToLowerInvariant(); if (n.Contains("shin") || n.Contains("calf") || n.Contains("leg") || n.Contains("knee")) { rodilla = c; break; } }
+        if (rodilla == null) rodilla = muslo.GetChild(0);
+        if (rodilla.childCount == 0) return null;
+        Transform punta = null;
+        foreach (Transform c in rodilla) if (c.name.ToLowerInvariant().EndsWith("_end") || c.name.ToLowerInvariant().Contains("foot")) { punta = c; break; }
+        if (punta == null) punta = rodilla.GetChild(0);
+        return new Pierna { muslo = muslo, rodilla = rodilla, punta = punta };
+    }
+
+    // Hueso de una pose por el final de su nombre (ej. "RightHand" -> "mixamorig:RightHand")
+    static Transform BuscarHueso(Pose p, string fin)
+    {
+        if (p == null || p.animator == null || string.IsNullOrEmpty(fin)) return null;
+        foreach (Transform t in p.animator.GetComponentsInChildren<Transform>(true))
+            if (t.name.EndsWith(fin, StringComparison.OrdinalIgnoreCase)) return t;
+        return null;
+    }
+
+    // ------------------------------------------------------------------ Poses fuera de sitio
+
+    // Una pose que el setup dejo fuera de sitio (ej. el Correr del enemigo 4: su FBX de Mixamo viene en otra escala y quedo
+    // a 28 m del personaje y 7 m bajo el piso: al perseguirte "salia de debajo del piso") se pone donde esta la de
+    // caminar (o la de quieto): los pies a la misma altura y centrada; si ademas el tamaño no se parece, del mismo alto.
+    // Se mide como se ve (mallas en el primer cuadro, igual que Validar). Solo se tocan las que estan MUY lejos o
+    // hundidas; las demas no cambian. (Las de pegarAlSuelo no: ya se acomodan solas a la altura del piso)
+    void AlinearPoses()
+    {
+        Pose referencia = Buscar(Caminar);
+        if (referencia == null) referencia = Buscar(Idle);
+        if (referencia == null || !Limites(referencia.animator.transform, out Bounds rb) || rb.size.y < 0.05f) return;
+        float alto = rb.size.y;
+        foreach (Pose p in poses)
+        {
+            if (!Usable(p) || p == referencia || p.correccion != null) continue;
+            Transform env = p.animator.transform.parent;   // la envoltura de la pose ("Modelo/Correr")
+            if (env == null || env == transform || !env.IsChildOf(transform)) continue;
+            if (!Limites(p.animator.transform, out Bounds b) || b.size.y < 1e-4f) continue;
+            float corrido = new Vector2(b.center.x - rb.center.x, b.center.z - rb.center.z).magnitude;
+            float hundido = Mathf.Abs(b.min.y - rb.min.y);
+            if (corrido <= Mathf.Max(1.5f, alto * 1.5f) && hundido <= Mathf.Max(1f, alto)) continue;
+            float proporcion = b.size.y / alto;
+            if (proporcion > 1.3f || proporcion < 0.75f)
+            {
+                env.localScale /= proporcion;
+                if (!Limites(p.animator.transform, out b)) continue;
+            }
+            env.position += new Vector3(rb.center.x - b.center.x, rb.min.y - b.min.y, rb.center.z - b.center.z);
+            Debug.Log($"[Animaciones] {name} / {p.nombre}: estaba fuera de sitio (a {corrido:0.0} m, {hundido:0.0} m de alto de " +
+                      $"diferencia, x{proporcion:0.00} de tamaño): se pone donde {referencia.nombre}.", this);
+        }
+    }
+
+    // ------------------------------------------------------------------ Materiales iguales en todas las poses
+
+    // Cada pose es su propio FBX y cada uno trae sus materiales (el cliente: NPCIdle los de Blender y NPCWalk otros de
+    // Maya, con otros tonos): al pasar de quieto a caminar "se cambiaba de ropa". Se usan los de la pose de quieto (o la
+    // primera) en las mallas equivalentes de las demas: la del mismo tipo con el numero de vertices mas parecido (son las
+    // mismas mallas aunque se llamen distinto: Cube.001 = Cuerpo.001, Cube.002 = Camisa.001...)
+    public void UnificarMateriales()
+    {
+        Pose referencia = null;
+        foreach (string nombre in new[] { Idle, Caminar, Correr })
+            foreach (Pose p in poses)
+                if (referencia == null && p != null && p.animator != null && p.nombre == nombre) referencia = p;
+        if (referencia == null) return;
+        Renderer[] origen = referencia.animator.GetComponentsInChildren<Renderer>(true);
+        foreach (Pose p in poses)
+        {
+            if (p == null || p.animator == null || p.animator == referencia.animator) continue;
+            var pares = new System.Collections.Generic.List<(float dif, Renderer r, Renderer o)>();
+            foreach (Renderer r in p.animator.GetComponentsInChildren<Renderer>(true))
+            {
+                int vr = Vertices(r);
+                if (vr <= 0) continue;
+                foreach (Renderer o in origen)
+                {
+                    int vo = Vertices(o);
+                    if (vo <= 0 || (o is SkinnedMeshRenderer) != (r is SkinnedMeshRenderer)) continue;
+                    float dif = Mathf.Abs(vo - vr) / (float)Mathf.Max(vo, vr);
+                    if (dif <= 0.15f) pares.Add((dif, r, o));
+                }
+            }
+            pares.Sort((x, y) => x.dif.CompareTo(y.dif));
+            var hechos = new System.Collections.Generic.HashSet<Renderer>();
+            var usados = new System.Collections.Generic.HashSet<Renderer>();
+            foreach (var (dif, r, o) in pares)
+            {
+                if (hechos.Contains(r) || usados.Contains(o)) continue;
+                hechos.Add(r);
+                usados.Add(o);
+                Material[] m = o.sharedMaterials;
+                if (m.Length == 0) continue;
+                var arr = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
+                for (int i = 0; i < arr.Length; i++) arr[i] = m[Mathf.Min(i, m.Length - 1)];
+                r.sharedMaterials = arr;
+            }
+        }
+    }
+
+    static int Vertices(Renderer r)
+    {
+        if (r is SkinnedMeshRenderer s) return s.sharedMesh != null ? s.sharedMesh.vertexCount : 0;
+        return r.TryGetComponent(out MeshFilter f) && f.sharedMesh != null ? f.sharedMesh.vertexCount : 0;
+    }
+
+    // ------------------------------------------------------------------ Objetos pegados a un hueso
+
+    // Un objeto que sigue a un hueso (ej. el cuchillo en la mano del cliente). Cada pose tiene su propio esqueleto: el
+    // objeto sigue al hueso de la pose que se ve. Su posicion se guarda respecto a un marco hecho con POSICIONES (el
+    // hueso, su primer dedo y el hueso de arriba): es el mismo en todas las poses aunque cada FBX traiga los ejes de los
+    // huesos distintos (Blender / Maya)
+    class Adjunto
+    {
+        public Transform obj;
+        public string hueso;
+        public Vector3 pos;
+        public Quaternion rot;
+        public readonly System.Collections.Generic.Dictionary<Pose, Transform[]> huesos = new System.Collections.Generic.Dictionary<Pose, Transform[]>();
+    }
+    readonly System.Collections.Generic.List<Adjunto> adjuntos = new System.Collections.Generic.List<Adjunto>();
+
+    // Hueso de la pose que se ve, por el final de su nombre (ej. "RightHand")
+    public Transform Hueso(string fin)
+    {
+        Preparar();
+        return BuscarHueso(actual, fin);
+    }
+
+    // Pega el objeto a ese hueso tal como esta ahora respecto al hueso de la pose que se ve
+    public bool Adjuntar(Transform obj, string fin)
+    {
+        Preparar();
+        if (obj == null || actual == null) return false;
+        var a = new Adjunto { obj = obj, hueso = fin };
+        if (!Marco(a, actual, out Vector3 o, out Quaternion r)) return false;
+        a.pos = Quaternion.Inverse(r) * (obj.position - o);
+        a.rot = Quaternion.Inverse(r) * obj.rotation;
+        adjuntos.RemoveAll(x => x.obj == obj);
+        adjuntos.Add(a);
+        return true;
+    }
+
+    public void Soltar(Transform obj) => adjuntos.RemoveAll(x => x.obj == obj);
+
+    void MoverAdjuntos()
+    {
+        if (adjuntos.Count == 0 || actual == null) return;
+        adjuntos.RemoveAll(x => x.obj == null);
+        foreach (Adjunto a in adjuntos)
+            if (Marco(a, actual, out Vector3 o, out Quaternion r)) a.obj.SetPositionAndRotation(o + r * a.pos, r * a.rot);
+    }
+
+    static bool Marco(Adjunto a, Pose p, out Vector3 origen, out Quaternion rot)
+    {
+        origen = default;
+        rot = Quaternion.identity;
+        if (!a.huesos.TryGetValue(p, out Transform[] h))
+        {
+            Transform hueso = BuscarHueso(p, a.hueso), dedo = null;
+            if (hueso != null)
+            {
+                foreach (Transform c in hueso) if (c.name.IndexOf("Index", StringComparison.OrdinalIgnoreCase) >= 0) { dedo = c; break; }
+                if (dedo == null) foreach (Transform c in hueso) if (c.name.IndexOf("Middle", StringComparison.OrdinalIgnoreCase) >= 0) { dedo = c; break; }
+                if (dedo == null && hueso.childCount > 0) dedo = hueso.GetChild(0);
+            }
+            h = new[] { hueso, dedo, hueso != null ? hueso.parent : null };
+            a.huesos[p] = h;
+        }
+        if (h[0] == null) return false;
+        origen = h[0].position;
+        rot = h[0].rotation;
+        if (h[1] != null && h[2] != null)
+        {
+            Vector3 dedos = h[1].position - h[0].position, brazo = h[0].position - h[2].position;
+            Vector3 normal = Vector3.Cross(brazo, dedos);
+            if (dedos.sqrMagnitude > 1e-8f && normal.sqrMagnitude > 1e-10f) rot = Quaternion.LookRotation(dedos, normal);
+        }
+        return true;
     }
 
     // ------------------------------------------------------------------ Pasos con IK (caminata en el sitio)

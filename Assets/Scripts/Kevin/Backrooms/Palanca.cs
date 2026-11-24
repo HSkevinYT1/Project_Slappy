@@ -18,6 +18,9 @@ public class Palanca : MonoBehaviour
     [Tooltip("Giro del pivote (grados en X local) arriba y abajo")]
     public float anguloArriba = -45f, anguloAbajo = 45f;
     public float duracion = 0.4f;
+    [Tooltip("Sonido al bajarla (Assets/Sounds/SFX/sonido-palanca; lo asigna Tools > Sonidos > Asignar sonidos nuevos)")]
+    public AudioClip sonido;
+    [Range(0f, 1f)] public float volumen = 0.9f;
 
     public string promptBajar = "Bajar palanca";
     public string promptRota = "Revisar palanca";
@@ -65,6 +68,7 @@ public class Palanca : MonoBehaviour
         moviendo = true;
         Bajada = true;
         Actualizar();
+        Sonar();
         // Anticipa un poco hacia arriba y baja de golpe, con un rebote corto al tocar el tope
         yield return Tirar(anguloArriba, anguloArriba - 6f, 0.1f);
         float desde = anguloArriba - 6f;
@@ -79,6 +83,24 @@ public class Palanca : MonoBehaviour
         yield return Tirar(anguloAbajo - 5f, anguloAbajo, 0.08f);
         moviendo = false;
         if (puzzle != null) puzzle.AlBajar(this);
+    }
+
+    // Desde la palanca (3D, se oye bien de cerca)
+    void Sonar()
+    {
+        if (sonido == null) return;
+        var fuente = GetComponent<AudioSource>();
+        if (fuente == null)
+        {
+            fuente = gameObject.AddComponent<AudioSource>();
+            fuente.playOnAwake = false;
+            fuente.spatialBlend = 0.85f;
+            fuente.rolloffMode = AudioRolloffMode.Linear;
+            fuente.minDistance = 2f;
+            fuente.maxDistance = 18f;
+            fuente.dopplerLevel = 0f;
+        }
+        fuente.PlayOneShot(sonido, volumen);
     }
 
     // Lleva el pivote de un angulo a otro (grados en X local)

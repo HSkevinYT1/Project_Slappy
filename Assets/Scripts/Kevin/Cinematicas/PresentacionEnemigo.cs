@@ -62,6 +62,10 @@ public class PresentacionEnemigo : MonoBehaviour
     [Tooltip("Segundos mirando el reloj antes de seguir")]
     public float mirarReloj = 3.2f;
     public string textoTutorial = "Presiona [{0}] para mirar tu reloj";
+    [Tooltip("Que tan loco se pone el reloj (0..1, como si el enemigo estuviera asi de cerca) mientras sale el cartel del tutorial")]
+    [Range(0f, 1f)] public float cercaniaAntesDeMirar = 0.45f;
+    [Tooltip("Que tan loco se pone el reloj al mirarlo durante la presentacion")]
+    [Range(0f, 1f)] public float cercaniaAlMirar = 0.9f;
     [Tooltip("Ya no se usa (el texto al lado del reloj se quito)")]
     public string textoPista = "";
 
@@ -87,6 +91,12 @@ public class PresentacionEnemigo : MonoBehaviour
             jugador = pm.transform;
         }
         if (zona.bounds.Contains(jugador.position)) StartCoroutine(Cinematica());
+    }
+
+    // Si se corta a la mitad (se apaga el objeto), el reloj no se queda loco
+    void OnDisable()
+    {
+        if (Usada && RelojJugador.Instance != null) RelojJugador.Instance.Forzar(0f);
     }
 
     public void Empezar()
@@ -205,11 +215,15 @@ public class PresentacionEnemigo : MonoBehaviour
                 {
                     reloj.Desbloquear();
                     reloj.Tutorial(string.Format(textoTutorial, GameInput.KeyName("Reloj")));
+                    // El enemigo tiene la IA apagada (el reloj no lo detecta solo): el reloj se pone nervioso ya (el
+                    // tic-tac se acelera, se oye aunque este guardado) y al mirarlo se vuelve loco
+                    reloj.Forzar(cercaniaAntesDeMirar);
                     // Lo miro (o paso demasiado tiempo: se muestra solo)
                     if (reloj.Visible || (esperaMaximaReloj > 0f && t > relojTras + esperaMaximaReloj))
                     {
                         reloj.Mostrar(true);
                         reloj.Tutorial("");
+                        reloj.Forzar(cercaniaAlMirar);
                         vistoDesde = t;
                         // Recien ahora aparece el enemigo y cruza
                         if (esperarReloj) { Arrancar(); arrancoEn = t; }
@@ -219,7 +233,7 @@ public class PresentacionEnemigo : MonoBehaviour
             }
             yield return null;
         }
-        if (reloj != null) { reloj.Tutorial(""); if (tutorialReloj) reloj.Mostrar(false); }
+        if (reloj != null) { reloj.Tutorial(""); reloj.Forzar(0f); if (tutorialReloj) reloj.Mostrar(false); }
         Arrancar(); // por si acaso (sin reloj en la escena)
 
         // Volver a la vista del jugador

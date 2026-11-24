@@ -135,7 +135,7 @@ public class Brujula : MonoBehaviour
             return;
         }
 
-        bool bloqueado = PauseMenu.IsPaused || MenuPrincipal.Abierto || Time.timeScale <= 0f
+        bool bloqueado = PauseMenu.IsPaused || MenuPrincipal.Abierto || Time.timeScale <= 0f || HUD.EnCinematica
                          || (DialogueManager.Instance != null && DialogueManager.Instance.IsActive);
         bool quiere = !bloqueado && GameInput.LookThrough;
         if (quiere && k <= 0f && !moviendo)

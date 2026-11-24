@@ -72,8 +72,8 @@ public static class ModelosAnimadosSetup
     };
     static readonly Def[] Cultista =
     {
-        // (sin idle por ahora: solo esta cultistawalk)
-        new Def(AnimacionesModelo.Caminar, "cultista/cultistawalk.fbx"),
+        // (sin idle por ahora: solo esta cultistawalk). Su toma "Layer0.002" (no "Armature|mixamo.com")
+        new Def(AnimacionesModelo.Caminar, "cultista/cultistawalk.fbx", true, "Armature|Armature|mixamo.com|Layer0.002"),
     };
     const string ArchivoBrazos = "NPC/Arms.fbx";
     // Lo que cuelga de los brazos y hay que conservar

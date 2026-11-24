@@ -65,6 +65,35 @@ public static class HUD
     // Hay algo que deberia esconder el HUD (menu principal abierto)
     public static bool Oculto => MenuPrincipal.Abierto;
 
+    // Cinematica en curso: el jugador no controla la camara o no se puede mover (la intro, la presentacion del
+    // enemigo, la camara de seguridad de los Backrooms, girarse hacia una puerta...). Ahi no se puede sacar el reloj,
+    // cambiar de objeto, prender la linterna ni mirar con la piedra o la brujula. No cuenta estar escondido, con una
+    // muñeca encima ni leyendo una nota (ahi la camara tambien se bloquea, pero no es una cinematica)
+    public static bool EnCinematica
+    {
+        get
+        {
+            if (cuadroCinematica == Time.frameCount) return enCinematica;
+            cuadroCinematica = Time.frameCount;
+            enCinematica = CalcularCinematica();
+            return enCinematica;
+        }
+    }
+    static int cuadroCinematica = -1;
+    static bool enCinematica;
+    static PlayerMovement movimientoJugador;
+
+    static bool CalcularCinematica()
+    {
+        // (la pausa tambien apaga la camara, pero no es una cinematica)
+        if (Escondite.JugadorEscondido || AgarreMuneca.Activo || Lectura.Abierta || PantallaMuerte.Muerto || PauseMenu.IsPaused) return false;
+        if (movimientoJugador == null) movimientoJugador = Object.FindFirstObjectByType<PlayerMovement>(FindObjectsInactive.Include);
+        if (movimientoJugador == null) return false;
+        if (!movimientoJugador.enabled) return true;
+        foreach (MouseLook m in movimientoJugador.GetComponentsInChildren<MouseLook>()) if (!m.enabled) return true;
+        return false;
+    }
+
     // Mensaje corto arriba al centro durante unos segundos (ej: "Algo se abrio a lo lejos...")
     public static void Aviso(string texto, float segundos)
     {

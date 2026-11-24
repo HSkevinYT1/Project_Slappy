@@ -65,7 +65,7 @@ public class Inventario : MonoBehaviour
     {
         Limpiar();
 
-        bool puedeCambiar = interactor != null && interactor.enabled && !PauseMenu.IsPaused && !PantallaMuerte.Muerto && !HUD.Oculto;
+        bool puedeCambiar = interactor != null && interactor.enabled && !PauseMenu.IsPaused && !PantallaMuerte.Muerto && !HUD.Oculto && !HUD.EnCinematica;
         if (puedeCambiar)
         {
             int r = GameInput.SlotPressed;
@@ -374,6 +374,8 @@ public class Inventario : MonoBehaviour
 
             ObjetoInventario oi = g != null ? g.GetComponent<ObjetoInventario>() : null;
             Flashlight linterna = g != null ? g.GetComponentInChildren<Flashlight>(true) : null;
+            // Guardada (inactiva) no corre su Update: la recarga de la estacion se hace desde aqui
+            if (linterna != null && !linterna.isActiveAndEnabled) linterna.RecargarEnEstacion(Time.deltaTime);
             Sprite sprite = oi != null && oi.icono != null ? oi.icono : (linterna != null ? iconoLinterna : null);
             f.icono.enabled = sprite != null;
             f.icono.sprite = sprite;

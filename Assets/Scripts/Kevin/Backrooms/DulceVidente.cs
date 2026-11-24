@@ -108,7 +108,7 @@ public class DulceVidente : MonoBehaviour
             }
         }
 
-        bool bloqueado = MenuPrincipal.Abierto || Time.timeScale <= 0f
+        bool bloqueado = MenuPrincipal.Abierto || Time.timeScale <= 0f || HUD.EnCinematica
                          || (DialogueManager.Instance != null && DialogueManager.Instance.IsActive);
         bool quiere = enMano && !bloqueado && GameInput.LookThrough;
 

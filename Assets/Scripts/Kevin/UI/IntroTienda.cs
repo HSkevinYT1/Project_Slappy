@@ -213,19 +213,32 @@ public class IntroTienda : MonoBehaviour
         foreach (MonoBehaviour m in d.GetComponentsInChildren<MonoBehaviour>(true)) if (!(m is AnimacionesModelo)) Destroy(m);
         foreach (Collider c in d.GetComponentsInChildren<Collider>(true)) Destroy(c);
         foreach (Renderer r in d.GetComponentsInChildren<Renderer>(true)) r.allowOcclusionWhenDynamic = false;
-        if (colores != null)
+        // Cada pose (quieto, caminando) es su propio modelo con sus materiales: todas con los mismos (si no, se
+        // "cambiaba de ropa" al empezar o dejar de caminar)
+        foreach (AnimacionesModelo am in d.GetComponentsInChildren<AnimacionesModelo>(true)) am.UnificarMateriales();
+        if (colores != null && colores.Length > 0)
         {
-            int i = 0;
+            // Un color por MATERIAL (no por malla): la misma prenda queda del mismo color en todas las poses.
+            // Copias: no cambia al cliente original
+            var copias = new Dictionary<Material, Material>();
             foreach (Renderer r in d.GetComponentsInChildren<Renderer>(true))
             {
-                Material[] mats = r.materials; // copias: no cambia al cliente original
-                foreach (Material m in mats)
+                Material[] mats = r.sharedMaterials;
+                for (int j = 0; j < mats.Length; j++)
                 {
-                    Color c = colores[i++ % colores.Length];
-                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-                    if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+                    Material m = mats[j];
+                    if (m == null) continue;
+                    if (!copias.TryGetValue(m, out Material copia))
+                    {
+                        copia = new Material(m) { name = m.name + " (" + nombre + ")" };
+                        Color c = colores[copias.Count % colores.Length];
+                        if (copia.HasProperty("_BaseColor")) copia.SetColor("_BaseColor", c);
+                        if (copia.HasProperty("_Color")) copia.SetColor("_Color", c);
+                        copias[m] = copia;
+                    }
+                    mats[j] = copia;
                 }
-                r.materials = mats;
+                r.sharedMaterials = mats;
             }
         }
         d.SetActive(true);
