@@ -86,8 +86,9 @@ public class LlaveAleatoria : MonoBehaviour
 
     void Update()
     {
-        // Suena mientras la estatua la tiene o mientras esta tirada (cuando el jugador la agarra, deja de sonar)
-        if (enElPiso && transform.parent != null) enElPiso = false;
+        // Suena mientras la estatua la tiene o mientras esta tirada (cuando el jugador la agarra, deja de sonar).
+        // Tirada = sin padre: tambien cuenta si vuelve al piso al morir el jugador (Inventario.Devolver)
+        enElPiso = transform.parent == null;
         if (!enElPiso && (ManoActual == null || !transform.IsChildOf(ManoActual))) return;
 
         timer -= Time.deltaTime;

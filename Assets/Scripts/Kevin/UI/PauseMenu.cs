@@ -98,6 +98,27 @@ public class PauseMenu : MonoBehaviour
         }
     }
 
+    // Al hacer clic en otro monitor (o Alt+Tab) el juego pierde el foco: se pausa solo, como cualquier juego de PC.
+    // Antes seguia corriendo sin el jugador (los enemigos podian matarlo) y al volver la camara daba un tiron.
+    void OnApplicationFocus(bool foco)
+    {
+        if (foco || IsPaused || !enabled || !isActiveAndEnabled) return;
+        StartCoroutine(PausarSiSigueSinFoco());
+    }
+
+    System.Collections.IEnumerator PausarSiSigueSinFoco()
+    {
+        // En el Editor tambien se pierde el foco al hacer clic en la Scene o el Inspector: solo cuenta si se salio de Unity
+        yield return new WaitForSecondsRealtime(0.15f);
+#if UNITY_EDITOR
+        if (UnityEditorInternal.InternalEditorUtility.isApplicationActive) yield break;
+#else
+        if (Application.isFocused) yield break;
+#endif
+        if (IsPaused || !enabled || MenuPrincipal.Abierto || PantallaMuerte.Muerto || HUD.Oculto || Time.timeScale <= 0f) yield break;
+        Pause();
+    }
+
     void OnDestroy()
     {
         // por si se cambia de escena estando en pausa

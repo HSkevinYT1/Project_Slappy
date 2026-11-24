@@ -107,6 +107,7 @@ public class Inventario : MonoBehaviour
 
         if (ranura != Actual) Guardar();
         Actual = ranura;
+        Anotar(obj);
         objetos[ranura] = obj;
         obj.gameObject.SetActive(true);
         interactor.HoldDirect(obj);
@@ -114,6 +115,69 @@ public class Inventario : MonoBehaviour
         // Agarrar algo: la cabeza baja un poquito hacia la mano
         Jugo.PatadaFOV(-1f);
         Jugo.Cabeceo(0.015f);
+    }
+
+    // ------------------------------------------------------------------ Puntos de control (PantallaMuerte)
+    // Donde estaba cada objeto justo antes de recogerlo: si el jugador muere antes del siguiente punto de control,
+    // lo que recogio despues vuelve ahi (ej: la llave de las Cloacas vuelve al piso o a la mano de la muñeca).
+
+    struct Origen
+    {
+        public Transform padre;
+        public bool teniaPadre;
+        public Vector3 posLocal, pos;
+        public Quaternion rotLocal, rot;
+        public bool cinematico, gravedad;
+    }
+    readonly System.Collections.Generic.Dictionary<Grabbable, Origen> origenes = new System.Collections.Generic.Dictionary<Grabbable, Origen>();
+
+    // Lo de ahora (para guardarlo en el punto de control)
+    public System.Collections.Generic.List<Grabbable> Contenido()
+    {
+        var l = new System.Collections.Generic.List<Grabbable>();
+        foreach (Grabbable g in objetos) if (g != null) l.Add(g);
+        return l;
+    }
+
+    void Anotar(Grabbable obj)
+    {
+        Transform t = obj.transform;
+        var o = new Origen
+        {
+            padre = t.parent, teniaPadre = t.parent != null,
+            posLocal = t.localPosition, rotLocal = t.localRotation, pos = t.position, rot = t.rotation,
+        };
+        if (obj.TryGetComponent(out Rigidbody rb)) { o.cinematico = rb.isKinematic; o.gravedad = rb.useGravity; }
+        origenes[obj] = o;
+    }
+
+    // Lo saca del inventario (y de la mano) y lo deja donde estaba antes de recogerlo
+    public void Devolver(Grabbable obj)
+    {
+        if (obj == null) return;
+        if (interactor != null && interactor.Held == obj) interactor.SetHeld(null);
+        Quitar(obj);
+        obj.gameObject.SetActive(true);
+        obj.Release();
+        if (!origenes.TryGetValue(obj, out Origen o)) return;
+        Transform t = obj.transform;
+        if (o.teniaPadre && o.padre != null)
+        {
+            // Sigue ahi su padre (ej: la mano de la muñeca que la traia)
+            t.SetParent(o.padre, false);
+            t.localPosition = o.posLocal;
+            t.localRotation = o.rotLocal;
+        }
+        else t.SetPositionAndRotation(o.pos + Vector3.up * 0.05f, o.rot);   // en el piso donde estaba
+        if (obj.TryGetComponent(out Rigidbody rb))
+        {
+            bool quieto = o.teniaPadre && o.padre != null ? o.cinematico : false;
+            rb.isKinematic = quieto;
+            rb.useGravity = !quieto && (o.gravedad || !o.cinematico);
+            if (!rb.isKinematic) { rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+        }
+        if (obj.TryGetComponent(out Interactable inter)) inter.enabled = true;
+        origenes.Remove(obj);
     }
 
     // Lo llaman PlayerInteractor.Drop y Give: el objeto ya no esta en el inventario

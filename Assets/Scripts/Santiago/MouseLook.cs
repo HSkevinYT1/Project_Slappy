@@ -23,9 +23,17 @@ public class MouseLook : MonoBehaviour
     private float peekLean;
     private Vector3 startLocalPosition;
 
+    private int framesSinMouse;
+
+    void OnApplicationFocus(bool foco)
+    {
+        if (foco) framesSinMouse = 3;
+    }
+
     // Al reactivarse toma el giro actual del cuerpo (ej: tras un teletransporte que lo haya girado)
     void OnEnable()
     {
+        framesSinMouse = 2;   // al salir de la pausa tampoco cuenta el salto del mouse
         if (playerBody == null) return;
         playerYaw = playerBody.eulerAngles.y;
         pendingYaw = 0f;
@@ -57,6 +65,10 @@ public class MouseLook : MonoBehaviour
         const float escala = 1f / 60f;
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * escala;
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * escala;
+        // Sin foco (clic en otro monitor) o justo al volver: el mouse trae un salto enorme y la camara daba un tiron
+        if (!Application.isFocused || framesSinMouse > 0) { mouseX = mouseY = 0f; if (framesSinMouse > 0) framesSinMouse--; }
+        mouseX = Mathf.Clamp(mouseX, -30f, 30f);
+        mouseY = Mathf.Clamp(mouseY, -30f, 30f);
         pendingYaw += mouseX;
         pendingPitch -= mouseY;
 

@@ -178,6 +178,22 @@ public class PantallaMuerte : MonoBehaviour
         puntoPos = cuerpo != null ? cuerpo.position : jugador.position;
         puntoYaw = jugador.eulerAngles.y;
         hayPunto = true;
+        // Lo que lleva ahora se conserva al morir; lo que recoja despues, no (vuelve a donde estaba)
+        inventarioGuardado.Clear();
+        if (Inventario.Instance != null) inventarioGuardado.UnionWith(Inventario.Instance.Contenido());
+    }
+
+    readonly HashSet<Grabbable> inventarioGuardado = new HashSet<Grabbable>();
+
+    // Al reintentar: fuera del inventario lo recogido despues del punto de control (ej: la llave de las Cloacas).
+    // Solo con el punto de control dentro de una zona (en la zona principal estan los objetos del tutorial, que no
+    // se tocan) y nunca la linterna.
+    void DevolverLoNuevo()
+    {
+        Inventario inv = Inventario.Instance;
+        if (inv == null || zonaGuardada == null) return;
+        foreach (Grabbable g in inv.Contenido())
+            if (!inventarioGuardado.Contains(g) && g.GetComponentInChildren<Flashlight>(true) == null) inv.Devolver(g);
     }
 
     // ------------------------------------------------------------------ Muerte
@@ -336,6 +352,7 @@ public class PantallaMuerte : MonoBehaviour
             jugador.SetPositionAndRotation(puntoPos, rot);
             Physics.SyncTransforms();
         }
+        DevolverLoNuevo();
         if (camara != null)
         {
             camara.transform.localPosition = camPosLocal;

@@ -3,7 +3,8 @@ using UnityEngine;
 using UnityEngine.AI;
 
 // Las muñecas de las Cloacas se deshacen con la luz: si la linterna (encendida, en la mano) la alumbra un rato,
-// tiembla, se pone al rojo y estalla en pedazos. Si deja de alumbrarla se va recuperando poco a poco.
+// tiembla, se pone al rojo, cruje (se va rajando) y se rompe como porcelana: su malla se parte en trozos con fisica
+// (PedazoMuneca). Si deja de alumbrarla se va recuperando poco a poco.
 // Si llevaba la llave (LlaveAleatoria), la suelta en el piso.
 // Lo agregan AparicionMunecas (a las que aparecen) y CloacasLuzSetup (a la muñeca de practica de la entrada).
 public class MunecaLuz : MonoBehaviour
@@ -19,15 +20,30 @@ public class MunecaLuz : MonoBehaviour
     public bool Destruida { get; private set; }
     public float Dano { get; private set; }
 
+    [Tooltip("Daño (0 a 1) en el que cruje: se va rajando")]
+    public float[] crujidos = { 0.3f, 0.55f, 0.78f, 0.92f };
+
     Renderer[] partes;
     Transform modelo;
     Vector3 modeloPos;
     MaterialPropertyBlock bloque;
     Collider[] propios;
+    AudioSource voz;
 
     void Start()
     {
-        partes = GetComponentsInChildren<Renderer>();
+        // Sin la llave (la que la trae la lleva de hija): no se pone al rojo ni se rompe con ella
+        var lista = new System.Collections.Generic.List<Renderer>();
+        foreach (Renderer r in GetComponentsInChildren<Renderer>())
+            if (r.GetComponentInParent<LlaveAleatoria>() == null) lista.Add(r);
+        partes = lista.ToArray();
+        voz = gameObject.AddComponent<AudioSource>();
+        voz.playOnAwake = false;
+        voz.spatialBlend = 1f;
+        voz.rolloffMode = AudioRolloffMode.Linear;
+        voz.minDistance = 1.5f;
+        voz.maxDistance = 22f;
+        voz.dopplerLevel = 0f;
         propios = GetComponentsInChildren<Collider>();
         bloque = new MaterialPropertyBlock();
         // Lo que tiembla: el primer hijo con mallas (o la muñeca entera si no tiene)
@@ -44,6 +60,10 @@ public class MunecaLuz : MonoBehaviour
         Dano = alumbrada ? Dano + Time.deltaTime / Mathf.Max(0.1f, segundosParaDestruir)
                          : Mathf.Max(0f, Dano - Time.deltaTime * recuperacion / Mathf.Max(0.1f, segundosParaDestruir));
         if (Dano > 0f || antes > 0f) Aspecto(Dano);
+        // Cruje al pasar cada umbral (solo subiendo)
+        if (crujidos != null && voz != null)
+            foreach (float u in crujidos)
+                if (antes < u && Dano >= u) { voz.pitch = Random.Range(0.9f, 1.15f); voz.PlayOneShot(PedazoMuneca.Crujido(), 0.5f + 0.5f * u); Jugo.SacudirEn(Centro(), 0.05f * u, 8f); }
         if (Dano >= 1f) StartCoroutine(Destruirse());
     }
 
@@ -83,15 +103,21 @@ public class MunecaLuz : MonoBehaviour
     {
         if (modelo != null)
             modelo.localPosition = modeloPos + (k > 0f ? Random.insideUnitSphere * 0.03f * k * k : Vector3.zero);
+        // Por material: el modelo tiene varios (cuerpo, ropa, ojos...) y cada uno parte de su propio color
         foreach (Renderer r in partes)
         {
             if (r == null) continue;
-            Material m = r.sharedMaterial;
-            Color baseC = m != null && m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : Color.white;
-            r.GetPropertyBlock(bloque);
-            bloque.SetColor("_BaseColor", Color.Lerp(baseC, new Color(0.75f, 0.12f, 0.05f), k * 0.75f));
-            bloque.SetColor("_EmissionColor", new Color(2.2f, 0.5f, 0.15f) * (k * k));
-            r.SetPropertyBlock(bloque);
+            Material[] mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (k <= 0f) { r.SetPropertyBlock(null, i); continue; }
+                Material m = mats[i];
+                Color baseC = m != null && m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : Color.white;
+                bloque.Clear();
+                bloque.SetColor("_BaseColor", Color.Lerp(baseC, new Color(0.75f, 0.12f, 0.05f), k * 0.75f));
+                bloque.SetColor("_EmissionColor", new Color(2.2f, 0.5f, 0.15f) * (k * k));
+                r.SetPropertyBlock(bloque, i);
+            }
         }
     }
 
@@ -112,35 +138,12 @@ public class MunecaLuz : MonoBehaviour
             if (modelo != null) modelo.localPosition = modeloPos + Random.insideUnitSphere * 0.06f;
             yield return null;
         }
+        if (modelo != null) modelo.localPosition = modeloPos;
         Vector3 c0 = Centro();
         Jugo.SacudirEn(c0, 0.3f, 12f);
-        Pedazos(c0);
+        // Se rompe como porcelana: su propia malla en trozos (salen desde un poco mas abajo del centro, hacia afuera)
+        PedazoMuneca.Romper(partes, c0 - Vector3.up * 0.15f);
         AlDestruirse?.Invoke(this);
         Destroy(gameObject);
-    }
-
-    // Pedazos con fisica, oscuros y todavia al rojo, que se apagan y desaparecen
-    void Pedazos(Vector3 centro)
-    {
-        Material mat = partes.Length > 0 && partes[0] != null ? partes[0].sharedMaterial : null;
-        for (int i = 0; i < 14; i++)
-        {
-            var p = GameObject.CreatePrimitive(i % 3 == 0 ? PrimitiveType.Sphere : PrimitiveType.Cube);
-            p.name = "Pedazo de muñeca";
-            p.layer = 2;
-            p.transform.position = centro + Random.insideUnitSphere * 0.3f;
-            p.transform.rotation = Random.rotation;
-            p.transform.localScale = Vector3.one * Random.Range(0.04f, 0.11f);
-            var r = p.GetComponent<Renderer>();
-            if (mat != null) r.sharedMaterial = mat;
-            var b = new MaterialPropertyBlock();
-            b.SetColor("_EmissionColor", new Color(1.6f, 0.35f, 0.1f));
-            r.SetPropertyBlock(b);
-            var rb = p.AddComponent<Rigidbody>();
-            rb.mass = 0.05f;
-            rb.linearVelocity = (Random.insideUnitSphere + Vector3.up * 0.8f) * Random.Range(1.5f, 4f);
-            rb.angularVelocity = Random.insideUnitSphere * 10f;
-            Destroy(p, Random.Range(1.6f, 2.6f));
-        }
     }
 }
