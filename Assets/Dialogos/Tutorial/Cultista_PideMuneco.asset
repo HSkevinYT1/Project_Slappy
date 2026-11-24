@@ -17,6 +17,6 @@ MonoBehaviour:
   colorHablante: {r: 1, g: 0.42, b: 0.32, a: 1}
   lineas:
   - ...
-  - Vengo por el muneco.
-  - Esta abajo, en el sotano. Traelo.
-  segundosPorLinea: 3
+  - "Vengo por el mu\xF1eco."
+  - "Est\xE1 abajo, en el s\xF3tano. Tr\xE1elo."
+  segundosExtra: 0

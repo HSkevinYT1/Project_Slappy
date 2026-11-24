@@ -21,9 +21,9 @@ public class PantallaMuerte : MonoBehaviour
     public string titulo = "HAS MUERTO";
     public string[] frases =
     {
-        "Algo te encontro en la oscuridad.",
+        "Algo te encontró en la oscuridad.",
         "No debiste quedarte quieto.",
-        "El reloj intento avisarte.",
+        "El reloj intentó avisarte.",
         "Te estaba esperando.",
     };
     [Tooltip("Vacio = un golpe generado por codigo")]
@@ -247,7 +247,7 @@ public class PantallaMuerte : MonoBehaviour
 
         // Se gira hacia el enemigo de golpe, con un destello rojo y temblor
         Quaternion desde = camT != null ? camT.rotation : Quaternion.identity;
-        Vector3 cabeza = enemigo != null ? enemigo.position + Vector3.up * 1.2f : Vector3.zero;
+        Vector3 cabeza = enemigo != null ? Cabeza(enemigo) : Vector3.zero;
         for (float t = 0f; t < 1.1f && especial == null; t += Time.deltaTime)
         {
             float k = Mathf.Clamp01(t / 0.3f);
@@ -320,6 +320,20 @@ public class PantallaMuerte : MonoBehaviour
         botonesR.anchoredPosition = llegada;
         botones.interactable = true;
         if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(botonReintentar.gameObject);
+    }
+
+    // A donde mira la camara al morir: cerca de lo alto del modelo visible del enemigo (Slappy mide 3 m); sin modelo, 1.2 m
+    static Vector3 Cabeza(Transform enemigo)
+    {
+        bool hay = false;
+        Bounds b = default;
+        foreach (Renderer r in enemigo.GetComponentsInChildren<Renderer>())
+        {
+            if (!r.enabled || r is ParticleSystemRenderer) continue;
+            if (!hay) { b = r.bounds; hay = true; } else b.Encapsulate(r.bounds);
+        }
+        if (!hay || b.size.y < 0.3f) return enemigo.position + Vector3.up * 1.2f;
+        return new Vector3(enemigo.position.x, b.max.y - Mathf.Min(0.35f, b.size.y * 0.12f), enemigo.position.z);
     }
 
     // Boton Reintentar

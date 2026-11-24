@@ -37,6 +37,22 @@ public class MisionFaro : MonoBehaviour
     public bool silueta = true;
     [Tooltip("La imagen se distorsiona cuando el enemigo de la zona esta cerca (DistorsionCercana)")]
     public bool distorsionEnemigo = true;
+    [Tooltip("Metros alrededor del faro donde el enemigo de la zona no aparece (empieza y reaparece mas lejos). 0 = sin limite")]
+    public float enemigoLejosDelFaro = 38f;
+
+    // Despues de que el enemigo arranco (JefeIndigoAI.Start lo pone en el NavMesh): si quedo cerca del faro, a la otra
+    // punta de la isla
+    IEnumerator MandarLejosDelFaro(JefeIndigoAI e)
+    {
+        yield return null;
+        yield return null;
+        if (e == null || centroFaro == null) yield break;
+        if (Plano(e.transform.position - centroFaro.position) < enemigoLejosDelFaro)
+        {
+            e.MandarLejos(centroFaro.position);
+            Debug.Log($"[Faro] {e.name} empieza lejos del faro ({Plano(e.transform.position - centroFaro.position):0} m).", e);
+        }
+    }
     [Tooltip("Las notas (y la bitacora) solo brillan a menos de estos metros: de lejos no se notan")]
     public float distanciaBrillo = 6f;
 
@@ -118,6 +134,14 @@ public class MisionFaro : MonoBehaviour
         if (distorsionEnemigo && transform.parent != null)
             foreach (JefeIndigoAI e in transform.parent.GetComponentsInChildren<JefeIndigoAI>(true))
                 if (!e.GetComponent<DistorsionCercana>()) e.gameObject.AddComponent<DistorsionCercana>();
+        // El enemigo de la zona no aparece en la puerta del faro: empieza lejos y nunca reaparece cerca del faro
+        if (enemigoLejosDelFaro > 0f && centroFaro != null && transform.parent != null)
+            foreach (JefeIndigoAI e in transform.parent.GetComponentsInChildren<JefeIndigoAI>(true))
+            {
+                e.lejosDe = centroFaro;
+                e.radioLejosDe = enemigoLejosDelFaro;
+                StartCoroutine(MandarLejosDelFaro(e));
+            }
         if (muroEntrada != null) muroEntrada.SetActive(false);
         if (bidon != null)
         {
@@ -266,9 +290,34 @@ public class MisionFaro : MonoBehaviour
         }
     }
 
+    Highlightable brilloDeposito;
+
+    // Con el bidon en la mano (y el faro sin rellenar) brilla la luz del faro, donde se echa la gasolina (se ve a traves
+    // de las paredes: guia hasta arriba)
+    void BrilloDeposito()
+    {
+        if (deposito == null) return;
+        bool si = TieneBidon && !Relleno;
+        if (brilloDeposito == null)
+        {
+            if (!si) return;
+            // El mismo contorno que el del bidon (o el de cualquier nota)
+            Material contorno = null;
+            if (bidon != null && bidon.TryGetComponent(out Highlightable hb)) contorno = hb.Contorno;
+            if (contorno == null && notas != null)
+                foreach (Lectura l in notas) if (l != null && l.TryGetComponent(out Highlightable hn) && hn.Contorno != null) { contorno = hn.Contorno; break; }
+            if (contorno == null) return;
+            brilloDeposito = deposito.GetComponent<Highlightable>();
+            if (brilloDeposito == null) brilloDeposito = deposito.gameObject.AddComponent<Highlightable>();
+            if (brilloDeposito.Contorno == null) brilloDeposito.Contorno = contorno;
+        }
+        if (si != brilloDeposito.IsHighlighted) { if (si) brilloDeposito.Show(); else brilloDeposito.Hide(); }
+    }
+
     // Brilla solo lo que toca leer (la bitacora o la siguiente nota) y solo si el jugador esta cerca
     void Brillos()
     {
+        BrilloDeposito();
         Lectura toca = !DiarioLeido ? diario : (Siguiente >= 0 ? notas[Siguiente] : null);
         BrilloCerca(diario, toca);
         if (notas != null) foreach (Lectura l in notas) BrilloCerca(l, toca);

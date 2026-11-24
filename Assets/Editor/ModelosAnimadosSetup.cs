@@ -63,8 +63,12 @@ public static class ModelosAnimadosSetup
     {
         new Def(AnimacionesModelo.Caminar, "slappy/Enemigo4_Walk.fbx"),
         new Def(AnimacionesModelo.Correr, "slappy/Enemigo4_Run.fbx"),
-        new Def(AnimacionesModelo.Jumpscare, "slappy/Enemigo4_Jumpscare.fbx", false),
+        // El clip del susto: "Armature.002|Action.001" (1.96 s). Sin elegirlo se tomaba el que mas anima y se descontrolaba
+        new Def(AnimacionesModelo.Jumpscare, "slappy/Enemigo4_Jumpscare.fbx", false, "Armature.002|Action.001"),
     };
+    // Slappy va aparte (subir solo esta para rehacerlo sin tocar a los demas). v1: mas alto (3 m) y el clip del susto
+    const string MarcaSlappy = "_anim slappy v1";
+    const float AltoSlappy = 3f;   // (antes la altura del NavMeshAgent, 2 m: se veia demasiado chico)
     static readonly Def[] Cliente =
     {
         new Def(AnimacionesModelo.Idle, "npc/NPCIdle.fbx"),
@@ -104,7 +108,7 @@ public static class ModelosAnimadosSetup
         ConfigurarImports();
         Enemigo(Prefabs + "Enemy 1 (fede).prefab", Fede, 2.6f, true, forzar);
         Enemigo(Prefabs + "Enemy 2 (gato).prefab", Gato, 0f, false, forzar);
-        Enemigo(Prefabs + "Enemy 4.prefab", Slappy, 0f, false, forzar);
+        Enemigo(Prefabs + "Enemy 4.prefab", Slappy, AltoSlappy, false, forzar, MarcaSlappy);
         // Los brazos solo a mano (Tools > Modelos): con Arms.fbx la mano del jugador dejaba de verse
         if (forzar) BrazosPrefab(forzar);
         Escena(forzar);
@@ -131,7 +135,7 @@ public static class ModelosAnimadosSetup
 
     // ------------------------------------------------------------------ Enemigos (prefabs)
 
-    static void Enemigo(string ruta, Def[] defs, float altoFijo, bool esFede, bool forzar)
+    static void Enemigo(string ruta, Def[] defs, float altoFijo, bool esFede, bool forzar, string marcaPropia = null)
     {
         // Sin ningun FBX de este personaje en la carpeta (ej. Fede por ahora): se queda con su modelo de siempre
         if (!Hay(defs)) return;
@@ -139,7 +143,7 @@ public static class ModelosAnimadosSetup
         GameObject raiz = PrefabUtility.LoadPrefabContents(ruta);
         try
         {
-            string marca = esFede ? MarcaFede : Marca;
+            string marca = !string.IsNullOrEmpty(marcaPropia) ? marcaPropia : esFede ? MarcaFede : Marca;
             Transform viejo = raiz.transform.Find("Modelo");
             if (viejo && viejo.Find(marca) && !forzar) return;
 

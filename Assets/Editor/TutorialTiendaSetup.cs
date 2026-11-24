@@ -74,13 +74,13 @@ public static class TutorialTiendaSetup
         DialogueData gracias = CrearDialogo("Cliente_Gracias", new[]
         {
             "Perfecto, es justo el que estaba buscando.",
-            "Muchas gracias. Que tenga buen dia.",
+            "Muchas gracias. Que tenga buen día.",
         });
         DialogueData pideMuneco = CrearDialogo("Cultista_PideMuneco", new[]
         {
             "...",
-            "Vengo por el muneco.",
-            "Esta abajo, en el sotano. Traelo.",
+            "Vengo por el muñeco.",
+            "Está abajo, en el sótano. Tráelo.",
         });
 
         Grabbable cuchillo = PrepararCuchillo(tienda);

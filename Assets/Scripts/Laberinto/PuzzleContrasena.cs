@@ -240,7 +240,7 @@ public class PuzzleContrasena : MonoBehaviour
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         yield return Fundir(negro, 1f, 0f, 0.45f);
         Destroy(canvas);
-        HUD.Aviso("La puerta del laberinto se abrio", 3.5f);
+        HUD.Aviso("La puerta del laberinto se abrió", 3.5f);
         alResolver?.Invoke();
     }
 

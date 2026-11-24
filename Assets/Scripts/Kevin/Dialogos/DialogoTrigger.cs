@@ -7,7 +7,7 @@ using UnityEngine.Events;
 [RequireComponent(typeof(BoxCollider))]
 public class DialogoTrigger : MonoBehaviour
 {
-    [TextArea(2, 5)] public string[] lineas = { "Tal vez haya algo por aqui." };
+    [TextArea(2, 5)] public string[] lineas = { "Tal vez haya algo por aquí." };
     [Tooltip("Segundos de espera desde que entra el jugador")]
     public float retraso = 0f;
     [Tooltip("Solo la primera vez que entra")]

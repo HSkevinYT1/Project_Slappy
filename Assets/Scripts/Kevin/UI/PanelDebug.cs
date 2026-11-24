@@ -591,7 +591,16 @@ public class PanelDebug : MonoBehaviour
 
         Seccion("Mundo");
         congelar = Interruptor("Congelar enemigos", congelar);
+        if (SiluetaFaro.Instance != null && Boton("Que aparezca la silueta (Zona Roja)"))
+            Hacer(() => Aviso(SiluetaFaro.Instance.Forzar() ? "La silueta apareció (mira a los costados, a lo lejos)." : "No encontró dónde aparecer: mira el log ([Silueta])."), false);
         Opciones("Tiempo", tiempo, new[] { 0.25f, 0.5f, 1f, 2f, 4f }, v => tiempo = v);
+
+        // Ver la cinematica de cada final ya (sin hacer las zonas). Al terminar vuelve al inicio, como el de verdad
+        Seccion("Finales");
+        GUILayout.BeginHorizontal();
+        if (Boton("Ver final normal")) Hacer(() => VerFinal(false), true);
+        if (Boton("Ver final secreto")) Hacer(() => VerFinal(true), true);
+        GUILayout.EndHorizontal();
 
         Seccion("Capturas");
         sinHUD = Interruptor("Ocultar todo el HUD  (F10)", sinHUD);
@@ -603,6 +612,14 @@ public class PanelDebug : MonoBehaviour
         GUILayout.Label("º o F9 para cerrar. El juego está en pausa.", sTexto);
         if (GUILayout.Button("Cerrar", sChip, GUILayout.Width(70f))) pendiente = Cerrar;
         GUILayout.EndHorizontal();
+    }
+
+    void VerFinal(bool secreto)
+    {
+        SaltarMenu();
+        FinalJuego f = FindFirstObjectByType<FinalJuego>(FindObjectsInactive.Include);
+        if (f == null) f = new GameObject("Final del juego").AddComponent<FinalJuego>();
+        f.VerFinal(secreto);
     }
 
     void Hacer(System.Action accion, bool cerrar)

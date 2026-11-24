@@ -21,7 +21,7 @@ public class PuzzlePalancas : MonoBehaviour
     public TextMeshPro contador;
     [Tooltip("Donde esta la camara de seguridad que mira el tablero (su eje azul apunta al tablero)")]
     public Transform camaraSeguridad;
-    public string nombreCamara = "CAM 04  -  SALA DE ENERGIA";
+    public string nombreCamara = "CAM 04  -  SALA DE ENERGÍA";
     [Tooltip("Material con el shader Slappy/CamaraSeguridad")]
     public Material filtroCamara;
     [Tooltip("La manija que le falta a la palanca rota (si hay una rota)")]

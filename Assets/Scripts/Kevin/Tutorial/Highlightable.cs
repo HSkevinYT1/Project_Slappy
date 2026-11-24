@@ -18,16 +18,23 @@ public class Highlightable : MonoBehaviour
 
     private Renderer[] renderers;
 
+    // El material del contorno (para ponerlo desde otro script, ej. MisionFaro con el de la luz del faro)
+    public Material Contorno
+    {
+        get => outlineMaterial;
+        set { bool estaba = IsHighlighted; if (estaba) Hide(); outlineMaterial = value; if (estaba) Show(); }
+    }
+
     void Awake()
     {
         renderers = GetComponentsInChildren<Renderer>();
-
-        if (outlineMaterial == null)
-            Debug.LogWarning(name + ": falta asignar el material del contorno.", this);
     }
 
     void Start()
     {
+        // (el aviso va aqui y no en Awake: si se agrega por codigo, el material se pone justo despues)
+        if (outlineMaterial == null)
+            Debug.LogWarning(name + ": falta asignar el material del contorno.", this);
         if (startHighlighted) Show();
     }
 

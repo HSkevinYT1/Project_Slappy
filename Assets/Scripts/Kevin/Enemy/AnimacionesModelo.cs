@@ -989,6 +989,11 @@ public class AnimacionesModelo : MonoBehaviour
         float alto = Mathf.Max(0.1f, referencia.size.y);
         float largoMax = 0f;
         foreach (AnimationClip c in p.clips) if (c != null) largoMax = Mathf.Max(largoMax, c.length);
+        // El susto y el grito se mueven mucho a proposito (se tiran hacia la camara, se agachan): con ellos solo cuenta
+        // si de verdad se rompe (se va lejisimos o cambia muchisimo de tamaño)
+        bool susto = p.nombre == Jumpscare || p.nombre == Grito;
+        float maxCorrido = susto ? Mathf.Max(2f, alto * 1.6f) : Mathf.Max(0.6f, alto * 0.5f);
+        float maxAlto = susto ? 3f : 1.7f, minAlto = susto ? 0.25f : 0.45f, maxPies = susto ? 1.5f : 0.6f;
         bool mal = false;
         foreach (float k in new[] { 0.2f, 0.45f, 0.7f, 0.95f })
         {
@@ -996,8 +1001,8 @@ public class AnimacionesModelo : MonoBehaviour
             Evaluar(p);
             if (!Limites(p.animator.transform, out Bounds b)) continue;
             Vector2 corrido = new Vector2(b.center.x - referencia.center.x, b.center.z - referencia.center.z);
-            if (corrido.magnitude > Mathf.Max(0.6f, alto * 0.5f) || b.size.y > alto * 1.7f || b.size.y < alto * 0.45f
-                || Mathf.Abs(b.min.y - referencia.min.y) > alto * 0.6f)
+            if (corrido.magnitude > maxCorrido || b.size.y > alto * maxAlto || b.size.y < alto * minAlto
+                || Mathf.Abs(b.min.y - referencia.min.y) > alto * maxPies)
             { mal = true; break; }
         }
         p.tiempo = 0f;

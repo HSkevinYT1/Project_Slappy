@@ -300,7 +300,7 @@ public class PauseMenu : MonoBehaviour
             PlayerPrefs.SetFloat(ClaveSensibilidad, v);
         });
         // Accesibilidad: cuanto se mueve la camara con el jugo (temblor, golpes de vision, cabeceos). 0 = nada
-        Deslizador((RectTransform)paginaOpciones.transform, "Movimiento de camara", -220f, fuente, Jugo.Movimiento, 0f, 1f, v =>
+        Deslizador((RectTransform)paginaOpciones.transform, "Movimiento de cámara", -220f, fuente, Jugo.Movimiento, 0f, 1f, v =>
         {
             Jugo.Movimiento = v;
             Jugo.Sacudir(0.35f * v);   // muestra como se siente (se ve al cerrar el menu)

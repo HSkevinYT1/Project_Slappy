@@ -16,7 +16,5 @@ MonoBehaviour:
   hablante: Cliente
   colorHablante: {r: 0.4, g: 0.75, b: 1, a: 1}
   lineas:
-  - 'Buenos dias buen hombre, vengo buscando un cuchillo antiguo que vi por internet
-
-'
-  segundosPorLinea: 3
+  - "Buenos d\xEDas, buen hombre. Vengo buscando un cuchillo antiguo que vi por internet.\n"
+  segundosExtra: 0

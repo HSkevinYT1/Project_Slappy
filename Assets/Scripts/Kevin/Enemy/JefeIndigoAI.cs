@@ -121,6 +121,12 @@ public class JefeIndigoAI : MonoBehaviour
     public float margenReloj = 4f;
     [Tooltip("Sin reloj en la escena: a esta distancia (m) del jugador reaparece")]
     public float distanciaAcercarse = 30f;
+    [Tooltip("Nunca reaparece (al acercarse) a menos de 'radioLejosDe' metros de esto (ej: el faro: si no, salia siempre en su puerta)")]
+    public Transform lejosDe;
+    public float radioLejosDe = 0f;
+
+    bool Prohibido(Vector3 p) => lejosDe != null && radioLejosDe > 0f &&
+                                 new Vector2(p.x - lejosDe.position.x, p.z - lejosDe.position.z).magnitude < radioLejosDe;
 
     [Header("Inteligencia (enemigo 1)")]
     [Tooltip("Oye los pasos (poco caminando, mas corriendo, menos a traves de paredes) y va a investigar en vez de " +
@@ -142,6 +148,16 @@ public class JefeIndigoAI : MonoBehaviour
     [Tooltip("Segundos que recuerda donde vio al jugador (patrulla cerca de alli)")]
     public float memoria = 40f;
     [HideInInspector] public int versionIA;
+
+    [Header("Mas listo (enemigo 4)")]
+    [Tooltip("La linterna encendida lo delata: lo ve desde mas lejos y con mas angulo; y si lo alumbran, lo nota al instante")]
+    public bool verLinterna = false;
+    [Tooltip("Con la linterna encendida, cuanto mas lejos lo ve (2.5 = dos veces y media)")]
+    public float vistaConLinterna = 2.5f;
+    [Tooltip("Persiguiendo de lejos no va a donde esta el jugador sino a donde va a estar (le corta el paso)")]
+    public bool interceptar = false;
+    [Tooltip("Cuanto se adelanta (1 = lo que tardaria en llegar)")]
+    [Range(0f, 1.5f)] public float adelantarse = 0.7f;
 
     public State CurrentState { get; private set; } = State.Patrol;
     // Va hacia un ruido (no lo vio): camina mas rapido que patrullando pero no corre
@@ -370,7 +386,7 @@ public class JefeIndigoAI : MonoBehaviour
             return;
         }
 
-        bool sees = CanSeePlayer();
+        bool sees = CanSeePlayer() || (verLinterna && LoAlumbran());
         bool hears = inteligente ? Escuchar() : CanHearPlayer();
         if (sees || hears)
         {
@@ -494,8 +510,8 @@ public class JefeIndigoAI : MonoBehaviour
             Vector3 p = pj + new Vector3(dir.x, 0f, dir.y) * Random.Range(distancia, distancia + 6f);
             if (p.x < area.min.x || p.x > area.max.x || p.z < area.min.z || p.z > area.max.z) continue;
             if (!NavMesh.SamplePosition(p, out NavMeshHit hit, 3f, NavMesh.AllAreas)) continue;
-            // Que no quede mas cerca de lo pedido (el reloj lo notaria de golpe)
-            if (Vector3.Distance(hit.position, pj) < distancia) continue;
+            // Que no quede mas cerca de lo pedido (el reloj lo notaria de golpe) ni en la zona prohibida (la puerta del faro)
+            if (Vector3.Distance(hit.position, pj) < distancia || Prohibido(hit.position)) continue;
             if (!NavMesh.CalculatePath(hit.position, pj, NavMesh.AllAreas, camino) || camino.status != NavMeshPathStatus.PathComplete) continue;
             if (VisibleParaJugador(hit.position)) continue;
             punto = hit.position;
@@ -603,7 +619,7 @@ public class JefeIndigoAI : MonoBehaviour
 
     void UpdateChase(bool detectingPlayer)
     {
-        agent.SetDestination(detectingPlayer ? target.position : lastKnownPosition);
+        agent.SetDestination(detectingPlayer ? (interceptar ? Interceptar() : target.position) : lastKnownPosition);
 
         if (!Escondite.JugadorEscondido && Vector3.Distance(transform.position, target.position) <= catchDistance)
         {
@@ -652,12 +668,13 @@ public class JefeIndigoAI : MonoBehaviour
         Vector3 toPlayer = aim - eyes;
         float distance = toPlayer.magnitude;
 
-        // Corriendo se le nota mucho mas (y de lejos); caminando, un poco menos
-        if (distance > viewDistance * FactorVista()) return false;
+        // Corriendo se le nota mucho mas (y de lejos); caminando, un poco menos. Con la linterna encendida, mucho mas
+        bool linterna = verLinterna && LinternaEncendida();
+        if (distance > viewDistance * FactorVista() * (linterna ? vistaConLinterna : 1f)) return false;
 
         // El angulo se mide en horizontal para que la diferencia de altura no cuente
         Vector3 flat = new Vector3(toPlayer.x, 0f, toPlayer.z);
-        if (flat.sqrMagnitude > 0.001f && Vector3.Angle(transform.forward, flat) > viewAngle / 2f) return false;
+        if (flat.sqrMagnitude > 0.001f && Vector3.Angle(transform.forward, flat) > Mathf.Min(359f, viewAngle * (linterna ? 1.4f : 1f)) / 2f) return false;
 
         // Comprueba que no haya paredes en medio, ignorando los colliders del propio enemigo
         var hits = Physics.RaycastAll(eyes, toPlayer.normalized, distance + 0.5f, obstacleMask, QueryTriggerInteraction.Ignore);
@@ -668,6 +685,41 @@ public class JefeIndigoAI : MonoBehaviour
             return IsPlayer(hit.collider);
         }
         return true;
+    }
+
+    static bool LinternaEncendida() => Flashlight.EnMano != null && Flashlight.EnMano.Encendida;
+
+    // El haz de la linterna del jugador le da en la cara (dentro del cono, a su alcance, sin paredes en medio)
+    bool LoAlumbran()
+    {
+        if (Escondite.JugadorEscondido || !LinternaEncendida()) return false;
+        Light haz = Flashlight.EnMano.Haz;
+        if (haz == null) return false;
+        Vector3 ojos = EyePosition();
+        Vector3 d = ojos - haz.transform.position;
+        float dist = d.magnitude;
+        if (dist > haz.range || dist < 0.1f) return false;
+        float medio = (haz.type == LightType.Spot ? haz.spotAngle : 60f) * 0.5f;
+        if (Vector3.Angle(haz.transform.forward, d) > medio * 0.85f) return false;
+        foreach (var hit in Physics.RaycastAll(haz.transform.position, d / dist, dist - 0.2f, obstacleMask, QueryTriggerInteraction.Ignore))
+        {
+            if (hit.collider.transform.IsChildOf(transform) || IsPlayer(hit.collider)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    // A donde va a estar el jugador cuando lo alcance (de cerca, directo a el), sobre el NavMesh
+    Vector3 Interceptar()
+    {
+        Vector3 p = target.position;
+        if (playerBody == null) return p;
+        float d = Vector3.Distance(transform.position, p);
+        if (d < 5f) return p;
+        Vector3 v = playerBody.linearVelocity; v.y = 0f;
+        float t = Mathf.Min(1.5f, d / Mathf.Max(0.5f, chaseSpeed)) * adelantarse;
+        Vector3 adelante = p + v * t;
+        return NavMesh.SamplePosition(adelante, out NavMeshHit h, 3f, agent.areaMask) ? h.position : p;
     }
 
     // Los ojos se miden desde los pies para que el enemigo pueda ver al jugador siempre

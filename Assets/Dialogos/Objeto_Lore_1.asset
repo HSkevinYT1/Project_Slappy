@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Objeto_Lore_1
   m_EditorClassIdentifier: 
   modo: 1
+  hablante: 
+  colorHablante: {r: 0.4, g: 0.75, b: 1, a: 1}
   lineas:
-  - Tienda de antiguedades Barlato fundada en 1847
-  segundosPorLinea: 3
+  - "Tienda de antig\xFCedades Barlato, fundada en 1847"
+  segundosExtra: 0

@@ -36,7 +36,7 @@ public static class NotasFaroSetup
         "3 de abril. — Volví a escuchar pasos alrededor del faro. Cuando la luz barre el bosque, a veces hay algo de pie entre los árboles. Cuando vuelve a pasar, ya no está.\n\n" +
         "18 de abril. — No salgo de la luz. Guardé lo que quedaba de combustible lejos del faro, por si la lámpara se incendia.\n\n" +
         "21 de abril. — Está más cerca.\n\n" +
-        "(Más abajo, con otra letra:)\n\n" +
+        "— — —\n\n" +
         "Encontramos esta bitácora al llegar. Del farero no hay rastro. Voy a ir dejando lo que escribo afuera, donde se pueda encontrar, por si alguien llega después de nosotros. La primera hoja está cerca, saliendo por la puerta, entre los árboles.";
     const string RumboBitacora = "La brújula marca: OESTE";
     const string NombreCobertizo = "Cobertizo de la playa";
@@ -94,6 +94,7 @@ public static class NotasFaroSetup
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         if (!ZonaRoja(out Transform zr)) return;
         Transform mt = zr.Find("Mision Faro");
+        if (mt) ActualizarBitacora(mt.GetComponent<MisionFaro>());
         if (!mt || mt.Find(Marca)) return;
         // Ya estaba la version vieja: se quita lo que puso y se rehace
         Quitar(zr);
@@ -106,6 +107,18 @@ public static class NotasFaroSetup
         if (!ZonaRoja(out Transform zr) || !zr.Find("Mision Faro")) { EditorUtility.DisplayDialog("Zona Roja", "No encontre la \"Zona Roja/Mision Faro\" en la escena.", "OK"); return; }
         Quitar(zr);
         Aplicar(zr);
+    }
+
+    // La bitacora ya puesta con un texto viejo (tenia una acotacion "(Más abajo, con otra letra:)"): se le pone el de ahora
+    static void ActualizarBitacora(MisionFaro m)
+    {
+        Lectura b = m ? m.diario : null;
+        if (!b || b.titulo != TituloBitacora || b.texto == TextoBitacora) return;
+        Undo.RecordObject(b, "Bitacora");
+        b.texto = TextoBitacora;
+        EditorUtility.SetDirty(b);
+        EditorSceneManager.MarkSceneDirty(b.gameObject.scene);
+        Debug.Log("[Notas faro] Texto de la bitácora actualizado. Guarda la escena (Ctrl+S).", b);
     }
 
     static void Quitar(Transform zr)

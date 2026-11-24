@@ -32,6 +32,10 @@ public class ReceptorObjeto : MonoBehaviour
 
     [Tooltip("Si se marca, el objeto recibido se oculta en lugar de quedar en la mano.")]
     public bool ocultarAlRecibir = false;
+    [Tooltip("Tamaño maximo (m, el lado mas largo) del objeto en la mano del receptor. Al entregarlo recupera su tamaño " +
+             "real (en la mano del jugador se achica para que quepa) y algunos modelos son enormes (el cuchillo mide 8 m): " +
+             "si es mas grande se achica a esto. 0 = sin limite")]
+    public float tamanoMaximoEnMano = 0.35f;
 
     [Header("Desde donde se entrega")]
     [Tooltip("Opcional: el jugador tiene que estar dentro de esta caja para entregarlo (ej: detras del mostrador).")]
@@ -106,6 +110,7 @@ public class ReceptorObjeto : MonoBehaviour
             objeto.transform.SetParent(mano, true);
             objeto.transform.localPosition = Vector3.zero;
             if (puntoMano != null && alinearConMano) objeto.transform.localRotation = Quaternion.identity;
+            Achicar(objeto.transform);
         }
 
         alRecibir?.Invoke(objeto);
@@ -133,6 +138,27 @@ public class ReceptorObjeto : MonoBehaviour
         if (pulgar != null) puno = Vector3.Lerp(puno, pulgar.position, 0.25f);
         puntoMano.position = puno + puntoMano.forward * distanciaAgarre;
         anim.Adjuntar(puntoMano, huesoMano);
+    }
+
+    // Si el objeto es mas grande que tamanoMaximoEnMano, se achica (parejo) a ese tamaño y se vuelve a centrar en la mano.
+    // Se mide en su propio espacio (no con la caja del mundo, que crece al girarlo)
+    void Achicar(Transform t)
+    {
+        if (tamanoMaximoEnMano <= 0f) return;
+        float largo = 0f;
+        foreach (MeshFilter mf in t.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null) continue;
+            Vector3 s = Vector3.Scale(mf.sharedMesh.bounds.size, mf.transform.lossyScale);
+            largo = Mathf.Max(largo, Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
+        }
+        foreach (SkinnedMeshRenderer sk in t.GetComponentsInChildren<SkinnedMeshRenderer>())
+        {
+            Vector3 s = sk.bounds.size;
+            largo = Mathf.Max(largo, s.x, s.y, s.z);
+        }
+        if (largo <= tamanoMaximoEnMano || largo <= 0.0001f) return;
+        t.localScale *= tamanoMaximoEnMano / largo;
     }
 
     static Transform Hijo(Transform t, string parte)

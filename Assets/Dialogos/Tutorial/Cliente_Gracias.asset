@@ -17,5 +17,5 @@ MonoBehaviour:
   colorHablante: {r: 0.4, g: 0.75, b: 1, a: 1}
   lineas:
   - Perfecto, es justo el que estaba buscando.
-  - Muchas gracias. Que tenga buen dia.
-  segundosPorLinea: 3
+  - "Muchas gracias. Que tenga buen d\xEDa."
+  segundosExtra: 0

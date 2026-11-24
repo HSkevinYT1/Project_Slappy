@@ -13873,7 +13873,7 @@ MonoBehaviour:
     barre el bosque, a veces hay algo de pie entre los \xE1rboles. Cuando vuelve
     a pasar, ya no est\xE1.\n\n18 de abril. \u2014 No salgo de la luz. Guard\xE9
     lo que quedaba de combustible lejos del faro, por si la l\xE1mpara se incendia.\n\n21
-    de abril. \u2014 Est\xE1 m\xE1s cerca.\n\n(M\xE1s abajo, con otra letra:)\n\nEncontramos
+    de abril. \u2014 Est\xE1 m\xE1s cerca.\n\n\u2014 \u2014 \u2014\n\nEncontramos
     esta bit\xE1cora al llegar. Del farero no hay rastro. Voy a ir dejando lo que
     escribo afuera, donde se pueda encontrar, por si alguien llega despu\xE9s de
     nosotros. La primera hoja est\xE1 cerca, saliendo por la puerta, entre los \xE1rboles."
@@ -69006,6 +69006,7 @@ MonoBehaviour:
   huesoMano: RightHand
   distanciaAgarre: 0.095
   ocultarAlRecibir: 0
+  tamanoMaximoEnMano: 0.35
   zonaEntrega: {fileID: 1926809551}
   promptFueraZona: Entregalo desde el mostrador
   alRecibir:
@@ -250552,6 +250553,7 @@ MonoBehaviour:
   huesoMano: RightHand
   distanciaAgarre: 0.095
   ocultarAlRecibir: 1
+  tamanoMaximoEnMano: 0.35
   zonaEntrega: {fileID: 0}
   promptFueraZona: Entregalo desde el mostrador
   alRecibir:
@@ -412968,7 +412970,7 @@ MonoBehaviour:
   - {fileID: 1367295377}
   contador: {fileID: 165190646}
   camaraSeguridad: {fileID: 1464171324}
-  nombreCamara: CAM 04  -  SALA DE ENERGIA
+  nombreCamara: "CAM 04  -  SALA DE ENERG\xCDA"
   filtroCamara: {fileID: 2100000, guid: a1c7d1152c8c1f04eb2a0c67dfdba2d6, type: 2}
   pieza: {fileID: 0}
   zona: Backrooms
@@ -424890,6 +424892,7 @@ MonoBehaviour:
   radioDentro: 5.5
   silueta: 1
   distorsionEnemigo: 1
+  enemigoLejosDelFaro: 38
   distanciaBrillo: 6
   velocidadGiro: 35
   inclinacionHaz: 10
@@ -697105,6 +697108,7 @@ MonoBehaviour:
   huesoMano: RightHand
   distanciaAgarre: 0.095
   ocultarAlRecibir: 0
+  tamanoMaximoEnMano: 0.35
   zonaEntrega: {fileID: 0}
   promptFueraZona: Entregalo desde el mostrador
   alRecibir:
@@ -742956,10 +742960,6 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3708314864810581246, guid: ae78a25eda376e54eb241f9c25f57315, type: 3}
       propertyPath: sonidoAmbiente
-      value: 
-      objectReference: {fileID: 0}
-    - target: {fileID: 3708314864810581246, guid: ae78a25eda376e54eb241f9c25f57315, type: 3}
-      propertyPath: sonidoScreamer
       value: 
       objectReference: {fileID: 0}
     - target: {fileID: 3708314864810581246, guid: ae78a25eda376e54eb241f9c25f57315, type: 3}

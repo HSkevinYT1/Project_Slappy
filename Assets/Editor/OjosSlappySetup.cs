@@ -18,9 +18,15 @@ public static class OjosSlappySetup
 {
     const string Prefab = "Assets/Prefabs/Enemy 4.prefab";
     const string RutaMaterial = "Assets/Materials/OjosSlappy.mat";
-    // v2: con materiales propios (era negro puro: invisible)
-    const string Marca = "_ojos v2";
-    const string MarcaVieja = "_ojos v1";
+    // v2: con materiales propios (era negro puro: invisible). v3: ojos mas brillantes, el sonido del susto
+    // ("sonido kill enemigo 2 y 4") y el collider / la vista a la altura del modelo nuevo (3 m)
+    // v4: correr y el susto (una sola submalla: salian todos grises) con la cara aparte, como la caminata; y la IA un
+    // poco mas lista (la linterna lo delata, le corta el paso, tarda mas en rendirse, acecha mas)
+    const string Marca = "_ojos v4";
+    static readonly string[] MarcasViejas = { "_ojos v1", "_ojos v2", "_ojos v3" };
+    const string CarpetaMallas = "Assets/Modelos De enemigos/Slappy";
+    const string SonidoSusto = "Assets/Sounds/SFX/sonido kill enemigo 2 y 4.mp3";
+    const float BrilloOjos = 2.4f, BrilloOjosPersiguiendo = 3.6f;
     const string RutaCuerpo = "Assets/Materials/SlappyTraje.mat";
     const string RutaCara = "Assets/Materials/SlappyCara.mat";
     static readonly Color ColorTraje = new Color(0.2f, 0.19f, 0.22f);
@@ -40,8 +46,26 @@ public static class OjosSlappySetup
         var p = AssetDatabase.LoadAssetAtPath<GameObject>(Prefab);
         if (!p) return;
         Transform modelo = p.transform.Find("Modelo");
-        if (!modelo || modelo.Find(Marca)) return;
-        Aplicar();
+        if (modelo && !modelo.Find(Marca)) Aplicar();
+        SonidoEnEscena(p);
+    }
+
+    // El Slappy de la escena tenia el sonido del susto vaciado (un cambio sobre el prefab): se quita ese cambio, asi usa
+    // el del prefab ("sonido kill enemigo 2 y 4")
+    static void SonidoEnEscena(GameObject prefab)
+    {
+        var deLaEscena = prefab.GetComponent<JefeIndigoAI>();
+        if (!deLaEscena) return;
+        foreach (JefeIndigoAI e in Object.FindObjectsByType<JefeIndigoAI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (PrefabUtility.GetCorrespondingObjectFromSource(e) != deLaEscena) continue;
+            var so = new SerializedObject(e);
+            SerializedProperty prop = so.FindProperty("sonidoScreamer");
+            if (prop == null || !prop.prefabOverride) continue;
+            PrefabUtility.RevertPropertyOverride(prop, InteractionMode.UserAction);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(e.gameObject.scene);
+            Debug.Log("[Ojos] " + e.name + " (escena): vuelve a usar el sonido del susto del prefab. Guarda la escena (Ctrl+S).", e);
+        }
     }
 
     [MenuItem("Tools/Modelos/Ojos de Slappy")]
@@ -56,7 +80,7 @@ public static class OjosSlappySetup
         {
             Transform modelo = raiz.transform.Find("Modelo");
             if (!modelo) { Debug.LogWarning("[Ojos] Enemy 4 no tiene \"Modelo\" (falta ModelosAnimadosSetup)."); return; }
-            foreach (Transform t in raiz.GetComponentsInChildren<Transform>(true).Where(t => t.name == NombreGrupo || t.name == MarcaVieja).ToArray())
+            foreach (Transform t in raiz.GetComponentsInChildren<Transform>(true).Where(t => t.name == NombreGrupo || MarcasViejas.Contains(t.name)).ToArray())
                 Object.DestroyImmediate(t.gameObject);
             // Materiales: la submalla mas alta (la cabeza) con la cara, el resto con el traje
             foreach (SkinnedMeshRenderer s in modelo.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -72,7 +96,39 @@ public static class OjosSlappySetup
                 if (Ojos(raiz.transform, cuerpo, mat, out string info)) log.Add(pose.name + ": " + info);
                 else log.Add(pose.name + ": sin ojos (" + info + ")");
             }
-            if (!raiz.GetComponent<OjosBrillantes>()) raiz.AddComponent<OjosBrillantes>();
+            var ob = raiz.GetComponent<OjosBrillantes>();
+            if (!ob) ob = raiz.AddComponent<OjosBrillantes>();
+            ob.brillo = BrilloOjos;
+            ob.brilloPersiguiendo = BrilloOjosPersiguiendo;
+
+            // El susto: con su sonido. Y el collider y la vista a la altura del modelo (que ahora es mas alto)
+            var ia = raiz.GetComponent<JefeIndigoAI>();
+            AudioClip susto = AssetDatabase.LoadAssetAtPath<AudioClip>(SonidoSusto);
+            if (ia && susto) ia.sonidoScreamer = susto;
+            else if (!susto) Debug.LogWarning("[Ojos] No encuentro " + SonidoSusto);
+            // Un poco mas listo: la linterna lo delata, le corta el paso, tarda mas en rendirse y acecha mas seguido
+            if (ia)
+            {
+                ia.inteligente = true;
+                ia.verLinterna = true;
+                ia.interceptar = true;
+                ia.loseSightGrace = Mathf.Max(ia.loseSightGrace, 3f);
+                ia.searchDuration = Mathf.Max(ia.searchDuration, 10f);
+                ia.memoria = Mathf.Max(ia.memoria, 60f);
+                ia.acechar = true;
+                ia.acechoCada = new Vector2(10f, 18f);
+                ia.errorAcecho = Mathf.Min(ia.errorAcecho, 5f);
+            }
+            if (Alto(raiz.transform, modelo, out float pies, out float alto))
+            {
+                if (raiz.TryGetComponent(out CapsuleCollider col))
+                {
+                    col.height = alto;
+                    col.center = new Vector3(0f, pies + alto * 0.5f, 0f);
+                }
+                if (ia) ia.eyeHeight = Mathf.Max(ia.eyeHeight, alto * 0.88f);
+                log.Add($"mide {alto:0.0} m");
+            }
             new GameObject(Marca).transform.SetParent(modelo, false);
             PrefabUtility.SaveAsPrefabAsset(raiz, Prefab);
             Debug.Log("[Ojos] Slappy con ojos brillantes (tenues). " + string.Join("; ", log));
@@ -176,10 +232,42 @@ public static class OjosSlappySetup
         return true;
     }
 
-    // Con una sola submalla: todo traje. Con varias: la que queda mas arriba en promedio (la cabeza) es la cara
+    // Alto del modelo visible (la pose que se ve, Caminar) en el espacio de la raiz
+    static bool Alto(Transform raiz, Transform modelo, out float pies, out float alto)
+    {
+        pies = 0f; alto = 0f;
+        Transform pose = modelo.Find(AnimacionesModelo.Caminar);
+        if (!pose) pose = modelo;
+        bool hay = false;
+        float bajo = float.MaxValue, arriba = float.MinValue;
+        foreach (Renderer r in pose.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r.name == OjosBrillantes.NombreOjo) continue;
+            Bounds b = r.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 p = raiz.InverseTransformPoint(new Vector3(i % 2 == 0 ? b.min.x : b.max.x, (i / 2) % 2 == 0 ? b.min.y : b.max.y, i < 4 ? b.min.z : b.max.z));
+                bajo = Mathf.Min(bajo, p.y); arriba = Mathf.Max(arriba, p.y);
+            }
+            hay = true;
+        }
+        if (!hay) return false;
+        pies = bajo;
+        alto = arriba - bajo;
+        return alto > 0.3f;
+    }
+
+    // Con una sola submalla (correr, el susto): se separa la cabeza en su propia submalla (lo que mueve el hueso de la
+    // cabeza) y se guarda como malla nueva. Con varias: la que queda mas arriba en promedio (la cabeza) es la cara
     static void Materiales(SkinnedMeshRenderer s, Vector3 arriba, Material traje, Material cara)
     {
         Mesh m = s.sharedMesh;
+        if (m.subMeshCount <= 1 && SepararCabeza(s, out Mesh dividida))
+        {
+            s.sharedMesh = dividida;
+            s.sharedMaterials = new[] { traje, cara };
+            return;
+        }
         int n = Mathf.Max(1, m.subMeshCount);
         var mats = new Material[n];
         for (int i = 0; i < n; i++) mats[i] = traje;
@@ -207,6 +295,62 @@ public static class OjosSlappySetup
             if (cabeza >= 0 && m.GetTriangles(cabeza).Length < m.triangles.Length * 0.5f) mats[cabeza] = cara;
         }
         s.sharedMaterials = mats;
+    }
+
+    // Copia de la malla con dos submallas: 0 = el cuerpo, 1 = la cabeza (los triangulos que mueve sobre todo el hueso de
+    // la cabeza o los que cuelgan de el)
+    static bool SepararCabeza(SkinnedMeshRenderer s, out Mesh dividida)
+    {
+        dividida = null;
+        Mesh m = s.sharedMesh;
+        Transform[] huesos = s.bones;
+        BoneWeight[] pesos = m.boneWeights;
+        if (huesos == null || huesos.Length == 0 || pesos == null || pesos.Length != m.vertexCount) return false;
+        int iCabeza = System.Array.FindIndex(huesos, b => b != null && b.name.ToLowerInvariant().Contains("head") &&
+                                                         !b.name.ToLowerInvariant().Contains("top") && !b.name.ToLowerInvariant().Contains("end"));
+        if (iCabeza < 0) iCabeza = System.Array.FindIndex(huesos, b => b != null && b.name == "spine.006");
+        if (iCabeza < 0) return false;
+        var deLaCabeza = new HashSet<int>();
+        for (int b = 0; b < huesos.Length; b++) if (huesos[b] != null && huesos[b].IsChildOf(huesos[iCabeza])) deLaCabeza.Add(b);
+        bool EnCabeza(int v)
+        {
+            BoneWeight w = pesos[v];
+            float k = (deLaCabeza.Contains(w.boneIndex0) ? w.weight0 : 0f) + (deLaCabeza.Contains(w.boneIndex1) ? w.weight1 : 0f)
+                    + (deLaCabeza.Contains(w.boneIndex2) ? w.weight2 : 0f) + (deLaCabeza.Contains(w.boneIndex3) ? w.weight3 : 0f);
+            return k >= 0.5f;
+        }
+        int[] t = m.GetTriangles(0);
+        var cuerpo = new List<int>(t.Length);
+        var cabeza = new List<int>();
+        for (int i = 0; i + 2 < t.Length; i += 3)
+        {
+            int c = (EnCabeza(t[i]) ? 1 : 0) + (EnCabeza(t[i + 1]) ? 1 : 0) + (EnCabeza(t[i + 2]) ? 1 : 0);
+            var lista = c >= 2 ? cabeza : cuerpo;
+            lista.Add(t[i]); lista.Add(t[i + 1]); lista.Add(t[i + 2]);
+        }
+        if (cabeza.Count == 0 || cuerpo.Count == 0) return false;
+
+        // Ya separada antes (rehaciendo): se reemplaza la misma
+        string limpio = m.name.Replace(" (cara aparte)", "");
+        if (!AssetDatabase.IsValidFolder(CarpetaMallas)) AssetDatabase.CreateFolder("Assets/Modelos De enemigos", "Slappy");
+        string ruta = CarpetaMallas + "/" + string.Concat(limpio.Split(System.IO.Path.GetInvalidFileNameChars())) + " (cara aparte).asset";
+        Mesh nueva = Object.Instantiate(m);
+        nueva.name = limpio + " (cara aparte)";
+        nueva.subMeshCount = 2;
+        nueva.SetTriangles(cuerpo, 0);
+        nueva.SetTriangles(cabeza, 1);
+        var existente = AssetDatabase.LoadAssetAtPath<Mesh>(ruta);
+        if (existente)
+        {
+            existente.Clear();
+            EditorUtility.CopySerialized(nueva, existente);
+            Object.DestroyImmediate(nueva);
+            nueva = existente;
+            EditorUtility.SetDirty(nueva);
+        }
+        else AssetDatabase.CreateAsset(nueva, ruta);
+        dividida = nueva;
+        return true;
     }
 
     static Material MatLiso(string ruta, string nombre, Color color)

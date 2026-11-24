@@ -11,10 +11,10 @@ public class OjosBrillantes : MonoBehaviour
 
     [Tooltip("Color del brillo")]
     public Color color = new Color(0.82f, 0.92f, 1f);
-    [Tooltip("Brillo normal (bajo a proposito: la luz del faro manda)")]
-    public float brillo = 0.9f;
-    [Tooltip("Brillo extra mientras persigue")]
-    public float brilloPersiguiendo = 1.4f;
+    [Tooltip("Brillo normal")]
+    public float brillo = 2.4f;
+    [Tooltip("Brillo mientras persigue")]
+    public float brilloPersiguiendo = 3.6f;
     [Tooltip("Segundos (al azar) entre parpadeos")]
     public Vector2 entreParpadeos = new Vector2(3f, 8f);
 

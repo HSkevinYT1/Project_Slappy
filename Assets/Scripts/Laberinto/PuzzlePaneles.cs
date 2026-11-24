@@ -151,7 +151,7 @@ public class PuzzlePaneles : MonoBehaviour
     {
         error = true;
         audioFuente.PlayOneShot(sonidoError, 1f);
-        if (textoEstado != null) textoEstado.text = "<color=#ff3a2a>ASI NO</color>";
+        if (textoEstado != null) textoEstado.text = "<color=#ff3a2a>ASÍ NO</color>";
         HUD.Aviso("Ese no es el orden...", 2.5f);
         yield return new WaitForSeconds(1.6f);
         error = false;
@@ -169,7 +169,7 @@ public class PuzzlePaneles : MonoBehaviour
         }
         audioFuente.PlayOneShot(sonidoResuelto, 1f);
         if (textoEstado != null) textoEstado.text = "<color=#5cff7a>ABIERTO</color>";
-        HUD.Aviso("Algo se abrio a lo lejos...", 4f);
+        HUD.Aviso("Algo se abrió a lo lejos...", 4f);
 
         if (abrirReja)
             foreach (RejasEntrada r in FindObjectsByType<RejasEntrada>(FindObjectsSortMode.None)) r.Abrir();
