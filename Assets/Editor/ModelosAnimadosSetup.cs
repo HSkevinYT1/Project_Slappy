@@ -25,7 +25,7 @@ public static class ModelosAnimadosSetup
     const string Marca = "_anim v5";   // v5: sin materiales rotos (morados): solo se copian los que existen. Se rehacen todos
     // Fede va aparte: subir solo esta para rehacer a Fede sin tocar a los demas
     // v2: medido bien (salia diminuto). v3: cuerpo/dientes bien asignados. v4: los ojos son las cuencas (brillan en el shader)
-    const string MarcaFede = "_anim fede v6";   // v5: ojos mas indigo y la luz mas suave. v6: madera vieja de muneco
+    const string MarcaFede = "_anim fede v8";   // v5: ojos mas indigo y la luz mas suave. v6: madera vieja de muneco. v7: Correr (FEDERun). v8: Correr nuevo (Fede_Run)
     const string Base = "Assets/Animations/";   // (antes "Assets/animaciones y modelos/")
     const string Prefabs = "Assets/Prefabs/";
     const string MatsFede = "Assets/Modelos De enemigos/Materiales Fede/";
@@ -37,12 +37,21 @@ public static class ModelosAnimadosSetup
     {
         public string nombre, archivo, clip; public bool bucle;
         // clip: el que se usa de ese FBX (vacio = el que mas anima, y los que animan otras partes)
-        public Def(string n, string a, bool b = true, string c = null) { nombre = n; archivo = a; bucle = b; clip = c; }
+        // modelo: FBX del que se toma el MODELO (vacio = el mismo "archivo"). Sirve cuando el FBX de una animacion trae
+        // otro modelo distinto (ej. el de correr de Fede): se usa la animacion de "archivo" sobre el modelo de siempre
+        public string modelo;
+        public Def(string n, string a, bool b = true, string c = null, string m = null) { nombre = n; archivo = a; bucle = b; clip = c; modelo = m; }
+        public string Modelo => string.IsNullOrEmpty(modelo) ? archivo : modelo;
     }
 
     static readonly Def[] Fede =
     {
         new Def(AnimacionesModelo.Caminar, "fede/fedewalkv2.fbx", true, "metarig|metarigAction"),
+        // Persiguiendo (JefeIndigoAI en Chase). Fede_Run.fbx trae 6 animaciones: la de correr es
+        // "metarig|metarig|metarig|metarigAction" (0.8 s, la que mas mueve; "metarig|Action" casi no se mueve). Trae
+        // OTRO modelo de Fede (3 mallas distintas): se usa solo su animacion, sobre el modelo de caminar (mismo
+        // esqueleto "metarig", mismas rutas de huesos), asi Fede no cambia de aspecto al empezar a correr
+        new Def(AnimacionesModelo.Correr, "fede/Fede_Run.fbx", true, "metarig|metarig|metarig|metarigAction", "fede/fedewalkv2.fbx"),
         new Def(AnimacionesModelo.Grito, "fede/espeletito_griton.fbx", false, "metarig|metarigAction"),
     };
     static readonly Def[] Gato =
@@ -352,8 +361,9 @@ public static class ModelosAnimadosSetup
         var lista = new List<AnimacionesModelo.Pose>();
         foreach (Def d in defs)
         {
-            var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(Base + d.archivo);
-            if (!fbx) { Debug.LogWarning("[Modelos] No encuentro " + Base + d.archivo); continue; }
+            var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(Base + d.Modelo);
+            if (!fbx) { Debug.LogWarning("[Modelos] No encuentro " + Base + d.Modelo); continue; }
+            if (!AssetDatabase.LoadAssetAtPath<GameObject>(Base + d.archivo)) { Debug.LogWarning("[Modelos] No encuentro " + Base + d.archivo); continue; }
 
             // Envoltura con la escala/posicion; el FBX dentro (sus propias curvas no la mueven)
             var env = new GameObject(d.nombre).transform;

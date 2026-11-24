@@ -67,8 +67,16 @@ public class MunecaLuz : MonoBehaviour
         if (Dano >= 1f) StartCoroutine(Destruirse());
     }
 
+    // Romperla sin luz (AgarreMuneca: el jugador se la quito de encima)
+    public void Romper()
+    {
+        if (!Destruida) StartCoroutine(Destruirse());
+    }
+
     bool Alumbrada()
     {
+        // La que tiene encima no se deshace con la linterna: hay que quitarsela forcejeando
+        if (AgarreMuneca.Montada != null && AgarreMuneca.Montada.gameObject == gameObject) return false;
         Flashlight f = Flashlight.EnMano;
         if (f == null || !f.Encendida || PantallaMuerte.Muerto) return false;
         Light haz = f.Haz;

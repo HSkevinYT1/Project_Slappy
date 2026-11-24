@@ -83,7 +83,8 @@ public class PantallaMuerte : MonoBehaviour
         foreach (JefeIndigoAI e in FindObjectsByType<JefeIndigoAI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             if (suscritos.Add(e)) { JefeIndigoAI x = e; e.onPlayerCaught.AddListener(() => Morir(x.transform)); }
         foreach (EstatuaAI e in FindObjectsByType<EstatuaAI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            if (suscritos.Add(e)) { EstatuaAI x = e; e.onPlayerCaught.AddListener(() => Morir(x.transform)); }
+            // Las muñecas no matan de una: se le montan encima y hay que forcejear (AgarreMuneca)
+            if (suscritos.Add(e)) { EstatuaAI x = e; e.onPlayerCaught.AddListener(() => { if (!AgarreMuneca.Activo && !AgarreMuneca.Empezar(x)) Morir(x.transform); }); }
     }
 
     void Update()

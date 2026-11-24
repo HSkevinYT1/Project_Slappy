@@ -137,6 +137,8 @@ public class AparicionMunecas : MonoBehaviour
             Llegada();
 
         if (!PracticaHecha || (salida != null && salida.Abierta) || PantallaMuerte.Muerto) return;
+        // Con una muñeca encima (y un rato despues de quitarsela) no aparece ninguna nueva
+        if (AgarreMuneca.Bloquea) { proxima = Mathf.Max(proxima, (AgarreMuneca.Activo ? Time.time : AgarreMuneca.FinGracia) + 3f); return; }
         if (area != null && !area.Contiene(jugador.position)) return;
         vivas.RemoveAll(v => v == null);
         if (Time.time < proxima) return;

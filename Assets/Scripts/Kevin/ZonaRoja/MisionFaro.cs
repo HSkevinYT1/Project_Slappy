@@ -3,8 +3,11 @@ using UnityEngine;
 
 // La Zona Roja segun el guion:
 // 1. Al entrar (la parte de arriba de un faro): "Ahora un faro, ya veo." y la entrada desaparece (aparece una pared).
-// 2. En el piso 1 hay un diario: al leerlo se sabe que faltan 3 notas, que empiezan a brillar en el bosque.
-// 3. Las notas llevan hasta el bidon de gasolina (brilla cuando ya se leyeron las 3).
+// 2. Las notas se leen EN ORDEN: la 1 esta en la mesa del piso 1; la siguiente aparece (y brilla) cuando se lee la
+//    anterior. Cada nota da una pista de donde ir y la brujula (Brujula) apunta hacia alli: la 1 lleva a la 2
+//    (playa noreste), la 2 a la 3 (borde del lago) y la 3 al bidon de gasolina (cobertizo de la playa este, que
+//    brilla cuando ya se leyeron todas). Si hay "diario" (version vieja), primero hay que leerlo.
+// 3. Con la brujula: sin ninguna nota leida no apunta a nada (gira sin rumbo).
 // 4. Con el bidon se rellena el faro (en la luz, arriba, junto a la entrada): la entrada vuelve a abrirse y la zona
 //    queda completada (ProgresoCaminos). Al volver a la estacion empieza el final (FinalJuego).
 // La luz del faro alumbra siempre, a toda potencia y girando: es la unica luz de la zona (el bidon no la cambia).
@@ -44,6 +47,13 @@ public class MisionFaro : MonoBehaviour
     [TextArea] public string alDesaparecer = "Por qué no me sorprende.";
     [TextArea] public string alVerDiario = "¿Y eso?";
     [TextArea] public string alVerNota = "Entonces ahora tengo que hallar las notas, ¿no?";
+    [Tooltip("Lo que dice al leer cada nota (la brujula ya apunta a lo que dice la nota)")]
+    [TextArea] public string[] alLeerNotas =
+    {
+        "El noreste de la playa... La aguja de la brújula se movió.",
+        "Noroeste, al borde del lago. La brújula ya apunta hacia allá.",
+        "Un cobertizo en el este, con gasolina debajo. Eso es lo que necesita el faro.",
+    };
     [TextArea] public string alAgarrarBidon = "Esto era lo que buscaba.";
     [TextArea] public string alAbrirse = "Al fin. ¿Ahora qué?";
 
@@ -90,17 +100,18 @@ public class MisionFaro : MonoBehaviour
     {
         Completar();
         if (muroEntrada != null) muroEntrada.SetActive(false);
-        Brillar(notas, false);
-        Interactuable(notas, false);
         if (bidon != null)
         {
             if (bidon.TryGetComponent(out Highlightable h)) h.Hide();
             if (bidon.TryGetComponent(out Interactable i)) i.enabled = false;
         }
         if (diario != null) diario.alLeer.AddListener(AlLeerDiario);
-        if (notas != null) foreach (Lectura l in notas) if (l != null) l.alLeer.AddListener(AlLeerNota);
-        // Sin diario (no se armo): las notas ya estan activas
-        if (diario == null) AlLeerDiario();
+        if (notas != null)
+            for (int i = 0; i < notas.Length; i++)
+                if (notas[i] != null) { int k = i; notas[i].alLeer.AddListener(() => AlLeerNota(k)); }
+        // Sin diario: ya esta la primera nota (las demas aparecen de a una al leer la anterior)
+        if (DiarioLeido) AlLeerDiario();
+        else MostrarSiguiente();
         if (deposito != null)
         {
             deposito.objetoEsperado = bidon;
@@ -137,7 +148,7 @@ public class MisionFaro : MonoBehaviour
 
         if (!vioNota && DiarioLeido && notas != null)
             foreach (Lectura l in notas)
-                if (l != null && !l.Leida && Cerca(l.transform.position, 14f) && Visible(l.transform.position))
+                if (l != null && !l.Leida && l.gameObject.activeInHierarchy && Cerca(l.transform.position, 14f) && Visible(l.transform.position))
                 {
                     vioNota = true;
                     Pensamiento.Decir("faro.nota", 0.3f, alVerNota);
@@ -184,17 +195,68 @@ public class MisionFaro : MonoBehaviour
 
     void AlLeerDiario()
     {
-        Brillar(notas, true);
-        Interactuable(notas, true);
+        MostrarSiguiente();
         // Sin notas (no se armaron): el bidon queda disponible ya
-        if (TotalNotas == 0) AlLeerNota();
+        if (TotalNotas == 0) AlLeerNota(-1);
     }
 
-    void AlLeerNota()
+    void AlLeerNota(int k)
     {
+        // La pista de la nota (la brujula ya apunta hacia alli)
+        if (k >= 0 && alLeerNotas != null && k < alLeerNotas.Length && !string.IsNullOrEmpty(alLeerNotas[k]))
+            Pensamiento.Decir("faro.pista" + k, 0.4f, alLeerNotas[k]);
+        MostrarSiguiente();
         if (NotasLeidas < TotalNotas || bidon == null) return;
         if (bidon.TryGetComponent(out Highlightable h)) h.Show();
         if (bidon.TryGetComponent(out Interactable i)) i.enabled = true;
+    }
+
+    // La siguiente nota sin leer (en orden), o -1 si ya se leyeron todas
+    public int Siguiente
+    {
+        get
+        {
+            if (notas != null) for (int i = 0; i < notas.Length; i++) if (notas[i] != null && !notas[i].Leida) return i;
+            return -1;
+        }
+    }
+
+    // Las notas aparecen de a una: solo esta (y brilla) la siguiente sin leer; las leidas se pueden volver a leer.
+    // Antes de leer el diario (si lo hay) no hay ninguna.
+    void MostrarSiguiente()
+    {
+        if (notas == null) return;
+        int s = DiarioLeido ? Siguiente : -1;
+        for (int i = 0; i < notas.Length; i++)
+        {
+            Lectura l = notas[i];
+            if (l == null) continue;
+            bool esta = i == s;
+            if (!l.Leida) l.gameObject.SetActive(esta);
+            if (l.TryGetComponent(out Highlightable h)) { if (esta) h.Show(); else h.Hide(); }
+            if (l.TryGetComponent(out Interactable it)) it.enabled = esta || l.Leida;
+        }
+    }
+
+    // A donde apunta la brujula: lo que dice la ultima nota leida (la siguiente nota, y despues de la ultima el
+    // bidon), despues la luz del faro y al final la salida. Sin ninguna nota leida no hay rumbo.
+    public bool DestinoBrujula(out Vector3 p)
+    {
+        p = default;
+        if (!DiarioLeido) { p = diario.transform.position; return true; }
+        if (TotalNotas > 0)
+        {
+            if (NotasLeidas == 0 && diario == null) return false;
+            int s = Siguiente;
+            if (s >= 0) { p = notas[s].transform.position; return true; }
+        }
+        if (!Relleno)
+        {
+            if (!TieneBidon && bidon != null && bidon.gameObject.activeInHierarchy) { p = bidon.transform.position; return true; }
+            if (deposito != null) { p = deposito.transform.position; return true; }
+        }
+        if (muroEntrada != null) { p = muroEntrada.transform.position; return true; }
+        return false;
     }
 
     // Se vacia el bidon en el faro: la entrada vuelve a abrirse (la luz no cambia: alumbra siempre)
@@ -280,6 +342,8 @@ public class MisionFaro : MonoBehaviour
                 if (foco != null && (l == foco || l.transform.IsChildOf(foco.transform))) continue;
                 if (jug != null && l.transform.IsChildOf(jug)) continue;
                 if (camOscura != null && l.transform.IsChildOf(camOscura.transform.root)) continue;
+                // La lucecita que deja ver la brujula en su pedestal
+                if (l.GetComponentInParent<Brujula>() != null) continue;
                 l.enabled = false;
                 if (!apagadas.Contains(l)) apagadas.Add(l);
             }
@@ -340,19 +404,6 @@ public class MisionFaro : MonoBehaviour
         bloque.SetColor("_EmissionColor", new Color(1f, 0.92f, 0.7f) * (brilloLente * k));
         bloque.SetColor("_BaseColor", Color.Lerp(new Color(0.5f, 0.5f, 0.5f), new Color(1f, 0.97f, 0.85f), k));
         lente.SetPropertyBlock(bloque);
-    }
-
-    static void Brillar(Lectura[] ls, bool si)
-    {
-        if (ls == null) return;
-        foreach (Lectura l in ls)
-            if (l != null && l.TryGetComponent(out Highlightable h)) { if (si) h.Show(); else h.Hide(); }
-    }
-
-    static void Interactuable(Lectura[] ls, bool si)
-    {
-        if (ls == null) return;
-        foreach (Lectura l in ls) if (l != null && l.TryGetComponent(out Interactable i)) i.enabled = si;
     }
 
     static float Plano(Vector3 v) => new Vector2(v.x, v.z).magnitude;

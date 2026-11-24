@@ -46,8 +46,10 @@ public class Objetivos : MonoBehaviour
     [Header("Zona Roja")]
     public string explorarZonaRoja = "Explora el faro";
     public string leerDiario = "Lee el diario del faro";
-    public string buscarNotas = "Encuentra las notas ({0}/{1})";
-    public string buscarBidon = "Busca el bidón de gasolina";
+    public string leerPrimeraNota = "Busca una pista en el faro";
+    public string buscarNotas = "Sigue la brújula hasta la siguiente nota ({0}/{1})";
+    public string buscarBrujula = "Busca algo que te guíe ({0}/{1} notas)";
+    public string buscarBidon = "Sigue la brújula hasta la gasolina";
     public string rellenarFaro = "Rellena el faro con la gasolina";
     public string salirFaro = "Vuelve a la estación";
 
@@ -251,7 +253,14 @@ public class Objetivos : MonoBehaviour
         if (hecha || (m != null && m.Relleno)) { texto = salirFaro; return; }
         if (m == null) { texto = explorarZonaRoja; return; }
         if (!m.DiarioLeido) { texto = Pensamiento.YaDicho("faro.diario") ? leerDiario : explorarZonaRoja; return; }
-        if (m.NotasLeidas < m.TotalNotas) { texto = F(buscarNotas, m.NotasLeidas, m.TotalNotas); return; }
+        if (m.TotalNotas > 0 && m.NotasLeidas == 0) { texto = Pensamiento.YaDicho("faro.entrar") ? leerPrimeraNota : explorarZonaRoja; return; }
+        // Las notas dan la pista y la brujula marca el rumbo: sin ella, primero hay que encontrarla
+        bool conBrujula = false;
+        if (Inventario.Instance != null)
+            for (int i = 0; i < Inventario.Ranuras && !conBrujula; i++)
+                conBrujula = Inventario.Instance[i] != null && Inventario.Instance[i].GetComponent<Brujula>() != null;
+        if (m.NotasLeidas < m.TotalNotas) { texto = F(conBrujula ? buscarNotas : buscarBrujula, m.NotasLeidas, m.TotalNotas); return; }
+        if (!conBrujula && !m.TieneBidon) { texto = F(buscarBrujula, m.NotasLeidas, m.TotalNotas); return; }
         texto = m.TieneBidon ? rellenarFaro : buscarBidon;
     }
 

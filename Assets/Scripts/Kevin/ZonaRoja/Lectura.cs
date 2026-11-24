@@ -11,6 +11,8 @@ public class Lectura : MonoBehaviour
 {
     public string titulo = "Nota";
     [TextArea(4, 14)] public string texto = "";
+    [Tooltip("Linea destacada al pie de la hoja (ej: \"La brújula marca: NORESTE\"). Vacio = nada")]
+    public string pie = "";
     public string prompt = "Leer";
     [Tooltip("Color de la hoja")]
     public Color papel = new Color(0.86f, 0.8f, 0.66f);
@@ -88,16 +90,31 @@ public class Lectura : MonoBehaviour
         var fondo = Bloque(go.transform, "Fondo", new Color(0f, 0f, 0f, 0.62f));
         Estirar(fondo);
 
+        // Alta (casi toda la pantalla) para que entren las notas largas; el texto se achica solo si no cabe
         hoja = Bloque(go.transform, "Hoja", papel);
-        hoja.sizeDelta = new Vector2(760f, 860f);
+        hoja.sizeDelta = new Vector2(860f, 1010f);
         var sombra = hoja.gameObject.AddComponent<Shadow>();
         sombra.effectColor = new Color(0f, 0f, 0f, 0.5f);
         sombra.effectDistance = new Vector2(10f, -12f);
 
-        Texto(hoja, titulo.ToUpperInvariant(), 38f, FontStyles.Bold, new Vector2(0f, 360f), new Vector2(640f, 70f), TextAlignmentOptions.Center);
-        var cuerpo = Texto(hoja, texto, 28f, FontStyles.Italic, new Vector2(0f, -10f), new Vector2(640f, 640f), TextAlignmentOptions.TopLeft);
-        cuerpo.lineSpacing = 12f;
-        Texto(hoja, "[" + GameInput.InteractKeyName + "] cerrar", 20f, FontStyles.Normal, new Vector2(0f, -390f), new Vector2(640f, 40f), TextAlignmentOptions.Center)
+        Texto(hoja, titulo.ToUpperInvariant(), 36f, FontStyles.Bold, new Vector2(0f, 450f), new Vector2(760f, 60f), TextAlignmentOptions.Center);
+        bool conPie = !string.IsNullOrEmpty(pie);
+        var cuerpo = Texto(hoja, texto, 26f, FontStyles.Italic, new Vector2(0f, conPie ? 20f : -10f), new Vector2(760f, conPie ? 760f : 820f), TextAlignmentOptions.TopLeft);
+        if (conPie)
+        {
+            // La pista para la brujula, destacada (como subrayada a mano)
+            var p = Texto(hoja, pie.ToUpperInvariant(), 30f, FontStyles.Bold, new Vector2(0f, -405f), new Vector2(760f, 50f), TextAlignmentOptions.Center);
+            p.color = new Color(0.5f, 0.08f, 0.04f);
+            var linea = Bloque(hoja, "Subrayado", new Color(0.5f, 0.08f, 0.04f, 0.7f));
+            linea.anchoredPosition = new Vector2(0f, -432f);
+            linea.sizeDelta = new Vector2(Mathf.Min(700f, 22f * pie.Length), 3f);
+        }
+        cuerpo.lineSpacing = 6f;
+        cuerpo.paragraphSpacing = 4f;
+        cuerpo.enableAutoSizing = true;
+        cuerpo.fontSizeMin = 15f;
+        cuerpo.fontSizeMax = 26f;
+        Texto(hoja, "[" + GameInput.InteractKeyName + "] cerrar", 20f, FontStyles.Normal, new Vector2(0f, -475f), new Vector2(760f, 36f), TextAlignmentOptions.Center)
             .color = new Color(0.25f, 0.2f, 0.15f, 0.7f);
         return go;
     }

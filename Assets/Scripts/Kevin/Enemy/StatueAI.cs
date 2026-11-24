@@ -182,8 +182,9 @@ public class EstatuaAI : MonoBehaviour
 
     void UpdateMoving()
     {
-        // Si no hay camino hasta el jugador (esta en otra area) se queda quieta donde esta
-        if (!PlayerReachable())
+        // Si no hay camino hasta el jugador (esta en otra area) se queda quieta donde esta.
+        // Tambien mientras otra muñeca lo tiene agarrado (y un rato despues): nunca se monta otra al instante
+        if (AgarreMuneca.Bloquea || !PlayerReachable())
         {
             agent.ResetPath();
             agent.nextPosition = transform.position;

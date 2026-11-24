@@ -1,10 +1,12 @@
 using UnityEngine;
 
-// Brujula de la Zona Roja (inspirada en la de PEAK): no apunta al norte, sino a lo siguiente de la mision del
-// faro (MisionFaro): el diario, la nota sin leer mas cercana, el bidon, la luz del faro y al final la salida.
+// Brujula de la Zona Roja (inspirada en la de PEAK): no apunta al norte, sino a donde dice la ultima nota leida de
+// la mision del faro (MisionFaro.DestinoBrujula): la nota 1 lleva a la nota 2, la 2 a la 3, la 3 a la gasolina, y
+// despues a la luz del faro y a la salida. Sin ninguna nota leida gira sin rumbo. No tiene nada que ver con el enemigo.
 // - En la mano el dial se gira hacia el jugador; manteniendo clic derecho (Mirar) se la sube delante de la cara.
 // - La aguja tiene inercia (resorte): al girar se pasa, vuelve y tiembla hasta asentarse.
-// - Si el enemigo (JefeIndigoAI) esta cerca, la aguja se vuelve loca. Fuera del faro da vueltas sin rumbo.
+// - En su pedestal se ve bien aunque la zona este a oscuras: brilla el contorno y la alumbra una lucecita tibia
+//   (MisionFaro no la apaga) hasta que se agarra por primera vez.
 // La coloca Tools > Zona Roja > Colocar brujula (BrujulaSetup).
 [RequireComponent(typeof(Grabbable))]
 public class Brujula : MonoBehaviour
@@ -18,8 +20,15 @@ public class Brujula : MonoBehaviour
     [Tooltip("Al girar el jugador: 1 = la aguja queda fija en el mundo (sin temblor), 0 = gira con la brujula y despues se corrige (se pasa y tiembla)")]
     public float inercia = 0.6f;
 
-    [Header("Enemigo cerca")]
-    public float distanciaInterferencia = 14f;
+    [Header("En el pedestal")]
+    [Tooltip("Tamaño (1 = el del setup, que era muy chica para verla)")]
+    public float tamano = 1.5f;
+    [Tooltip("Lucecita que la alumbra hasta agarrarla")]
+    public Color colorLuz = new Color(1f, 0.82f, 0.55f);
+    public float intensidadLuz = 1.4f;
+    public float alcanceLuz = 2.2f;
+    [Tooltip("Metros a los que el protagonista la nota")]
+    public float distanciaVer = 6f;
 
     [Header("En la mano")]
     [Tooltip("Grados que se inclina el dial hacia el jugador (0 = horizontal)")]
@@ -30,24 +39,45 @@ public class Brujula : MonoBehaviour
     public float transicion = 0.25f;
 
     [Header("Textos")]
+    [TextArea] public string alVer = "¿Una brújula?";
     [TextArea] public string alAgarrar = "Una brújula... pero no apunta al norte. Apunta a otra cosa.";
-    [TextArea] public string alEnloquecer = "La aguja se volvió loca... algo está cerca.";
+    [TextArea] public string alApuntar = "La aguja se quedó quieta. Me está marcando hacia dónde ir.";
     public string ayuda = "Mantén clic derecho para mirar la brújula";
 
     Grabbable grab;
     PlayerInteractor jugador;
     float angulo, velocidad, yawAntes;
     float k;
-    bool moviendo, usado, dicha;
+    bool moviendo, usado, dicha, agarrada, teniaRumbo;
     Vector3 manoPos;
-    float loca, buscarEnemigo;
-    JefeIndigoAI[] enemigos = new JefeIndigoAI[0];
+    Light luz;
+    Highlightable brillo;
+    float proximoVer;
 
     void Awake()
     {
         grab = GetComponent<Grabbable>();
         if (aguja == null) aguja = transform.Find("Aguja");
         yawAntes = transform.eulerAngles.y;
+        if (tamano > 0f && !Mathf.Approximately(tamano, 1f)) transform.localScale *= tamano;
+
+        // La lucecita del pedestal (hija de la brujula: MisionFaro.Oscuridad no apaga las luces de la brujula)
+        var go = new GameObject("Luz brujula");
+        go.transform.SetParent(transform, false);
+        go.transform.position = transform.position + Vector3.up * 0.35f;
+        luz = go.AddComponent<Light>();
+        luz.type = LightType.Point;
+        luz.color = colorLuz;
+        luz.intensity = intensidadLuz;
+        luz.range = alcanceLuz;
+        luz.shadows = LightShadows.None;
+        brillo = GetComponent<Highlightable>();
+    }
+
+    void Start()
+    {
+        // Brilla en el pedestal (Grabbable apaga el contorno al agarrarla)
+        if (brillo != null && !agarrada) brillo.Show();
     }
 
     // Guardada en el inventario mientras se miraba: vuelve a la mano
@@ -68,10 +98,29 @@ public class Brujula : MonoBehaviour
     {
         bool enMano = EnMano();
         Camera cam = Camera.main;
+        if (enMano && !agarrada)
+        {
+            // Ya no hace falta la lucecita
+            agarrada = true;
+            if (luz != null) luz.gameObject.SetActive(false);
+        }
         if (enMano && !dicha) { dicha = true; Pensamiento.Decir("brujula.agarrar", 0.4f, alAgarrar); }
+        if (!agarrada) Ver(cam);
 
         Pose(enMano, cam);
-        Aguja();
+        Aguja(enMano);
+    }
+
+    // En el pedestal: el protagonista la nota al acercarse y verla
+    void Ver(Camera cam)
+    {
+        if (cam == null || Time.time < proximoVer || string.IsNullOrEmpty(alVer) || Pensamiento.YaDicho("brujula.ver")) return;
+        proximoVer = Time.time + 0.3f;
+        Vector3 d = transform.position - cam.transform.position;
+        if (d.sqrMagnitude > distanciaVer * distanciaVer) return;
+        Vector3 v = cam.WorldToViewportPoint(transform.position);
+        if (v.z <= 0f || v.x < 0.15f || v.x > 0.85f || v.y < 0.15f || v.y > 0.85f) return;
+        Pensamiento.Decir("brujula.ver", 0.1f, alVer);
     }
 
     // En la mano: el dial mira al jugador; con clic derecho se sube delante de la cara
@@ -110,7 +159,7 @@ public class Brujula : MonoBehaviour
         }
     }
 
-    void Aguja()
+    void Aguja(bool enMano)
     {
         if (aguja == null) return;
         float dt = Mathf.Max(0.0001f, Time.deltaTime);
@@ -118,17 +167,19 @@ public class Brujula : MonoBehaviour
         // Angulo (en el suelo) entre el frente de la brujula y el objetivo
         Vector3 frente = transform.forward; frente.y = 0f;
         if (frente.sqrMagnitude < 0.0001f) { frente = -transform.up; frente.y = 0f; }
-        Vector3 hacia = Objetivo(out bool hay) - transform.position; hacia.y = 0f;
-        float deseado = hay && hacia.sqrMagnitude > 0.01f
+        MisionFaro m = MisionFaro.Instance;
+        Vector3 destino = default;
+        bool hay = m != null && m.isActiveAndEnabled && m.DestinoBrujula(out destino);
+        Vector3 hacia = hay ? destino - transform.position : Vector3.zero;
+        hacia.y = 0f;
+        hay &= hacia.sqrMagnitude > 0.01f;
+        float deseado = hay
             ? Vector3.SignedAngle(frente, hacia, Vector3.up)
             : angulo + 35f + Mathf.Sin(Time.time * 0.6f) * 50f;   // sin rumbo: gira despacio
 
-        // Enemigo cerca: la aguja enloquece
-        float antes = loca;
-        loca = Mathf.MoveTowards(loca, Interferencia(), dt * 1.5f);
-        if (loca > 0f)
-            deseado += (Mathf.PerlinNoise(Time.time * 2.5f, 3.7f) - 0.5f) * 900f * loca + Mathf.Sin(Time.time * 11f) * 40f * loca;
-        if (antes < 0.35f && loca >= 0.35f && EnMano()) Pensamiento.Decir("brujula.loca", 0.2f, alEnloquecer);
+        // La primera vez que una nota le da rumbo (con la brujula en la mano), el protagonista lo nota
+        if (hay && !teniaRumbo && enMano && !string.IsNullOrEmpty(alApuntar)) Pensamiento.Decir("brujula.apunta", 1.2f, alApuntar);
+        if (enMano) teniaRumbo = hay;
 
         // Inercia: si el jugador gira, la aguja se queda atras y despues lo alcanza
         float yaw = transform.eulerAngles.y;
@@ -136,59 +187,11 @@ public class Brujula : MonoBehaviour
         yawAntes = yaw;
         angulo -= giro * Mathf.Clamp01(inercia);
 
-        // Resorte amortiguado hacia el angulo deseado (temblor extra cuando esta loca)
+        // Resorte amortiguado hacia el angulo deseado
         float error = Mathf.DeltaAngle(angulo, deseado);
         velocidad += (error * rigidez - velocidad * amortiguacion) * dt;
-        if (loca > 0f) velocidad += (Mathf.PerlinNoise(Time.time * 17f, 0.4f) - 0.5f) * 3000f * loca * dt;
         angulo = Mathf.Repeat(angulo + velocidad * dt + 180f, 360f) - 180f;
         aguja.localRotation = Quaternion.Euler(0f, angulo, 0f);
-    }
-
-    // Lo siguiente de la mision del faro
-    Vector3 Objetivo(out bool hay)
-    {
-        hay = true;
-        MisionFaro m = MisionFaro.Instance;
-        if (m == null || !m.isActiveAndEnabled) { hay = false; return transform.position; }
-        if (!m.DiarioLeido) return m.diario.transform.position;
-        if (m.NotasLeidas < m.TotalNotas)
-        {
-            Transform mejor = null; float d = float.MaxValue;
-            foreach (Lectura l in m.notas)
-            {
-                if (l == null || l.Leida || !l.gameObject.activeInHierarchy) continue;
-                float dd = (l.transform.position - transform.position).sqrMagnitude;
-                if (dd < d) { d = dd; mejor = l.transform; }
-            }
-            if (mejor != null) return mejor.position;
-        }
-        if (!m.Relleno)
-        {
-            if (!m.TieneBidon && m.bidon != null && m.bidon.gameObject.activeInHierarchy) return m.bidon.transform.position;
-            if (m.deposito != null) return m.deposito.transform.position;
-        }
-        if (m.muroEntrada != null) return m.muroEntrada.transform.position;
-        hay = false;
-        return transform.position;
-    }
-
-    // 0 = nada, 1 = el enemigo esta encima
-    float Interferencia()
-    {
-        buscarEnemigo -= Time.deltaTime;
-        if (buscarEnemigo <= 0f)
-        {
-            buscarEnemigo = 0.5f;
-            enemigos = FindObjectsByType<JefeIndigoAI>(FindObjectsSortMode.None);
-        }
-        float mas = 0f;
-        foreach (JefeIndigoAI e in enemigos)
-        {
-            if (e == null || !e.isActiveAndEnabled) continue;
-            float d = Vector3.Distance(e.transform.position, transform.position);
-            if (d < distanciaInterferencia) mas = Mathf.Max(mas, 1f - d / distanciaInterferencia);
-        }
-        return mas;
     }
 
     void OnGUI()

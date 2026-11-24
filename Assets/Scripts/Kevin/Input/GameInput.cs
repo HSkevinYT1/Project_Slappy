@@ -23,6 +23,11 @@ public static class GameInput
     public static bool DragStarted => Pressed("Arrastrar");
     // Mirar / guardar el reloj de pulsera (C)
     public static bool Watch => Pressed("Reloj");
+    // Forcejear para soltarse de una muñeca (AgarreMuneca): Espacio, o el boton de abajo (A / X) en mando
+    public static bool Forcejear =>
+        (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame) ||
+        (Gamepad.current != null && Gamepad.current.buttonSouth.wasPressedThisFrame);
+    public const string TeclaForcejear = "ESPACIO";
     // Correr (mantener Shift, o el stick izquierdo apretado en mando)
     public static bool Run =>
         (Keyboard.current != null && (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed)) ||
