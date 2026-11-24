@@ -53,6 +53,13 @@ public class PuzzlePalancas : MonoBehaviour
     public float duracionCamara = 2.8f;
     [Tooltip("Cuando se prende el foco (segundos despues de cortar a la camara)")]
     public float prenderTras = 0.8f;
+    [Tooltip("Sonido de camaras (Assets/Sounds/SFX/sonido camaras): suena SOLO mientras se ve la camara (el audio es " +
+             "largo: se corta con un fundido al cerrar)")]
+    public AudioClip sonidoCamaras;
+    [Range(0f, 1f)] public float volumenCamaras = 0.8f;
+    [Tooltip("Segundo del audio desde el que empieza (se salta el silencio del principio)")]
+    public float inicioSonidoCamaras;
+    AudioSource fuenteCamaras;
 
     [Header("Pensamientos")]
     [TextArea] public string trasPrimera = "Hay más de una palanca, al parecer.";
@@ -109,6 +116,7 @@ public class PuzzlePalancas : MonoBehaviour
 
         var bloqueados = Bloquear();
         if (camaraSeguridad != null) VistaSeguridad.Instancia.Abrir(camaraSeguridad, nombreCamara, filtroCamara);
+        SonidoCamaras(true);
         yield return new WaitForSeconds(prenderTras);
 
         int i = Activadas;
@@ -125,12 +133,43 @@ public class PuzzlePalancas : MonoBehaviour
         yield return new WaitForSeconds(Mathf.Max(0.5f, duracionCamara - prenderTras));
 
         VistaSeguridad.Instancia.Cerrar();
+        SonidoCamaras(false);
         yield return new WaitForSeconds(0.28f);
         Desbloquear(bloqueados);
         Ocupado = false;
 
         if (Completo) Completar();
         else if (Activadas == 1) Pensamiento.Decir("palancas.primera", 0.3f, trasPrimera);
+    }
+
+    // Empieza al cortar a la camara y se apaga (fundido corto) al cerrarla: no suena el audio entero
+    void SonidoCamaras(bool on)
+    {
+        if (sonidoCamaras == null) return;
+        if (on)
+        {
+            if (fuenteCamaras == null)
+            {
+                fuenteCamaras = gameObject.AddComponent<AudioSource>();
+                fuenteCamaras.playOnAwake = false;
+                fuenteCamaras.spatialBlend = 0f;
+                fuenteCamaras.loop = false;
+            }
+            StopCoroutine(nameof(ApagarCamaras));
+            fuenteCamaras.clip = sonidoCamaras;
+            fuenteCamaras.volume = volumenCamaras;
+            fuenteCamaras.time = Mathf.Clamp(inicioSonidoCamaras, 0f, Mathf.Max(0f, sonidoCamaras.length - 0.05f));
+            fuenteCamaras.Play();
+        }
+        else if (fuenteCamaras != null && fuenteCamaras.isPlaying) StartCoroutine(nameof(ApagarCamaras));
+    }
+
+    IEnumerator ApagarCamaras()
+    {
+        float v0 = fuenteCamaras.volume;
+        for (float t = 0f; t < 0.3f; t += Time.deltaTime) { fuenteCamaras.volume = v0 * (1f - t / 0.3f); yield return null; }
+        fuenteCamaras.Stop();
+        fuenteCamaras.volume = volumenCamaras;
     }
 
     void Completar()

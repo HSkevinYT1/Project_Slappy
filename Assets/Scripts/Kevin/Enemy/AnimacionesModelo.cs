@@ -9,11 +9,13 @@ using UnityEngine.Playables;
 // - Quieto -> Idle (si no hay, la caminata congelada).
 // - Moviendose -> Caminar; persiguiendo (JefeIndigoAI en Chase) -> Correr. La velocidad de la animacion
 //   sigue a la velocidad real (funciona igual con el NavMeshAgent que en cinematicas o el tutorial).
-// - Atrapa al jugador (Caught) -> Jumpscare una vez, mirando al jugador.
+// - Atrapa al jugador (Caught) -> Jumpscare una vez, mirando al jugador (sin Jumpscare: el Grito).
+// - Grita (JefeIndigoAI.Gritando) -> Grito, estirado para durar lo que dura el sonido.
+// - pegarAlSuelo: los pies siempre tocan el piso (la altura se corrige cuadro a cuadro con los vertices de los pies).
 // Lo monta Tools > Modelos > Intercambiar modelos y animaciones.
 public class AnimacionesModelo : MonoBehaviour
 {
-    public const string Idle = "Idle", Caminar = "Caminar", Correr = "Correr", Jumpscare = "Jumpscare";
+    public const string Idle = "Idle", Caminar = "Caminar", Correr = "Correr", Jumpscare = "Jumpscare", Grito = "Grito";
 
     [Serializable]
     public class Pose
@@ -39,7 +41,32 @@ public class AnimacionesModelo : MonoBehaviour
         [NonSerialized] public float tiempoQuieto;
         // true = no tiene nada que se vea (FBX borrado, o exportado sin malla): no se usa, asi el personaje no desaparece
         [NonSerialized] public bool vacia;
+        // Luces que cuelgan de esta pose (ej. el brillo de los ojos de Fede): se prenden solo con la pose visible
+        [NonSerialized] public Light[] luces;
+        // pegarAlSuelo: cuanto subir/bajar la envoltura en cada momento del clip para que el pie mas bajo toque el piso
+        [NonSerialized] public float[] correccion;
+        [NonSerialized] public Transform env;
+        [NonSerialized] public Vector3 envBase;
+        [NonSerialized] public System.Collections.Generic.List<Pies> pies;
+        // pasosIK: las dos piernas (con en que parte del clip apoya cada pie) y el paso mas largo que alcanzan (m)
+        [NonSerialized] public Pierna[] piernas;
+        [NonSerialized] public float pasoMax, apoyoMedio;
     }
+
+    // Vertices de los pies de una malla con huesos (se deforman a mano para saber donde esta la planta)
+    public class Pies
+    {
+        public Transform[] huesos;
+        public Matrix4x4[] bind, m;
+        public Vector3[] v;
+        public BoneWeight[] w;
+    }
+
+    [Tooltip("Pies siempre en el piso: la altura del modelo se corrige en cada cuadro de la animacion para que el pie " +
+             "mas bajo toque el suelo (las animaciones que agachan el cuerpo, como el grito de Fede, no lo hunden ni lo dejan flotando)")]
+    public bool pegarAlSuelo = false;
+    [Tooltip("Con pegarAlSuelo: ademas busca el piso real debajo (raycast) por si el NavMesh queda unos cm por encima o por debajo")]
+    public bool usarPisoReal = true;
 
     [Tooltip("Las animaciones que avanzan (root motion, ej. las de Mixamo) se quedan en el sitio: si no, el modelo se iba alejando del personaje")]
     public bool enElSitio = true;
@@ -52,6 +79,23 @@ public class AnimacionesModelo : MonoBehaviour
     public Pose[] poses = new Pose[0];
     [Tooltip("Velocidad (m/s) a la que la caminata se ve natural (con JefeIndigoAI se usa su patrolSpeed)")]
     public float velocidadCaminar = 1.8f;
+    [Tooltip("Ritmo de los pasos al caminar (1 = normal). Menos de 1 = pasos mas pausados, mas de 1 = mas seguidos")]
+    [Range(0.3f, 2f)] public float ritmoCaminar = 1f;
+    [Tooltip("Para caminatas 'en el sitio' (los pies no van hacia atras, como la de Fede): las piernas se mueven con IK " +
+             "para que el pie apoyado se quede clavado en el piso mientras el cuerpo avanza y el otro de el paso hacia " +
+             "adelante. El ritmo de los pasos se ajusta solo. Solo con pegarAlSuelo")]
+    public bool pasosIK = true;
+    [Tooltip("Largo de cada paso (m) con pasosIK. 0 = automatico (lo que alcanzan las piernas)")]
+    public float largoPaso = 0f;
+    float cicloSuave;   // metros que avanza el cuerpo en un ciclo de la caminata (suavizado)
+
+    // Una pierna para el IK: muslo -> rodilla -> punta (el pie), y en que fase del clip (0..1) apoya el pie
+    public class Pierna
+    {
+        public Transform muslo, rodilla, punta;
+        public float inicio, fin;
+        public float Apoyo => Mathf.Repeat(fin - inicio, 1f) is float d && d > 0.1f && d < 0.9f ? d : 0.5f;
+    }
     [Tooltip("Velocidad (m/s) a la que la carrera se ve natural (con JefeIndigoAI se usa su chaseSpeed)")]
     public float velocidadCorrer = 4.5f;
     [Tooltip("Sin IA: por encima de esta velocidad corre")]
@@ -64,10 +108,21 @@ public class AnimacionesModelo : MonoBehaviour
     Vector3 ultima;
     float velocidad;
     bool moviendose;
+    bool preparado;
+    // Altura del piso en el espacio del personaje (con NavMeshAgent: -baseOffset) y ajuste por el piso real
+    float suelo, ajustePiso;
+    readonly RaycastHit[] golpes = new RaycastHit[8];
 
-    void Awake()
+    void Awake() => Preparar();
+
+    // (Lo llama Awake; desde el editor lo usan las capturas para ver una pose sin dar Play)
+    public void Preparar()
     {
+        if (preparado) return;
+        preparado = true;
         ia = GetComponentInParent<JefeIndigoAI>();
+        var agente = GetComponent<UnityEngine.AI.NavMeshAgent>();
+        suelo = agente != null ? -agente.baseOffset / Mathf.Max(0.0001f, transform.lossyScale.y) : 0f;
         if (ia != null) { velocidadCaminar = ia.patrolSpeed; velocidadCorrer = ia.chaseSpeed; }
         if (!reproducir)
         {
@@ -117,7 +172,15 @@ public class AnimacionesModelo : MonoBehaviour
             Evaluar(p);
             Capturar(p);
             if (ia == null && GetComponent<UnityEngine.AI.NavMeshAgent>() == null) Asentar(p);
-            if (soloLasQueFuncionan) Validar(p);
+            // Con pegarAlSuelo las animaciones ya vienen elegidas a mano (y el suelo se corrige): no se descartan
+            if (soloLasQueFuncionan && !pegarAlSuelo) Validar(p);
+            PrepararSuelo(p);
+        }
+        foreach (Pose p in poses) if (p != null && p.animator != null) p.luces = p.animator.GetComponentsInChildren<Light>(true);
+        if (ia != null)
+        {
+            Pose g = Buscar(Grito);
+            ia.duracionAnimGrito = g != null && g.valida && g.playables != null ? Largo(g) : 0f;
         }
         IdleQueCamina();
         foreach (Pose p in poses) Mostrar(p, false);
@@ -168,6 +231,8 @@ public class AnimacionesModelo : MonoBehaviour
     Pose Elegir()
     {
         if (Atrapado && Buscar(Jumpscare) != null) return Buscar(Jumpscare);
+        if (Atrapado && Buscar(Grito) != null) return Buscar(Grito);
+        if (ia != null && ia.Gritando && Buscar(Grito) != null) return Buscar(Grito);
         if (!moviendose) return Primera(Idle, Caminar, Correr);
         bool correr = ia != null ? ia.CurrentState == JefeIndigoAI.State.Chase : velocidad > umbralCorrer;
         return correr ? Primera(Correr, Caminar, Idle) : Primera(Caminar, Correr, Idle);
@@ -177,6 +242,7 @@ public class AnimacionesModelo : MonoBehaviour
     {
         if (p == null || p.renders == null) return;
         foreach (Renderer r in p.renders) if (r != null) r.enabled = ver;
+        if (p.luces != null) foreach (Light l in p.luces) if (l != null) l.enabled = ver;
     }
 
     void Cambiar(Pose p)
@@ -192,7 +258,12 @@ public class AnimacionesModelo : MonoBehaviour
     void LateUpdate()
     {
         if (!reproducir) return;
-        float dt = Time.deltaTime;
+        Paso(Time.deltaTime);
+    }
+
+    // Un cuadro (lo llama LateUpdate; desde el editor se usa para simular la caminata sin dar Play)
+    public void Paso(float dt)
+    {
         if (dt > 0f)
         {
             Vector3 delta = transform.position - ultima;
@@ -209,12 +280,23 @@ public class AnimacionesModelo : MonoBehaviour
         if (actual == null) return;
 
         float k = 1f;
-        if (actual.nombre == Caminar) k = moviendose ? Mathf.Clamp(velocidad / Mathf.Max(0.1f, velocidadCaminar), 0.5f, 2.5f) : 0f;
+        bool ik = actual.nombre == Caminar && pasosIK && actual.piernas != null;
+        if (ik)
+        {
+            // Ritmo para que cada paso mida 'paso': mientras un pie esta apoyado (apoyoMedio del ciclo) el cuerpo avanza eso
+            float paso = largoPaso > 0f ? largoPaso : actual.pasoMax * 0.8f;
+            k = moviendose ? Mathf.Clamp(velocidad * actual.apoyoMedio * Largo(actual) / Mathf.Max(0.05f, paso) * ritmoCaminar, 0.3f, 4f) : 0f;
+        }
+        else if (actual.nombre == Caminar) k = moviendose ? Mathf.Clamp(velocidad / Mathf.Max(0.1f, velocidadCaminar) * ritmoCaminar, 0.2f, 2.5f) : 0f;
         else if (actual.nombre == Correr) k = moviendose ? Mathf.Clamp(velocidad / Mathf.Max(0.1f, velocidadCorrer), 0.6f, 2.2f) : 0f;
+        // Grito: va al ritmo del grito de la IA (dura lo que dura el sonido); si un grito empieza encima de otro, arranca de nuevo
+        if (actual.nombre == Grito && ia != null && ia.Gritando) { actual.tiempo = ia.ProgresoGrito * Largo(actual); k = 0f; }
         actual.tiempo += dt * k;
 
-        // Jumpscare: de frente al jugador
-        if (actual.nombre == Jumpscare && ia != null && ia.player != null)
+        if (pegarAlSuelo && usarPisoReal && Application.isPlaying) PisoReal(dt);
+
+        // Jumpscare (o el grito al atraparlo): de frente al jugador
+        if ((actual.nombre == Jumpscare || (actual.nombre == Grito && Atrapado)) && ia != null && ia.player != null)
         {
             Vector3 dir = ia.player.position - transform.position;
             dir.y = 0f;
@@ -223,6 +305,142 @@ public class AnimacionesModelo : MonoBehaviour
         }
 
         Evaluar(actual);
+        if (ik) PasosIK(actual, k, dt);
+    }
+
+    // ------------------------------------------------------------------ Pasos con IK (caminata en el sitio)
+
+    // Pie apoyado: va de adelante (+0.5) hacia atras (-0.5) a ritmo constante (asi, con el cuerpo avanzando, queda quieto en
+    // el piso). Pie en el aire: de atras hacia adelante, suave
+    static float Desfase(Pierna l, float fase)
+    {
+        float dur = l.Apoyo;
+        float t = Mathf.Repeat(fase - l.inicio, 1f);
+        if (t < dur) return 0.5f - t / dur;
+        float s = (t - dur) / (1f - dur);
+        return -0.5f + s * s * (3f - 2f * s);
+    }
+
+    // 0..1: cuanto se levanta el pie (solo en el aire)
+    static float Elevacion(Pierna l, float fase)
+    {
+        float dur = l.Apoyo;
+        float t = Mathf.Repeat(fase - l.inicio, 1f);
+        return t < dur ? 0f : Mathf.Sin((t - dur) / (1f - dur) * Mathf.PI);
+    }
+
+    void PasosIK(Pose p, float k, float dt)
+    {
+        float largo = Largo(p);
+        float fase = TiempoPose(p, largo) / largo;
+        // Lo que avanza el cuerpo en un ciclo (a este ritmo); quieto = 0 (los pies vuelven a su sitio poco a poco)
+        float objetivo = moviendose && k > 0.01f ? velocidad * largo / k : 0f;
+        cicloSuave = Mathf.Lerp(cicloSuave, objetivo, 1f - Mathf.Exp(-8f * dt));
+        if (cicloSuave < 0.005f) return;
+        Vector3 adelante = transform.forward, arriba = transform.up;
+        foreach (Pierna l in p.piernas)
+        {
+            if (l.muslo == null || l.rodilla == null || l.punta == null) continue;
+            float paso = Mathf.Min(cicloSuave * l.Apoyo, p.pasoMax);
+            float alto = Elevacion(l, fase) * Mathf.Min(0.18f, paso * 0.3f);
+            ResolverIK(l, l.punta.position + adelante * (Desfase(l, fase) * paso) + arriba * alto);
+        }
+    }
+
+    // IK de dos huesos: muslo y rodilla giran para que la punta llegue al objetivo, doblando la rodilla hacia el mismo
+    // lado que en la animacion
+    static void ResolverIK(Pierna l, Vector3 objetivo)
+    {
+        Vector3 A = l.muslo.position, B = l.rodilla.position, C = l.punta.position;
+        float a = (B - A).magnitude, b = (C - B).magnitude;
+        if (a < 1e-4f || b < 1e-4f) return;
+        Vector3 at = objetivo - A;
+        if (at.sqrMagnitude < 1e-8f) return;
+        float d = Mathf.Clamp(at.magnitude, Mathf.Abs(a - b) + 1e-3f, a + b - 1e-3f);
+        Vector3 dir = at.normalized;
+        Vector3 ac = C - A;
+        Vector3 haciaRodilla = (B - A) - Vector3.Project(B - A, ac.sqrMagnitude > 1e-8f ? ac.normalized : dir);
+        Vector3 polo = haciaRodilla - Vector3.Project(haciaRodilla, dir);
+        if (polo.sqrMagnitude < 1e-8f) polo = Vector3.Cross(dir, l.muslo.right);
+        polo.Normalize();
+        float x = (a * a - b * b + d * d) / (2f * d);
+        float y = Mathf.Sqrt(Mathf.Max(0f, a * a - x * x));
+        Vector3 rodillaNueva = A + dir * x + polo * y;
+        l.muslo.rotation = Quaternion.FromToRotation(B - A, rodillaNueva - A) * l.muslo.rotation;
+        Vector3 B2 = l.rodilla.position, C2 = l.punta.position;
+        l.rodilla.rotation = Quaternion.FromToRotation(C2 - B2, A + dir * d - B2) * l.rodilla.rotation;
+    }
+
+    static bool EsIzquierda(string n) { n = n.ToLowerInvariant(); return n.EndsWith(".l") || n.EndsWith("_l") || n.Contains("left"); }
+    static bool EsDerecha(string n) { n = n.ToLowerInvariant(); return n.EndsWith(".r") || n.EndsWith("_r") || n.Contains("right"); }
+
+    // De que pierna es un vertice de los pies: +1 izquierda, -1 derecha, 0 no se sabe
+    static int LadoPie(Pose p, int zi, int vi)
+    {
+        if (zi < 0) return 0;
+        Pies z = p.pies[zi];
+        Transform h = z.huesos[z.w[vi].boneIndex0];
+        if (h == null) return 0;
+        return EsIzquierda(h.name) ? 1 : EsDerecha(h.name) ? -1 : 0;
+    }
+
+    // La racha mas larga (circular) del clip en que el pie mas bajo es de esa pierna = cuando esta apoyada
+    static bool Apoyo(int[] lado, int quien, out float inicio, out float fin)
+    {
+        int n = lado.Length, mejorIni = -1, mejorLen = 0;
+        for (int s = 0; s < n; s++)
+        {
+            if (lado[s] != quien || lado[(s - 1 + n) % n] == quien) continue;
+            int len = 0;
+            while (len < n && lado[(s + len) % n] == quien) len++;
+            if (len > mejorLen) { mejorLen = len; mejorIni = s; }
+        }
+        inicio = fin = 0f;
+        if (mejorIni < 0) return false;
+        inicio = (float)mejorIni / n;
+        fin = (float)((mejorIni + mejorLen) % n) / n;
+        return true;
+    }
+
+    Pierna[] PrepararPiernas(Pose p, int[] lado)
+    {
+        var piernas = new Pierna[2];
+        for (int k = 0; k < 2; k++)
+        {
+            bool izq = k == 0;
+            Transform muslo = null;
+            foreach (Transform t in p.animator.GetComponentsInChildren<Transform>(true))
+            {
+                string n = t.name.ToLowerInvariant();
+                if ((n.Contains("thigh") || n.Contains("upleg") || n.Contains("muslo")) && !n.EndsWith("_end") && (izq ? EsIzquierda(t.name) : EsDerecha(t.name))) { muslo = t; break; }
+            }
+            if (muslo == null || muslo.childCount == 0) return null;
+            Transform rodilla = null;
+            foreach (Transform c in muslo) { string n = c.name.ToLowerInvariant(); if (n.Contains("shin") || n.Contains("calf") || n.Contains("leg") || n.Contains("knee")) { rodilla = c; break; } }
+            if (rodilla == null) rodilla = muslo.GetChild(0);
+            if (rodilla.childCount == 0) return null;
+            Transform punta = null;
+            foreach (Transform c in rodilla) if (c.name.ToLowerInvariant().EndsWith("_end") || c.name.ToLowerInvariant().Contains("foot")) { punta = c; break; }
+            if (punta == null) punta = rodilla.GetChild(0);
+            var l = new Pierna { muslo = muslo, rodilla = rodilla, punta = punta };
+            if (!Apoyo(lado, izq ? 1 : -1, out l.inicio, out l.fin)) { l.inicio = izq ? 0f : 0.5f; l.fin = izq ? 0.5f : 0f; }
+            piernas[k] = l;
+        }
+        p.apoyoMedio = (piernas[0].Apoyo + piernas[1].Apoyo) * 0.5f;
+
+        // Paso mas largo: hasta donde llega la pierna hacia adelante/atras con la cadera a la altura del primer cuadro
+        p.tiempo = 0f;
+        Evaluar(p);
+        float alcance = float.MaxValue;
+        foreach (Pierna l in piernas)
+        {
+            float largoPierna = 0.96f * ((l.rodilla.position - l.muslo.position).magnitude + (l.punta.position - l.rodilla.position).magnitude);
+            float h = Vector3.Dot(l.muslo.position - l.punta.position, transform.up);
+            alcance = Mathf.Min(alcance, Mathf.Sqrt(Mathf.Max(0f, largoPierna * largoPierna - h * h)));
+        }
+        p.pasoMax = Mathf.Max(0.1f, 2f * alcance * 0.9f);
+        Debug.Log($"[Animaciones] {name} / {p.nombre}: pasos con IK (paso max {p.pasoMax:0.00} m; apoyo izq {piernas[0].inicio:0.00}-{piernas[0].fin:0.00}, der {piernas[1].inicio:0.00}-{piernas[1].fin:0.00})", this);
+        return piernas;
     }
 
     void Evaluar(Pose p)
@@ -237,6 +455,170 @@ public class AnimacionesModelo : MonoBehaviour
         }
         p.grafo.Evaluate(0f);
         Fijar(p);
+        AplicarSuelo(p);
+    }
+
+    // ------------------------------------------------------------------ Pies en el suelo
+
+    static float Largo(Pose p)
+    {
+        float l = 0f;
+        if (p.clips != null) foreach (AnimationClip c in p.clips) if (c != null) l = Mathf.Max(l, c.length);
+        return Mathf.Max(0.0001f, l);
+    }
+
+    // El momento del clip que se esta viendo (igual que en Evaluar)
+    static float TiempoPose(Pose p, float largo) =>
+        !p.valida ? Mathf.Min(p.tiempoQuieto, largo) : p.bucle ? Mathf.Repeat(p.tiempo, largo) : Mathf.Clamp(p.tiempo, 0f, largo);
+
+    static bool EsHuesoPie(string n)
+    {
+        n = n.ToLowerInvariant();
+        return n.Contains("foot") || n.Contains("toe") || n.Contains("shin") || n.Contains("calf") || n.Contains("heel")
+            || n.Contains("ankle") || n.Contains("leg") || n.Contains("pie") || n.Contains("tobillo");
+    }
+
+    // Vertices de los pies (los que mueve sobre todo un hueso de pierna/pie). Si ningun hueso lo parece: todo el cuerpo
+    System.Collections.Generic.List<Pies> PuntosPies(Pose p)
+    {
+        var pies = new System.Collections.Generic.List<Pies>();
+        var todo = new System.Collections.Generic.List<Pies>();
+        foreach (SkinnedMeshRenderer s in p.animator.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            Mesh m = s.sharedMesh;
+            if (m == null || !m.isReadable || s.bones == null || s.bones.Length == 0) continue;
+            Vector3[] vs = m.vertices;
+            BoneWeight[] bw = m.boneWeights;
+            Matrix4x4[] bp = m.bindposes;
+            if (bw.Length != vs.Length || bp.Length != s.bones.Length) continue;
+            var esPie = new bool[s.bones.Length];
+            for (int b = 0; b < esPie.Length; b++) esPie[b] = s.bones[b] != null && EsHuesoPie(s.bones[b].name);
+            var v = new System.Collections.Generic.List<Vector3>();
+            var w = new System.Collections.Generic.List<BoneWeight>();
+            for (int i = 0; i < vs.Length; i++)
+                if (bw[i].boneIndex0 < esPie.Length && esPie[bw[i].boneIndex0]) { v.Add(vs[i]); w.Add(bw[i]); }
+            var huesos = s.bones;
+            if (v.Count > 0) pies.Add(new Pies { huesos = huesos, bind = bp, m = new Matrix4x4[huesos.Length], v = v.ToArray(), w = w.ToArray() });
+            todo.Add(new Pies { huesos = huesos, bind = bp, m = new Matrix4x4[huesos.Length], v = vs, w = bw });
+        }
+        return pies.Count > 0 ? pies : todo;
+    }
+
+    // Altura (en el espacio del personaje) del vertice de los pies mas bajo, con la pose actual de los huesos
+    float MinimoPies(Pose p) => MinimoPies(p, out _, out _);
+
+    // (cualMalla/cualVertice: cual es ese vertice, para seguirlo entre cuadros)
+    float MinimoPies(Pose p, out int cualMalla, out int cualVertice)
+    {
+        float min = float.MaxValue;
+        cualMalla = -1; cualVertice = -1;
+        Matrix4x4 aLocal = transform.worldToLocalMatrix;
+        for (int zi = 0; zi < p.pies.Count; zi++)
+        {
+            Pies z = p.pies[zi];
+            for (int b = 0; b < z.huesos.Length; b++)
+                z.m[b] = z.huesos[b] != null ? aLocal * z.huesos[b].localToWorldMatrix * z.bind[b] : Matrix4x4.zero;
+            for (int i = 0; i < z.v.Length; i++)
+            {
+                BoneWeight w = z.w[i];
+                Vector3 v = z.v[i];
+                float y = Y(z.m[w.boneIndex0], v) * w.weight0 + Y(z.m[w.boneIndex1], v) * w.weight1
+                        + Y(z.m[w.boneIndex2], v) * w.weight2 + Y(z.m[w.boneIndex3], v) * w.weight3;
+                if (y < min) { min = y; cualMalla = zi; cualVertice = i; }
+            }
+        }
+        return min;
+    }
+
+
+    static float Y(Matrix4x4 m, Vector3 v) => m.m10 * v.x + m.m11 * v.y + m.m12 * v.z + m.m13;
+
+    // Recorre el clip y apunta, para cada momento, cuanto hay que subir/bajar el modelo para que el pie mas bajo
+    // quede justo en el piso. Asi ni se hunde (el grito agacha el cuerpo) ni flota
+    void PrepararSuelo(Pose p)
+    {
+        p.correccion = null;
+        if (!pegarAlSuelo || p.playables == null || p.animator == null) return;
+        p.env = p.animator.transform.parent;
+        if (p.env == null || p.env == transform || p.env.parent == null) { p.env = null; return; }
+        p.envBase = p.env.localPosition;
+        p.pies = PuntosPies(p);
+        if (p.pies.Count == 0)
+        {
+            Debug.LogWarning("[Animaciones] " + name + " / " + p.nombre + ": la malla no es legible (Read/Write): no se pueden pegar los pies al suelo.", this);
+            p.env = null;
+            return;
+        }
+        float largo = Largo(p);
+        int n = Mathf.Clamp(Mathf.CeilToInt(largo * 30f), 8, 240);
+        var tabla = new float[n + 1];
+        float tAntes = p.tiempo;
+        bool vAntes = p.valida;
+        p.valida = true;
+        var lado = new int[n];   // de que pierna es el pie mas bajo en cada momento (= cual esta apoyada)
+        for (int i = 0; i <= n; i++)
+        {
+            p.tiempo = largo * i / n;
+            Evaluar(p);   // (la envoltura sigue en su sitio: la tabla aun no existe)
+            tabla[i] = suelo - MinimoPies(p, out int zi, out int vi);
+            if (i < n) lado[i] = LadoPie(p, zi, vi);
+        }
+        p.piernas = pasosIK && p.bucle && p.nombre == Caminar ? PrepararPiernas(p, lado) : null;
+        p.valida = vAntes;
+        p.tiempo = tAntes;
+        p.correccion = tabla;
+        Evaluar(p);
+    }
+
+    void AplicarSuelo(Pose p)
+    {
+        if (p.correccion == null || p.env == null) return;
+        float largo = Largo(p);
+        float f = TiempoPose(p, largo) / largo * (p.correccion.Length - 1);
+        int i = Mathf.Clamp(Mathf.FloorToInt(f), 0, p.correccion.Length - 1);
+        int j = Mathf.Min(i + 1, p.correccion.Length - 1);
+        float c = Mathf.Lerp(p.correccion[i], p.correccion[j], f - i) + ajustePiso;
+        p.env.localPosition = p.envBase + p.env.parent.InverseTransformVector(transform.TransformVector(new Vector3(0f, c, 0f)));
+    }
+
+    // El piso de verdad debajo del personaje (el NavMesh puede quedar unos cm por encima del suelo): si esta cerca,
+    // los pies se apoyan en el. Si no hay piso cerca (o es otra cosa), se queda la altura del NavMesh
+    void PisoReal(float dt)
+    {
+        Vector3 arriba = transform.up;
+        Vector3 piso = transform.TransformPoint(new Vector3(0f, suelo, 0f));
+        int n = Physics.RaycastNonAlloc(piso + arriba * 0.5f, -arriba, golpes, 1f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float objetivo = 0f, mejor = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            if (golpes[i].collider == null || golpes[i].collider.transform.IsChildOf(transform)) continue;
+            if (golpes[i].collider.attachedRigidbody != null && !golpes[i].collider.attachedRigidbody.isKinematic) continue;   // el jugador, cosas sueltas
+            float d = Vector3.Dot(golpes[i].point - piso, arriba);
+            if (Mathf.Abs(d) > 0.3f) continue;
+            if (golpes[i].distance < mejor) { mejor = golpes[i].distance; objetivo = d / Mathf.Max(0.0001f, transform.lossyScale.y); }
+        }
+        ajustePiso = Mathf.Lerp(ajustePiso, objetivo, 1f - Mathf.Exp(-12f * dt));
+    }
+
+    // ------------------------------------------------------------------ Vista previa (editor)
+
+    // Deja visible la pose 'nombre' en el momento t (0..1 del clip), con los pies en el suelo, sin dar Play
+    public void Previsualizar(string nombre, float t01)
+    {
+        Preparar();
+        Pose p = Buscar(nombre) ?? Primera(Caminar, Idle, Correr);
+        if (p == null) return;
+        foreach (Pose q in poses) Mostrar(q, false);
+        actual = p;
+        Mostrar(p, true);
+        p.tiempo = Largo(p) * Mathf.Clamp01(t01);
+        Evaluar(p);
+    }
+
+    public void Liberar()
+    {
+        foreach (Pose p in poses) if (p != null && p.grafo.IsValid()) p.grafo.Destroy();
+        preparado = false;
     }
 
     [Tooltip("NPCs (sin IA): al empezar, cada pose se centra en el personaje y se apoya en el piso (y si mide algo absurdo, se lleva a 'altoNPC')")]
@@ -368,7 +750,7 @@ public class AnimacionesModelo : MonoBehaviour
                 if (!hay) { b = new Bounds(w, Vector3.zero); hay = true; } else b.Encapsulate(w);
             }
         }
-        Destroy(malla);
+        if (Application.isPlaying) Destroy(malla); else DestroyImmediate(malla);
         return hay;
     }
 

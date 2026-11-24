@@ -4,15 +4,27 @@ using UnityEngine.AI;
 using UnityEngine.UI;
 
 // Muerte del gato de sombra de los Backrooms (la usa PantallaMuerte en vez de su giro normal):
-// el gato empuja al protagonista al suelo (la camara cae y queda mirando para arriba), se le sube al pecho y lo
-// mira a los ojos; la camara tiembla, hace zoom y la imagen se llena de estatica y cortes (glitch).
-// Despues sigue la pantalla de muerte de siempre. Va en el gato (lo agrega BackroomsGuion).
+// el jugador voltea a ver hacia el gato, el gato se agazapa y SALTA hacia su cara; suena "sonido kill" (solo lo que
+// dura la accion: se corta con un fundido mientras la pantalla se va a negro), la camara tiembla y la imagen se llena
+// de estatica y cortes (glitch). Despues sigue la pantalla de muerte de siempre. Va en el gato (lo agrega BackroomsGuion).
 public class MuerteGato : MonoBehaviour
 {
+    [Tooltip("Sonido del salto (sonido kill enemigo 2 y 4): empieza al saltar y se corta al irse a negro")]
+    public AudioClip sonidoKill;
+    [Tooltip("Segundo del audio desde el que empieza (se salta el silencio del principio)")]
+    public float inicioKill;
+    [Range(0f, 1f)] public float volumenKill = 1f;
     [Tooltip("Audio de estatica (opcional)")]
     public AudioClip estatica;
     [Range(0f, 1f)] public float volumenEstatica = 0.8f;
-    public float duracionCaida = 0.38f, duracionSalto = 0.45f, duracionMirada = 1.5f;
+    public float duracionGiro = 0.42f, duracionAgazapado = 0.22f, duracionSalto = 0.32f, duracionImpacto = 0.5f;
+    [Tooltip("Segundos que sigue sonando el kill despues de saltar encima (mientras la pantalla se va a negro)")]
+    public float colaKill = 0.9f;
+
+    // Con sonido propio la pantalla de muerte no pone el suyo
+    public bool TieneSonido => sonidoKill != null;
+
+    AudioSource fuenteKill;
 
     public IEnumerator Animar(Transform cam, Transform cuerpo)
     {
@@ -21,56 +33,114 @@ public class MuerteGato : MonoBehaviour
         Camera c = cam.GetComponent<Camera>();
         float fov = c != null ? c.fieldOfView : 60f;
 
-        // ---- 1. Cae al suelo de espaldas: la camara baja y queda mirando hacia arriba, hacia el gato
-        Vector3 haciaGato = transform.position - cam.position; haciaGato.y = 0f;
+        // Donde esta el cuerpo del gato respecto a su raiz (el modelo cuelga del agente): se mantiene al moverlo
+        Bounds b0 = Limites();
+        Vector3 offsetLocal = Quaternion.Inverse(transform.rotation) * (b0.center - transform.position);
+        Vector3 Centro() => transform.position + transform.rotation * offsetLocal;
+        void PonerCentro(Vector3 centro, Quaternion rot) => transform.SetPositionAndRotation(centro - rot * offsetLocal, rot);
+
+        // Si esta pegado, se lo aparta un poco hacia atras (asi el salto se ve), sin meterlo en una pared
+        Vector3 haciaGato = Centro() - cam.position; haciaGato.y = 0f;
         if (haciaGato.sqrMagnitude < 0.01f) haciaGato = cam.forward;
-        haciaGato.Normalize();
-        float suelo = cuerpo != null ? cuerpo.position.y : cam.position.y - 1.6f;
-        if (Physics.Raycast(cam.position, Vector3.down, out RaycastHit h, 4f, ~0, QueryTriggerInteraction.Ignore)) suelo = h.point.y;
-        Vector3 posSuelo = new Vector3(cam.position.x, suelo + 0.28f, cam.position.z) - haciaGato * 0.3f;
-        Quaternion rotSuelo = Quaternion.LookRotation(haciaGato, Vector3.up) * Quaternion.Euler(-62f, 0f, 14f);
-        Vector3 posIni = cam.position;
-        Quaternion rotIni = cam.rotation;
-        for (float t = 0f; t < duracionCaida; t += Time.deltaTime)
+        haciaGato.y = 0f; haciaGato.Normalize();
+        float dist = new Vector2(Centro().x - cam.position.x, Centro().z - cam.position.z).magnitude;
+        if (dist < 1.5f)
         {
-            float k = Jugo.EntradaCubica(t / duracionCaida);
-            cam.SetPositionAndRotation(Vector3.Lerp(posIni, posSuelo, k), Quaternion.Slerp(rotIni, rotSuelo, k));
+            float atras = 1.5f - dist;
+            Vector3 suelo = new Vector3(Centro().x, b0.min.y + 0.1f, Centro().z);
+            if (Physics.Raycast(suelo, haciaGato, out RaycastHit hp, atras + 0.3f, ~0, QueryTriggerInteraction.Ignore)) atras = Mathf.Max(0f, hp.distance - 0.3f);
+            PonerCentro(Centro() + haciaGato * atras, Quaternion.LookRotation(-haciaGato, Vector3.up));
+        }
+        else transform.rotation = Quaternion.LookRotation(-haciaGato, Vector3.up);
+
+        // ---- 1. Voltea a ver hacia el gato
+        Quaternion rotIni = cam.rotation;
+        Glitch glitch = new Glitch();
+        for (float t = 0f; t < duracionGiro; t += Time.deltaTime)
+        {
+            float k = Jugo.SalidaCubica(t / duracionGiro);
+            cam.rotation = Quaternion.Slerp(rotIni, Quaternion.LookRotation(Cabeza() - cam.position), k);
             yield return null;
         }
-        cam.SetPositionAndRotation(posSuelo, rotSuelo);
-        Jugo.Sacudir(0.7f);
-        Glitch glitch = new Glitch();
-        if (estatica != null) AudioSource.PlayClipAtPoint(estatica, cam.position, volumenEstatica);
 
-        // ---- 2. El gato salta y se le sube al pecho, de frente
-        Vector3 desde = transform.position;
-        Vector3 pecho = new Vector3(posSuelo.x, suelo, posSuelo.z) + haciaGato * 0.55f;
-        Quaternion rotGato = Quaternion.LookRotation(-haciaGato, Vector3.up);
-        Quaternion rotDesde = transform.rotation;
+        // ---- 2. Se agazapa (baja un poco y se echa atras)
+        Vector3 inicio = Centro();
+        Quaternion rotGato = transform.rotation;
+        for (float t = 0f; t < duracionAgazapado; t += Time.deltaTime)
+        {
+            float k = Mathf.Sin(Mathf.Clamp01(t / duracionAgazapado) * Mathf.PI * 0.5f);
+            PonerCentro(inicio - Vector3.up * 0.06f * k - transform.forward * 0.05f * k, rotGato);
+            cam.rotation = Quaternion.Slerp(cam.rotation, Quaternion.LookRotation(Cabeza() - cam.position), 1f - Mathf.Exp(-14f * Time.deltaTime));
+            yield return null;
+        }
+
+        // ---- 3. Salta a la cara: suena el kill
+        Sonar();
+        if (estatica != null) AudioSource.PlayClipAtPoint(estatica, cam.position, volumenEstatica);
+        Vector3 desde = Centro();
+        Vector3 cara = cam.position + cam.forward * 0.55f - Vector3.up * 0.05f;
+        Quaternion rotCara = Quaternion.LookRotation(cam.position - cara, Vector3.up);
         for (float t = 0f; t < duracionSalto; t += Time.deltaTime)
         {
-            float k = Jugo.SalidaCubica(t / duracionSalto);
-            Vector3 p = Vector3.Lerp(desde, pecho, k) + Vector3.up * (Mathf.Sin(k * Mathf.PI) * 0.45f + k * 0.12f);
-            transform.SetPositionAndRotation(p, Quaternion.Slerp(rotDesde, rotGato, k));
-            cam.rotation = Quaternion.Slerp(rotSuelo, Quaternion.LookRotation(Cabeza() - cam.position), k);
-            glitch.Nivel(0.25f * k);
+            float k = Jugo.EntradaCubica(t / duracionSalto);
+            Vector3 p = Vector3.Lerp(desde, cara, k) + Vector3.up * (Mathf.Sin(k * Mathf.PI) * 0.3f);
+            PonerCentro(p, Quaternion.Slerp(rotGato * Quaternion.Euler(-25f, 0f, 0f), rotCara, k));
+            if (c != null) c.fieldOfView = Mathf.Lerp(fov, fov - 8f, k);
+            glitch.Nivel(0.35f * k);
             yield return null;
         }
-        Jugo.Sacudir(0.5f);
+        PonerCentro(cara, rotCara);
+        Jugo.Sacudir(0.8f);
 
-        // ---- 3. Lo mira a los ojos: zoom lento, temblor y estatica cada vez mas fuerte
-        for (float t = 0f; t < duracionMirada; t += Time.deltaTime)
+        // ---- 4. Encima: temblor fuerte, estatica y cortes
+        for (float t = 0f; t < duracionImpacto; t += Time.deltaTime)
         {
-            float k = t / duracionMirada;
-            Vector3 temblor = new Vector3(Mathf.PerlinNoise(t * 30f, 0f) - 0.5f, Mathf.PerlinNoise(0f, t * 33f) - 0.5f, 0f) * (4f + 10f * k);
-            cam.rotation = Quaternion.LookRotation(Cabeza() - cam.position) * Quaternion.Euler(temblor.y, temblor.x, (Mathf.PerlinNoise(t * 20f, 5f) - 0.5f) * 10f * k);
-            if (c != null) c.fieldOfView = Mathf.Lerp(fov, fov - 18f, Jugo.SalidaCubica(k));
-            glitch.Nivel(Mathf.Lerp(0.25f, 0.8f, k));
+            float k = t / duracionImpacto;
+            Vector3 temblor = new Vector3(Mathf.PerlinNoise(t * 38f, 0f) - 0.5f, Mathf.PerlinNoise(0f, t * 41f) - 0.5f, 0f) * (16f * (1f - k * 0.5f));
+            cam.rotation = Quaternion.LookRotation(Centro() - cam.position) * Quaternion.Euler(temblor.y, temblor.x, (Mathf.PerlinNoise(t * 22f, 5f) - 0.5f) * 14f);
+            PonerCentro(cara + Random.insideUnitSphere * 0.015f, rotCara);
+            glitch.Nivel(Mathf.Lerp(0.6f, 0.9f, k));
             yield return null;
         }
 
-        // La pantalla de muerte sigue (a negro); cuando ya no se ve, todo vuelve a su sitio
+        // La pantalla de muerte sigue (a negro); el kill se apaga y todo vuelve a su sitio cuando ya no se ve
         StartCoroutine(Limpiar(agent, c, fov, glitch));
+    }
+
+    // El kill empieza en el salto y solo dura la accion (salto + impacto + un poco mientras se va a negro)
+    void Sonar()
+    {
+        if (sonidoKill == null) return;
+        var go = new GameObject("Sonido Kill Gato");
+        fuenteKill = go.AddComponent<AudioSource>();
+        fuenteKill.clip = sonidoKill;
+        fuenteKill.volume = volumenKill;
+        fuenteKill.spatialBlend = 0f;
+        fuenteKill.priority = 0;
+        fuenteKill.time = Mathf.Clamp(inicioKill, 0f, Mathf.Max(0f, sonidoKill.length - 0.05f));
+        fuenteKill.Play();
+        StartCoroutine(CortarKill(fuenteKill, duracionSalto + duracionImpacto + colaKill));
+    }
+
+    static IEnumerator CortarKill(AudioSource a, float duracion)
+    {
+        const float fundido = 0.4f;
+        yield return new WaitForSeconds(Mathf.Max(0f, duracion - fundido));
+        float v0 = a != null ? a.volume : 0f;
+        for (float t = 0f; t < fundido && a != null; t += Time.deltaTime) { a.volume = v0 * (1f - t / fundido); yield return null; }
+        if (a != null) Destroy(a.gameObject);
+    }
+
+    Bounds Limites()
+    {
+        Bounds b = new Bounds(transform.position, Vector3.one * 0.3f);
+        bool hay = false;
+        foreach (Renderer r in GetComponentsInChildren<Renderer>())
+        {
+            if (!r.enabled) continue;
+            if (!hay) { b = r.bounds; hay = true; } else b.Encapsulate(r.bounds);
+        }
+        return b;
     }
 
     // Donde mirar: la cabeza del gato (la parte de adelante y arriba de su modelo)

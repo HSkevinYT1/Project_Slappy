@@ -217,10 +217,10 @@ public class PantallaMuerte : MonoBehaviour
         Transform camT = camara != null ? camara.transform : null;
         if (camT != null) { camPosLocal = camT.localPosition; camRotLocal = camT.localRotation; }
 
-        Golpe();
-
-        // Algunos enemigos tienen su propia muerte (ej: el gato de los Backrooms te tira al suelo y se sube encima)
+        // Algunos enemigos tienen su propia muerte (ej: el gato de los Backrooms: volteas y salta a tu cara), con su
+        // propio sonido (que suena en el salto y solo lo que dura): entonces no suena el golpe de siempre
         MuerteGato especial = enemigo != null ? enemigo.GetComponentInParent<MuerteGato>() : null;
+        if (especial == null || !especial.TieneSonido) Golpe();
         if (especial != null && camT != null)
         {
             vineta.color = new Color(0f, 0f, 0f, 0.6f);

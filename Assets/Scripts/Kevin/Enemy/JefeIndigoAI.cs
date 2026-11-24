@@ -63,6 +63,17 @@ public class JefeIndigoAI : MonoBehaviour
     [Tooltip("Hasta donde se oyen sus gritos (m)")]
     public float distanciaSonido = 35f;
 
+    [Header("Grito (animacion)")]
+    [Tooltip("Si el modelo tiene animacion de grito: al gritar (al verte y los gritos de ambiente) se queda quieto " +
+             "haciendola. Al verte grita de frente a ti y despues sale a perseguirte")]
+    public bool pararAlGritar = true;
+    // Largo de la animacion de grito (lo pone AnimacionesModelo; 0 = el modelo no tiene grito)
+    [System.NonSerialized] public float duracionAnimGrito;
+    public bool Gritando => Time.time < finGrito;
+    // 0..1: por donde va el grito (la animacion se estira un poco para durar lo que dura el sonido)
+    public float ProgresoGrito => duracionGrito > 0f ? Mathf.Clamp01((Time.time - inicioGrito) / duracionGrito) : 1f;
+    private float inicioGrito = -999f, finGrito = -1f, duracionGrito;
+
     public UnityEvent onPlayerSpotted;
     public UnityEvent onPlayerCaught;
 
@@ -181,6 +192,13 @@ public class JefeIndigoAI : MonoBehaviour
         v.clip = clip;
         v.volume = volumenSonidos;
         v.Play();
+        // Animacion de grito: dura lo que el sonido (entre 0.8x y 1.6x la velocidad normal de la animacion)
+        if (duracionAnimGrito > 0f)
+        {
+            duracionGrito = Mathf.Clamp(clip.length, duracionAnimGrito / 1.6f, duracionAnimGrito / 0.8f);
+            inicioGrito = Time.time;
+            finGrito = Time.time + duracionGrito;
+        }
     }
 
     void SonidoAmbiente()
@@ -216,7 +234,23 @@ public class JefeIndigoAI : MonoBehaviour
             case State.Search: UpdateSearch(); break;
         }
 
-        if (CurrentState != State.Caught) agent.speed = velocidadBase * MultiplicadorDistancia();
+        if (CurrentState != State.Caught)
+        {
+            if (Gritando && pararAlGritar)
+            {
+                // Quieto mientras grita (con la velocidad: no toca isStopped, que usa la busqueda); si te persigue, de frente a ti
+                agent.speed = 0f;
+                agent.velocity = Vector3.zero;
+                if (CurrentState == State.Chase && target != null)
+                {
+                    Vector3 dir = target.position - transform.position;
+                    dir.y = 0f;
+                    if (dir.sqrMagnitude > 0.01f)
+                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 1f - Mathf.Exp(-8f * Time.deltaTime));
+                }
+            }
+            else agent.speed = velocidadBase * MultiplicadorDistancia();
+        }
         SonidoAmbiente();
         AcercarseSiLejos();
         Acechar();
@@ -694,6 +728,7 @@ public class JefeIndigoAI : MonoBehaviour
             agent.velocity = Vector3.zero;
         }
         // La primera patrulla sale desde alli, sin perseguir a nadie (y sin recordar donde lo vio)
+        finGrito = -1f;
         lastSeenTime = -999f;
         vistoAlguna = false;
         if (enabled && agent.isOnNavMesh) EnterState(State.Patrol);

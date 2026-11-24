@@ -25,6 +25,9 @@ public class BackroomsGuion : MonoBehaviour
     [Tooltip("Metros hacia adentro que tiene que avanzar el jugador para que pase")]
     public float metrosEntrada = 4f;
     [TextArea] public string alEntrar = "Es en serio... otra vez.";
+    [Tooltip("Suena mientras la puerta se desvanece (el muro parpadea)")]
+    public AudioClip sonidoGlitch;
+    [Range(0f, 1f)] public float volumenGlitch = 0.8f;
 
     [Header("La habitacion del cadaver")]
     public BoxCollider habitacion;
@@ -55,6 +58,23 @@ public class BackroomsGuion : MonoBehaviour
     public float maxSegundosIrse = 6f;
     [Tooltip("Metros de error al ir a buscar al jugador cuando reaparece (no va directo)")]
     public float errorPersecucion = 3f;
+    [Tooltip("Puerta de la sala por la que llega el jugador (centro, a ras del piso; su eje azul apunta hacia dentro). " +
+             "Con ella el jugador se asoma por el marco: mitad pared y mitad gato, y cuando el gato se va, 3/4 pared")]
+    public Transform puertaSala;
+    public float anchoPuertaSala = 1.3f;
+    [Tooltip("A que distancia (m) de la pared se pone la camara al asomarse")]
+    public float distanciaAsomarse = 0.55f;
+    [Tooltip("Cuanto se inclina la cabeza al asomarse (grados)")]
+    public float inclinacionAsomarse = 7f;
+    [Tooltip("Suspiro rapido cuando el gato se empieza a mover (y el jugador se esconde mas)")]
+    public AudioClip suspiro;
+    [Range(0f, 1f)] public float volumenSuspiro = 0.85f;
+
+    [Header("Muerte del gato")]
+    [Tooltip("Sonido cuando el gato salta sobre el jugador (MuerteGato): suena solo lo que dura el salto")]
+    public AudioClip sonidoKill;
+    [Tooltip("Segundo del audio desde el que empieza (se salta el silencio del principio)")]
+    public float inicioKill;
 
     public bool Entro { get; private set; }
     public bool GatoSuelto { get; private set; }
@@ -76,7 +96,9 @@ public class BackroomsGuion : MonoBehaviour
         if (muroEntrada != null) muroEntrada.SetActive(false);
         if (gato != null)
         {
-            if (!gato.GetComponent<MuerteGato>()) gato.gameObject.AddComponent<MuerteGato>();
+            MuerteGato muerte = gato.GetComponent<MuerteGato>();
+            if (!muerte) muerte = gato.gameObject.AddComponent<MuerteGato>();
+            if (muerte.sonidoKill == null) { muerte.sonidoKill = sonidoKill; muerte.inicioKill = inicioKill; }
             StartCoroutine(PonerGato());
         }
     }
@@ -192,8 +214,10 @@ public class BackroomsGuion : MonoBehaviour
 
     static float Suave(float rapidez) => 1f - Mathf.Exp(-rapidez * Time.deltaTime);
 
-    // El jugador ve al gato lamiendose la pata al lado del cadaver; el gato se va por la otra puerta y, ya fuera de la
-    // vista, se lo teletransporta a la habitacion lejana para que salga a buscarlo
+    // El jugador ve al gato lamiendose la pata al lado del cadaver. Si llega por la puerta de la sala, se ASOMA por el
+    // marco: la mitad de la imagen es la pared y la otra mitad el gato; cuando el gato se empieza a mover se esconde mas
+    // (3/4 pared, 1/4 viendo como se va) con un suspiro. El gato se va por la otra puerta y, ya fuera de la vista, se lo
+    // teletransporta a la habitacion lejana para que salga a buscarlo
     IEnumerator CinematicaGato()
     {
         EnCinematica = true;
@@ -206,12 +230,27 @@ public class BackroomsGuion : MonoBehaviour
         foreach (HeadBob h in jugador.GetComponentsInChildren<HeadBob>()) Apagar(h);
         foreach (PlayerInteractor p in jugador.GetComponentsInChildren<PlayerInteractor>()) Apagar(p);
         Rigidbody rb = jugador.GetComponent<Rigidbody>();
-        if (rb != null && !rb.isKinematic) rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        bool cinematico = rb != null && rb.isKinematic;
+        if (rb != null && !rb.isKinematic) { rb.linearVelocity = Vector3.zero; rb.isKinematic = true; }   // se lo mueve a mano
         Transform ct = cam != null ? cam.transform : null;
         Quaternion camIni = ct != null ? ct.localRotation : Quaternion.identity;
 
-        // 1. Se gira hacia el gato
-        for (float t = 0f; t < 0.9f; t += Time.deltaTime) { MirarHacia(CuerpoGato(), Suave(5f), rb, ct); yield return null; }
+        // Por donde se va el gato: la salida mas lejos del jugador
+        Transform salida = huidaGato;
+        if (huidaGatoAlterna != null && (salida == null ||
+            (huidaGatoAlterna.position - jugador.position).sqrMagnitude > (salida.position - jugador.position).sqrMagnitude))
+            salida = huidaGatoAlterna;
+
+        Marco marco = default;
+        bool asomarse = ct != null && cam != null && PrepararMarco(salida, ref marco);
+
+        // 1. Se gira hacia el gato (asomandose por el marco si llego por la puerta)
+        for (float t = 0f; t < 1f; t += Time.deltaTime)
+        {
+            if (asomarse) Asomarse(marco, marco.mitad, false, Suave(4.5f), rb, ct);
+            else MirarHacia(CuerpoGato(), Suave(5f), rb, ct);
+            yield return null;
+        }
         Jugo.Sacudir(0.12f);
 
         // 2. Lo mira lamerse la pata (su Idle)
@@ -219,18 +258,16 @@ public class BackroomsGuion : MonoBehaviour
         for (float t = 0f; t < segundosMirando; t += Time.deltaTime)
         {
             if (!dicho && t > 0.35f) { dicho = true; Pensamiento.Decir("backrooms.gato", 0f, alVerGato); }
-            MirarHacia(CuerpoGato(), Suave(6f), rb, ct);
+            if (asomarse) Asomarse(marco, marco.mitad, false, Suave(5f), rb, ct);
+            else MirarHacia(CuerpoGato(), Suave(6f), rb, ct);
             yield return null;
         }
         if (!dicho) Pensamiento.Decir("backrooms.gato", 0f, alVerGato);
 
-        // 3. Se levanta y se va caminando por la puerta mas lejos del jugador; la camara lo sigue hasta que sale de la vista
-        Transform salida = huidaGato;
-        if (huidaGatoAlterna != null && (salida == null ||
-            (huidaGatoAlterna.position - jugador.position).sqrMagnitude > (salida.position - jugador.position).sqrMagnitude))
-            salida = huidaGatoAlterna;
+        // 3. Se levanta y se va caminando; el jugador se esconde mas (suspiro) y lo sigue con la mirada hasta que sale
         if (agent != null && agent.isOnNavMesh && salida != null)
         {
+            Sonar(suspiro, volumenSuspiro);
             agent.updateRotation = true;
             agent.isStopped = false;
             agent.speed = velocidadIrse;
@@ -240,7 +277,8 @@ public class BackroomsGuion : MonoBehaviour
             {
                 Vector3 p = CuerpoGato();
                 bool ve = LoVe(p);
-                if (ve) MirarHacia(p, Suave(4f), rb, ct);
+                if (asomarse) Asomarse(marco, marco.cuarto, true, Suave(3.5f), rb, ct);
+                else if (ve) MirarHacia(p, Suave(4f), rb, ct);
                 sinVerlo = ve ? 0f : sinVerlo + Time.deltaTime;
                 if (sinVerlo > 0.35f) break;   // ya salio de la vista
                 if (t > 0.5f && !agent.pathPending && agent.remainingDistance < 0.4f) break;
@@ -252,18 +290,130 @@ public class BackroomsGuion : MonoBehaviour
         // 4. Fuera de la vista: a la habitacion lejana, y a buscar al jugador
         yield return Reaparecer();
 
-        // 5. La camara vuelve a su altura de antes (la de MouseLook) y se devuelven los controles
+        // 5. La camara vuelve a su altura de antes (la de MouseLook), sin inclinarse, y se devuelven los controles
         if (ct != null)
         {
             Quaternion desde = ct.localRotation;
-            for (float t = 0f; t < 0.35f; t += Time.deltaTime) { ct.localRotation = Quaternion.Slerp(desde, camIni, Mathf.SmoothStep(0f, 1f, t / 0.35f)); yield return null; }
+            for (float t = 0f; t < 0.4f; t += Time.deltaTime) { ct.localRotation = Quaternion.Slerp(desde, camIni, Mathf.SmoothStep(0f, 1f, t / 0.4f)); yield return null; }
             ct.localRotation = camIni;
         }
+        if (rb != null && !cinematico) rb.isKinematic = false;
         foreach (Behaviour b in apagados) if (b != null) b.enabled = true;
         EnCinematica = false;
         if (PantallaMuerte.Instance != null && !PantallaMuerte.Muerto) PantallaMuerte.Instance.Guardar();
     }
 
+    // ------------------------------------------------------------------ Asomarse por el marco de la puerta
+
+    struct Marco
+    {
+        public Vector3 jamba;      // la esquina del marco que tapa (del lado de afuera), a ras del piso
+        public Vector3 adentro;    // hacia dentro de la sala (perpendicular a la pared)
+        public Vector3 hueco;      // desde la jamba hacia el centro de la puerta (el lado que se ve)
+        public float lado;         // +1 si lo que se ve queda a la derecha de la imagen, -1 si a la izquierda
+        public float mitad, cuarto;   // separacion (grados) gato-jamba para que el gato quede en el centro de lo que se ve
+        public float giroCuarto;   // cuanto se gira la vista hacia la pared para que la jamba quede a 1/4 del borde
+    }
+
+    // Solo si el jugador esta afuera de la sala, cerca de la puerta. Se elige la jamba que deja a la vista el camino del
+    // gato hacia su salida (asi lo puede ver irse)
+    bool PrepararMarco(Transform salida, ref Marco m)
+    {
+        if (puertaSala == null) return false;
+        Vector3 adentro = puertaSala.forward; adentro.y = 0f; adentro.Normalize();
+        Vector3 rel = jugador.position - puertaSala.position; rel.y = 0f;
+        if (Vector3.Dot(rel, adentro) > -0.05f || rel.magnitude > 6f) return false;   // ya esta adentro o lejos
+        Vector3 der = Vector3.Cross(Vector3.up, adentro);
+        Vector3 objetivo = salida != null ? salida.position : CuerpoGato();
+        float mejor = float.MinValue;
+        foreach (float s in new[] { 1f, -1f })
+        {
+            Vector3 j = puertaSala.position + der * (s * anchoPuertaSala * 0.5f) - adentro * 0.1f;
+            Vector3 hueco = -der * s;
+            float puntos = Vector3.Dot(objetivo - j, hueco);
+            if (puntos > mejor) { mejor = puntos; m.jamba = new Vector3(j.x, 0f, j.z); m.hueco = hueco; }
+        }
+        m.adentro = adentro;
+        m.lado = Mathf.Sign(Vector3.SignedAngle(adentro, m.hueco, Vector3.up));
+        // Del campo de vision horizontal de la camara: donde cae cada fraccion de la imagen
+        float tanH = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * cam.aspect;
+        float a50 = Mathf.Atan(0.5f * tanH) * Mathf.Rad2Deg, a75 = Mathf.Atan(0.75f * tanH) * Mathf.Rad2Deg;
+        m.mitad = a50;           // jamba en el centro, gato en el centro de la mitad que se ve (a 1/4 del borde)
+        m.cuarto = a75 - a50;    // jamba a 1/4 del borde, gato en el centro de ese cuarto (a 1/8 del borde)
+        m.giroCuarto = a50;
+        return true;
+    }
+
+    // Angulo horizontal (grados, + hacia la derecha) de un punto visto desde c, respecto a "adentro"
+    static float Angulo(Vector3 c, Vector3 punto, Vector3 adentro)
+    {
+        Vector3 d = punto - c; d.y = 0f;
+        return Vector3.SignedAngle(adentro, d, Vector3.up);
+    }
+
+    // Lleva la camara a donde, a "distanciaAsomarse" de la pared, el gato queda a "separacion" grados de la jamba
+    // (del lado que se ve), con la vista apuntando a la jamba (o girada hacia la pared en el tramo de 3/4)
+    void Asomarse(Marco m, float separacion, bool escondido, float k, Rigidbody rb, Transform ct)
+    {
+        Vector3 gatoP = CuerpoGato();
+        Vector3 Posicion(float u) => m.jamba - m.adentro * distanciaAsomarse + m.hueco * u;
+        float Sep(float u) { Vector3 c = Posicion(u); return m.lado * (Angulo(c, gatoP, m.adentro) - Angulo(c, m.jamba, m.adentro)); }
+        // Sep crece al pararse mas frente al hueco: se busca el punto exacto (biseccion)
+        float lo = -1.3f, hi = 0.9f;
+        float u;
+        if (Sep(lo) >= separacion) u = lo;
+        else if (Sep(hi) <= separacion) u = hi;
+        else
+        {
+            for (int i = 0; i < 24; i++) { float mid = (lo + hi) * 0.5f; if (Sep(mid) < separacion) lo = mid; else hi = mid; }
+            u = (lo + hi) * 0.5f;
+        }
+        Vector3 objetivo = Posicion(u);
+
+        // Mueve el cuerpo para que la camara quede ahi (en horizontal)
+        Vector3 camPos = ct.position;
+        Vector3 delta = new Vector3(objetivo.x - camPos.x, 0f, objetivo.z - camPos.z) * k;
+        Vector3 cuerpo = (rb != null ? rb.position : jugador.position) + delta;
+        if (rb != null) rb.MovePosition(cuerpo); else jugador.position = cuerpo;
+
+        // Vista: hacia la jamba (mitad y mitad) o girada hacia la pared (3/4 pared)
+        Vector3 haciaJamba = m.jamba - (camPos + delta); haciaJamba.y = 0f;
+        if (haciaJamba.sqrMagnitude < 1e-4f) return;
+        float giro = escondido ? -m.lado * m.giroCuarto : 0f;
+        Quaternion yaw = Quaternion.AngleAxis(giro, Vector3.up) * Quaternion.LookRotation(haciaJamba.normalized);
+        Quaternion actual = rb != null ? rb.rotation : jugador.rotation;
+        Quaternion r = Quaternion.Slerp(actual, yaw, k);
+        if (rb != null) rb.MoveRotation(r); else jugador.rotation = r;
+
+        // Arriba/abajo hacia el gato, y la cabeza inclinada hacia el lado por el que se asoma
+        Vector3 d = gatoP - ct.position;
+        float pitch = Mathf.Clamp(-Mathf.Atan2(d.y, new Vector2(d.x, d.z).magnitude) * Mathf.Rad2Deg, -40f, 40f);
+        float roll = -m.lado * inclinacionAsomarse * (escondido ? 0.6f : 1f);
+        ct.localRotation = Quaternion.Slerp(ct.localRotation, Quaternion.Euler(pitch, 0f, roll), k);
+    }
+
+    // Sonido 2D corto (si se da "duracion", se corta con un fundido al llegar)
+    void Sonar(AudioClip clip, float volumen, float desde = 0f, float duracion = -1f)
+    {
+        if (clip == null) return;
+        var go = new GameObject("Sonido " + clip.name);
+        var a = go.AddComponent<AudioSource>();
+        a.clip = clip; a.volume = volumen; a.spatialBlend = 0f; a.playOnAwake = false;
+        a.time = Mathf.Clamp(desde, 0f, Mathf.Max(0f, clip.length - 0.05f));
+        a.Play();
+        float vida = duracion > 0f ? duracion : clip.length - a.time;
+        if (duracion > 0f) StartCoroutine(Fundir(a, duracion));
+        Destroy(go, vida + 0.3f);
+    }
+
+    static IEnumerator Fundir(AudioSource a, float duracion)
+    {
+        float fundido = Mathf.Min(0.25f, duracion * 0.4f);
+        yield return new WaitForSeconds(duracion - fundido);
+        float v0 = a != null ? a.volume : 0f;
+        for (float t = 0f; t < fundido && a != null; t += Time.deltaTime) { a.volume = v0 * (1f - t / fundido); yield return null; }
+        if (a != null) a.Stop();
+    }
 
     // Lo teletransporta a la habitacion lejana (si el jugador anda justo por ahi, a la otra punta de los Backrooms),
     // le devuelve su IA y lo manda a buscar al jugador
@@ -350,6 +500,7 @@ public class BackroomsGuion : MonoBehaviour
             Renderer[] rs = muroEntrada.GetComponentsInChildren<Renderer>(true);
             muroEntrada.SetActive(true);
             float[] tiempos = { 0.06f, 0.08f, 0.05f, 0.12f, 0.05f, 0.2f };
+            Sonar(sonidoGlitch, volumenGlitch);   // estatica a tirones, al ritmo del parpadeo
             for (int i = 0; i < tiempos.Length; i++)
             {
                 foreach (Renderer r in rs) r.enabled = i % 2 == 0;

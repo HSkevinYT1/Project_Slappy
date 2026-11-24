@@ -111,6 +111,26 @@ public static class CapturasEditor
                 n++;
                 continue;
             }
+            // pose:<ruta>;<pose>;<t 0-1>;<nombre>;<giro>;<inclinacion>;<distancia m>;<altura a mirar m>;<oscuro 0/1>
+            // -> foto del prefab con esa pose animada (AnimacionesModelo.Previsualizar, pies en el suelo incluidos), sobre un
+            //    piso donde pisa y con bloom. giro 180 = de frente. oscuro = solo una linterna (para ver lo que brilla)
+            if (l.Trim().StartsWith("pose:"))
+            {
+                string[] q = l.Trim().Substring(5).Split(';');
+                float G(int i) => float.Parse(q[i], System.Globalization.CultureInfo.InvariantCulture);
+                CapturarPose(q[0], q[1], G(2), q[3], G(4), G(5), G(6), G(7), q.Length > 8 && q[8].Trim() == "1");
+                n++;
+                continue;
+            }
+            // pasos:<ruta>;<velocidad m/s>;<nombre>  -> simula 6 s caminando hacia adelante (sin Play) con AnimacionesModelo,
+            // apunta en Temp/Capturas/<nombre>.txt cuanto resbala el pie apoyado y saca 4 fotos de perfil de un paso
+            if (l.Trim().StartsWith("pasos:"))
+            {
+                string[] q = l.Trim().Substring(6).Split(';');
+                SimularPasos(q[0], float.Parse(q[1], System.Globalization.CultureInfo.InvariantCulture), q[2]);
+                n++;
+                continue;
+            }
             // colorMaterial:<prefijo de nombre>:r,g,b  -> cambia _BaseColor de los materiales de la escena que empiecen asi
             if (l.Trim().StartsWith("colorMaterial:"))
             {
@@ -227,6 +247,225 @@ public static class CapturasEditor
         Object.DestroyImmediate(tex);
         Object.DestroyImmediate(rt);
         UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(escena);
+    }
+
+    // Foto de un prefab animado (AnimacionesModelo) en una pose y momento dados, en una escena de vista previa.
+    public static void CapturarPose(string ruta, string pose, float t, string nombre, float giro, float inclinacion,
+        float distancia, float alturaMirar, bool oscuro, int ancho = 1280, int alto = 720)
+    {
+        GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(ruta);
+        if (!asset) { Debug.LogWarning("[Capturas] No encuentro " + ruta); return; }
+        Directory.CreateDirectory(Carpeta);
+        var escena = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+        var tirar = new System.Collections.Generic.List<Object>();
+        GameObject Nuevo(string n)
+        {
+            var g = new GameObject(n);
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(g, escena);
+            return g;
+        }
+        var inst = (GameObject)Object.Instantiate(asset);
+        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(inst, escena);
+        inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+        var anim = inst.GetComponent<AnimacionesModelo>();
+        try
+        {
+            if (anim) anim.Previsualizar(pose, t);
+            var ag = inst.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            float pisoY = ag ? -ag.baseOffset : 0f;
+
+            // Piso (para ver que los pies lo tocan y no lo atraviesan)
+            var piso = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(piso, escena);
+            Object.DestroyImmediate(piso.GetComponent<Collider>());
+            piso.transform.SetPositionAndRotation(new Vector3(0f, pisoY, 0f), Quaternion.Euler(90f, 0f, 0f));
+            piso.transform.localScale = Vector3.one * 8f;
+            var matPiso = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            matPiso.SetColor("_BaseColor", new Color(0.23f, 0.22f, 0.21f));
+            matPiso.SetFloat("_Smoothness", 0.15f);
+            piso.GetComponent<Renderer>().sharedMaterial = matPiso;
+            tirar.Add(matPiso);
+
+            var cam = Nuevo("_Cam").AddComponent<Camera>();
+            cam.scene = escena;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = oscuro ? new Color(0.01f, 0.01f, 0.015f) : new Color(0.12f, 0.12f, 0.14f);
+            cam.fieldOfView = 40f;
+            cam.nearClipPlane = 0.05f;
+            Vector3 mirar = new Vector3(0f, pisoY + alturaMirar, 0f);
+            Quaternion rot = Quaternion.Euler(inclinacion, giro, 0f);
+            cam.transform.position = mirar - rot * Vector3.forward * distancia;
+            cam.transform.LookAt(mirar);
+            var datos = UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam);
+            datos.renderPostProcessing = true;
+            datos.volumeLayerMask = ~0;
+            datos.volumeTrigger = cam.transform;
+
+            // Bloom (como en el laberinto) para que se vea el brillo
+            var perfil = ScriptableObject.CreateInstance<VolumeProfile>();
+            tirar.Add(perfil);
+            var bloom = perfil.Add<UnityEngine.Rendering.Universal.Bloom>(true);
+            bloom.threshold.Override(0.8f);
+            bloom.intensity.Override(1.2f);
+            bloom.scatter.Override(0.7f);
+            var vol = Nuevo("_Vol").AddComponent<Volume>();
+            vol.isGlobal = true;
+            vol.priority = 1000f;
+            vol.sharedProfile = perfil;
+
+            if (oscuro)
+            {
+                // Solo una linterna desde la camara, tenue
+                var lg = Nuevo("_Linterna");
+                lg.transform.SetPositionAndRotation(cam.transform.position + cam.transform.right * 0.25f, cam.transform.rotation);
+                var luz = lg.AddComponent<Light>();
+                luz.type = LightType.Spot; luz.spotAngle = 45f; luz.range = 15f; luz.intensity = 2.2f;
+                luz.color = new Color(1f, 0.95f, 0.85f); luz.shadows = LightShadows.Soft;
+            }
+            else
+            {
+                foreach (var (dir, inten, col) in new[] { (new Vector3(35f, giro - 40f, 0f), 1.3f, new Color(1f, 0.95f, 0.88f)), (new Vector3(15f, giro + 130f, 0f), 0.5f, new Color(0.7f, 0.8f, 1f)) })
+                {
+                    var lg = Nuevo("_Luz");
+                    lg.transform.rotation = Quaternion.Euler(dir);
+                    var luz = lg.AddComponent<Light>();
+                    luz.type = LightType.Directional; luz.intensity = inten; luz.color = col; luz.shadows = LightShadows.Soft;
+                }
+            }
+
+            var rt = new RenderTexture(ancho, alto, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
+            cam.targetTexture = rt;
+            cam.Render();
+            var prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(ancho, alto, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, ancho, alto), 0, 0);
+            tex.Apply();
+            RenderTexture.active = prev;
+            File.WriteAllBytes(Path.Combine(Carpeta, nombre + ".png"), tex.EncodeToPNG());
+            cam.targetTexture = null;
+            Object.DestroyImmediate(tex);
+            Object.DestroyImmediate(rt);
+        }
+        finally
+        {
+            if (anim) anim.Liberar();
+            UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(escena);
+            foreach (Object o in tirar) if (o) Object.DestroyImmediate(o);
+        }
+    }
+
+    public static void SimularPasos(string ruta, float velocidad, string nombre)
+    {
+        GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(ruta);
+        if (!asset) return;
+        Directory.CreateDirectory(Carpeta);
+        var escena = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+        var inst = (GameObject)Object.Instantiate(asset);
+        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(inst, escena);
+        inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+        var anim = inst.GetComponent<AnimacionesModelo>();
+        var sb = new StringBuilder();
+        var tirar = new System.Collections.Generic.List<Object>();
+        try
+        {
+            if (!anim) return;
+            anim.Preparar();
+            // Varias fotos en el mismo cuadro del editor: sin esto la malla con huesos se queda con la deformacion de la primera
+            foreach (SkinnedMeshRenderer s in inst.GetComponentsInChildren<SkinnedMeshRenderer>(true)) s.forceMatrixRecalculationPerRender = true;
+            var pose = anim.Buscar(AnimacionesModelo.Caminar);
+            var piernas = pose != null ? pose.piernas : null;
+            sb.AppendLine($"velocidad del cuerpo: {velocidad:0.00} m/s; pasos con IK: {(piernas != null ? "si" : "NO")}; paso max {(pose != null ? pose.pasoMax : 0f):0.00} m");
+
+            // Escena para las fotos: piso, luces y camara de perfil que sigue al personaje
+            var ag = inst.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            float pisoY = ag ? -ag.baseOffset : 0f;
+            var piso = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(piso, escena);
+            Object.DestroyImmediate(piso.GetComponent<Collider>());
+            piso.transform.SetPositionAndRotation(new Vector3(0f, pisoY, 10f), Quaternion.Euler(90f, 0f, 0f));
+            piso.transform.localScale = new Vector3(6f, 30f, 1f);
+            var matPiso = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            tirar.Add(matPiso);
+            piso.GetComponent<Renderer>().sharedMaterial = matPiso;
+            // Marcas en el piso cada 0.5 m para ver si el pie resbala
+            for (int m = 0; m < 30; m++)
+            {
+                var marca = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(marca, escena);
+                Object.DestroyImmediate(marca.GetComponent<Collider>());
+                marca.transform.position = new Vector3(0.9f, pisoY + 0.005f, m * 0.5f);
+                marca.transform.localScale = new Vector3(0.6f, 0.01f, 0.03f);
+            }
+            var camGo = new GameObject("_Cam");
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(camGo, escena);
+            var cam = camGo.AddComponent<Camera>();
+            cam.scene = escena;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.12f, 0.12f, 0.14f);
+            cam.fieldOfView = 40f;
+            foreach (var (dir, inten) in new[] { (new Vector3(40f, 60f, 0f), 1.3f), (new Vector3(20f, -120f, 0f), 0.5f) })
+            {
+                var lg = new GameObject("_Luz");
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(lg, escena);
+                lg.transform.rotation = Quaternion.Euler(dir);
+                var luz = lg.AddComponent<Light>();
+                luz.type = LightType.Directional; luz.intensity = inten; luz.shadows = LightShadows.Soft;
+            }
+
+            const float dt = 1f / 60f;
+            int cuadros = 360;
+            float largo = 0f;
+            if (pose != null) foreach (AnimationClip c in pose.clips) if (c) largo = Mathf.Max(largo, c.length);
+            float resbala = 0f; int nApoyo = 0;
+            Vector3[] antes = new Vector3[2];
+            int foto = 0, proxFoto = 240;
+            for (int f = 0; f < cuadros; f++)
+            {
+                inst.transform.position += Vector3.forward * velocidad * dt;
+                anim.Paso(dt);
+                if (piernas == null) continue;
+                int apoyada = piernas[0].punta.position.y < piernas[1].punta.position.y ? 0 : 1;
+                if (f > 90)
+                {
+                    Vector3 d = piernas[apoyada].punta.position - antes[apoyada];
+                    d.y = 0f;
+                    resbala += d.magnitude / dt;
+                    nApoyo++;
+                }
+                antes[0] = piernas[0].punta.position;
+                antes[1] = piernas[1].punta.position;
+                if (f == proxFoto && foto < 4)
+                {
+                    Vector3 mirar = new Vector3(0f, pisoY + 1.2f, inst.transform.position.z);
+                    cam.transform.position = mirar + new Vector3(-5.5f, 0.4f, 0f);
+                    cam.transform.LookAt(mirar);
+                    var rt = new RenderTexture(960, 540, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
+                    cam.targetTexture = rt;
+                    cam.Render();
+                    var prev = RenderTexture.active;
+                    RenderTexture.active = rt;
+                    var tex = new Texture2D(960, 540, TextureFormat.RGB24, false);
+                    tex.ReadPixels(new Rect(0, 0, 960, 540), 0, 0);
+                    tex.Apply();
+                    RenderTexture.active = prev;
+                    File.WriteAllBytes(Path.Combine(Carpeta, nombre + "_" + foto + ".png"), tex.EncodeToPNG());
+                    cam.targetTexture = null;
+                    Object.DestroyImmediate(tex);
+                    Object.DestroyImmediate(rt);
+                    foto++;
+                    proxFoto += 15;
+                }
+            }
+            sb.AppendLine($"el pie apoyado se mueve en promedio {(nApoyo > 0 ? resbala / nApoyo : -1f):0.000} m/s (0 = no resbala; sin IK resbalaria {velocidad:0.00})");
+        }
+        finally
+        {
+            File.WriteAllText(Path.Combine(Carpeta, nombre + ".txt"), sb.ToString());
+            if (anim) anim.Liberar();
+            UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(escena);
+            foreach (Object o in tirar) if (o) Object.DestroyImmediate(o);
+        }
     }
 
     // Vuelca la geometria de la tienda (estantes, mesas, paredes) para planificar la decoracion.

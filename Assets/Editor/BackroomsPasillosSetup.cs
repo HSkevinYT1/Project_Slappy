@@ -89,6 +89,7 @@ public static class BackroomsPasillosSetup
                 Senales(br.transform);
                 EditorSceneManager.MarkSceneDirty(br.scene);
             }
+            if (Ajustes(br.transform)) EditorSceneManager.MarkSceneDirty(br.scene);
             return;
         }
         Debug.Log("[Backrooms] Armando los Backrooms de pasillos (las paredes, paneles y luces viejas se borran; Ctrl+Z deshace).", br);
@@ -452,6 +453,87 @@ public static class BackroomsPasillosSetup
 
         BackroomsPalancasSetup.AplicarPlan(raiz, plan);
         Senales(raiz);
+        Ajustes(raiz);
+    }
+
+    // ================================================================ sonidos y puerta de la sala (solo lo que falte)
+
+    const string CarpetaSfx = "Assets/Sounds/SFX/";
+
+    internal static bool Ajustes(Transform raiz)
+    {
+        bool cambio = false;
+        AudioClip Clip(string n) => AssetDatabase.LoadAssetAtPath<AudioClip>(CarpetaSfx + n);
+        BackroomsGuion guion = raiz.GetComponentInChildren<BackroomsGuion>(true);
+        if (guion)
+        {
+            Undo.RecordObject(guion, "Backrooms sonidos");
+            if (!guion.sonidoGlitch && (guion.sonidoGlitch = Clip("glitch puerta.wav"))) cambio = true;
+            if (!guion.suspiro && (guion.suspiro = Clip("suspiro rapido.wav"))) cambio = true;
+            if (!guion.sonidoKill && (guion.sonidoKill = Clip("sonido kill enemigo 2 y 4.mp3")))
+            {
+                guion.inicioKill = Inicio(guion.sonidoKill);
+                cambio = true;
+            }
+            if (!guion.puertaSala)
+            {
+                // Puerta este de la sala del cadaver (la del pasillo de la entrada), mirando hacia dentro
+                var p = new GameObject("Puerta Sala").transform;
+                Undo.RegisterCreatedObjectUndo(p.gameObject, "Puerta Sala");
+                p.SetParent(guion.transform, false);
+                p.SetPositionAndRotation(new Vector3(BordeX(11), 0f, Centro(10, 12).z), Quaternion.LookRotation(Vector3.left));
+                guion.puertaSala = p;
+                guion.anchoPuertaSala = AnchoPuerta;
+                cambio = true;
+            }
+            if (cambio) EditorUtility.SetDirty(guion);
+        }
+        PuzzlePalancas puzzle = raiz.GetComponentInChildren<PuzzlePalancas>(true);
+        if (puzzle && !puzzle.sonidoCamaras)
+        {
+            Undo.RecordObject(puzzle, "Backrooms sonidos");
+            puzzle.sonidoCamaras = Clip("sonido camaras.mp3");
+            if (puzzle.sonidoCamaras)
+            {
+                puzzle.inicioSonidoCamaras = Inicio(puzzle.sonidoCamaras);
+                EditorUtility.SetDirty(puzzle);
+                cambio = true;
+            }
+        }
+        if (cambio)
+            Debug.Log($"[Backrooms] Sonidos: glitch de la puerta, suspiro, kill del gato (desde {(guion ? guion.inicioKill : 0f):0.00} s) y camaras " +
+                      $"(desde {(puzzle ? puzzle.inicioSonidoCamaras : 0f):0.00} s). Puerta de la sala para asomarse. Guarda la escena.", raiz);
+        return cambio;
+    }
+
+    // Donde empieza a sonar de verdad (salta el silencio del principio): la primera ventana de 20 ms con mas del 12%
+    // del volumen maximo (mirando los primeros 20 s)
+    static float Inicio(AudioClip c)
+    {
+        if (!c) return 0f;
+        try
+        {
+            if (c.loadState != AudioDataLoadState.Loaded) c.LoadAudioData();
+            int canales = Mathf.Max(1, c.channels);
+            int n = Mathf.Min(c.samples, c.frequency * 20);
+            var d = new float[n * canales];
+            if (!c.GetData(d, 0)) return 0f;
+            int ventana = Mathf.Max(1, c.frequency / 50);
+            var rms = new List<float>();
+            for (int w = 0; w + ventana <= n; w += ventana)
+            {
+                double s = 0;
+                for (int i = w * canales; i < (w + ventana) * canales; i++) s += d[i] * d[i];
+                rms.Add((float)System.Math.Sqrt(s / (ventana * canales)));
+            }
+            float pico = 0f;
+            foreach (float r in rms) pico = Mathf.Max(pico, r);
+            if (pico < 1e-4f) return 0f;
+            for (int k = 0; k < rms.Count; k++)
+                if (rms[k] > pico * 0.12f) return Mathf.Max(0f, k * ventana / (float)c.frequency - 0.03f);
+        }
+        catch (System.Exception e) { Debug.LogWarning("[Backrooms] No pude leer " + c.name + ": " + e.Message); }
+        return 0f;
     }
 
     // ================================================================ senales ocultas (solo se ven con la piedra bruja)
