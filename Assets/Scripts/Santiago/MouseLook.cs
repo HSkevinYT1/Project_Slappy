@@ -1,16 +1,11 @@
 using UnityEngine;
 
-// este script controla la camara y el movimiento de la cabeza del jugador, incluyendo la inclinacion al mirar hacia los lados (peeking)
+// este script controla la camara y el movimiento de la cabeza del jugador
 public class MouseLook : MonoBehaviour
 {
     [Header("Look")]
     public float mouseSensitivity = 100f;
     public Transform playerBody;
-
-    [Header("Peeking")]
-    [SerializeField] private float peekDistance = 0.25f;
-    [SerializeField] private float peekRollAngle = 10f;
-    [SerializeField] private float peekSmooth = 8f;
 
     private Rigidbody playerRb;
     private float xRotation;
@@ -20,7 +15,6 @@ public class MouseLook : MonoBehaviour
     private float pitchAnterior;
     private float pendingYaw;
     private float playerYaw;
-    private float peekLean;
     private Vector3 startLocalPosition;
 
     private int framesSinMouse;
@@ -77,18 +71,9 @@ public class MouseLook : MonoBehaviour
         float alfa = Mathf.Clamp01((Time.time - Time.fixedTime) / Mathf.Max(0.0001f, Time.fixedDeltaTime));
         float pitch = Mathf.Lerp(pitchAnterior, xRotation, alfa);
 
-        float peekInput = (Input.GetKey("e") ? 1f : 0f)
-                        - (Input.GetKey("q") ? 1f : 0f);
-        float blend = 1f - Mathf.Exp(-peekSmooth * Time.deltaTime);
-        peekLean = Mathf.Lerp(peekLean, peekInput, blend);
-
-        // aplica la rotacion de la camara y la inclinacion al mirar hacia los lados (peeking)
-        transform.localRotation = Quaternion.Euler(pitch, 0f, -peekRollAngle * peekLean);
-
-        // controla la posicion de la camara al mirar hacia los lados (peeking)
-        float targetX = startLocalPosition.x + peekDistance * peekLean;
-        float currentX = Mathf.Lerp(transform.localPosition.x, targetX, blend);
-        transform.localPosition = new Vector3(currentX, transform.localPosition.y, startLocalPosition.z);
+        // aplica la rotacion de la camara (ya no hay asomarse con Q/E: la camara no se mueve hacia los lados)
+        transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        transform.localPosition = new Vector3(startLocalPosition.x, transform.localPosition.y, startLocalPosition.z);
     }
 
     void FixedUpdate()
