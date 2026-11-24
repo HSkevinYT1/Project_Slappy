@@ -69003,6 +69003,8 @@ MonoBehaviour:
   prompt: Entregar cuchillo
   puntoMano: {fileID: 1777776028}
   alinearConMano: 1
+  huesoMano: RightHand
+  distanciaAgarre: 0.095
   ocultarAlRecibir: 0
   zonaEntrega: {fileID: 1926809551}
   promptFueraZona: Entregalo desde el mostrador
@@ -184114,8 +184116,9 @@ MonoBehaviour:
   volumenTic: 0.6
   sonidoManecillas: {fileID: 8300000, guid: 41dc134034ea0eb4fae6ef3cfa772f4f, type: 3}
   aceleracionTicTac: 3.2
-  volumenSinMirar: 0.04
-  volumenSinMirarCerca: 0.35
+  volumenEnManga: 0.3
+  volumenEnMangaCerca: 0.65
+  filtroEnManga: 3200
   detectarMunecas: 0
   posicionMirar: {x: -0.03, y: -0.05, z: 0.25}
   inclinacionBrazo: 12
@@ -250546,6 +250549,8 @@ MonoBehaviour:
   prompt: Rellenar el faro
   puntoMano: {fileID: 0}
   alinearConMano: 1
+  huesoMano: RightHand
+  distanciaAgarre: 0.095
   ocultarAlRecibir: 1
   zonaEntrega: {fileID: 0}
   promptFueraZona: Entregalo desde el mostrador
@@ -412973,6 +412978,7 @@ MonoBehaviour:
   brilloBoton: {fileID: 1478629993}
   salida: {fileID: 1833456330}
   materialPortal: {fileID: 2100000, guid: 1afa759a72b7bb2489b9b997470398d1, type: 2}
+  quitarAlSalir: []
   colorApagado: {r: 0.25, g: 0.03, b: 0.02, a: 1}
   colorEncendido: {r: 3.2, g: 2.6, b: 0.9, a: 1}
   intensidadLuz: 1.6
@@ -430913,7 +430919,7 @@ PrefabInstance:
     - target: {fileID: 8490733508209054260, guid: 1aec1a8b294ee074095258a8953fc446, type: 3}
       propertyPath: sonidoScreamer
       value: 
-      objectReference: {fileID: 8300000, guid: 03991af3c3dc5524084375aa8c878e0c, type: 3}
+      objectReference: {fileID: 8300000, guid: 93b034870e9b38c44b90deb6a3006335, type: 3}
     - target: {fileID: 8490733508209054260, guid: 1aec1a8b294ee074095258a8953fc446, type: 3}
       propertyPath: acelerarConDistancia
       value: 1
@@ -510811,6 +510817,8 @@ MonoBehaviour:
   anguloArriba: 40
   anguloAbajo: 140
   duracion: 0.4
+  sonido: {fileID: 8300000, guid: 7d864b455c80828459d9232c8db8e2e9, type: 3}
+  volumen: 0.9
   promptBajar: Bajar palanca
   promptRota: Revisar palanca
   pensamientoRota: "Est\xE1 rota... le falta la manija.\nTiene que estar por alg\xFAn
@@ -519867,6 +519875,8 @@ MonoBehaviour:
   anguloArriba: 40
   anguloAbajo: 140
   duracion: 0.4
+  sonido: {fileID: 8300000, guid: 7d864b455c80828459d9232c8db8e2e9, type: 3}
+  volumen: 0.9
   promptBajar: Bajar palanca
   promptRota: Revisar palanca
   pensamientoRota: "Est\xE1 rota... le falta la manija.\nTiene que estar por alg\xFAn
@@ -539572,6 +539582,8 @@ MonoBehaviour:
   anguloArriba: 40
   anguloAbajo: 140
   duracion: 0.4
+  sonido: {fileID: 8300000, guid: 7d864b455c80828459d9232c8db8e2e9, type: 3}
+  volumen: 0.9
   promptBajar: Bajar palanca
   promptRota: Revisar palanca
   pensamientoRota: "Est\xE1 rota... le falta la manija.\nTiene que estar por alg\xFAn
@@ -630286,6 +630298,8 @@ MonoBehaviour:
   duracionCruce: 5.5
   mirarReloj: 3.2
   textoTutorial: Presiona [{0}] para mirar tu reloj
+  cercaniaAntesDeMirar: 0.45
+  cercaniaAlMirar: 0.9
   textoPista: Las agujas enloquecen cuando algo se acerca...
   alTerminar:
     m_PersistentCalls:
@@ -697088,6 +697102,8 @@ MonoBehaviour:
   prompt: Usar llave
   puntoMano: {fileID: 259261221}
   alinearConMano: 1
+  huesoMano: RightHand
+  distanciaAgarre: 0.095
   ocultarAlRecibir: 0
   zonaEntrega: {fileID: 0}
   promptFueraZona: Entregalo desde el mostrador
@@ -724808,6 +724824,8 @@ MonoBehaviour:
   anguloArriba: 40
   anguloAbajo: 140
   duracion: 0.4
+  sonido: {fileID: 8300000, guid: 7d864b455c80828459d9232c8db8e2e9, type: 3}
+  volumen: 0.9
   promptBajar: Bajar palanca
   promptRota: Revisar palanca
   pensamientoRota: "Est\xE1 rota... le falta la manija.\nTiene que estar por alg\xFAn
